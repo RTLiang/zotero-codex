@@ -1,0 +1,14 @@
+{
+  "name": "zotero-codex-sidebar",
+  "version": "2026.257.3",
+  "private": true,
+  "description": "A Zotero 10 sidebar for the local Codex App Server",
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "test": "node --test tests/*.test.cjs",
+    "build": "node scripts/build.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

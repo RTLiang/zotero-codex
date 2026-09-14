@@ -1,0 +1,5 @@
+.DS_Store
+.playwright-cli/
+output/
+dist/*.xpi
+!dist/zotero-codex-sidebar-2026.257.3.xpi
