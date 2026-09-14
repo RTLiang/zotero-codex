@@ -48,3 +48,25 @@ test("parses fenced and display math blocks without exposing delimiters", () => 
 test("keeps escaped Markdown punctuation literal", () => {
   assert.deepEqual(Markdown.parseInlines("\\*literal\\*"), [{ type: "text", text: "*literal*" }]);
 });
+
+test("parses the reported InfoMin formulas as structured math", () => {
+  const objective = Markdown.parseLatex(String.raw`\min I(v_1;v_2)`);
+  assert.equal(objective.children[0].type, "namedOperator");
+  assert.equal(objective.children[0].text, "min");
+  assert.equal(objective.children[3].type, "script");
+  assert.equal(objective.children[3].subscript.text, "1");
+  assert.equal(Markdown.latexToText(String.raw`\min I(v_1;v_2)`), "min I(v₁;v₂)");
+  assert.equal(
+    Markdown.latexToText(String.raw`I(v_1;y)=I(v_2;y)=I(x;y)`),
+    "I(v₁;y) = I(v₂;y) = I(x;y)",
+  );
+});
+
+test("keeps fractions, roots, subscripts, and superscripts structural", () => {
+  const formula = Markdown.parseLatex(String.raw`\frac{x_i^2}{\sqrt{n}}`);
+  const fraction = formula.children[0];
+  assert.equal(fraction.type, "fraction");
+  assert.equal(fraction.numerator.children[0].type, "script");
+  assert.equal(fraction.denominator.children[0].type, "sqrt");
+  assert.equal(Markdown.latexToText(String.raw`\frac{x_i^2}{\sqrt{n}}`), "(xᵢ²)/(√(n))");
+});

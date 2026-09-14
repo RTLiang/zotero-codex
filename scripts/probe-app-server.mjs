@@ -44,7 +44,7 @@ try {
     clientInfo: {
       name: "zotero-codex-probe",
       title: "Zotero Codex Probe",
-      version: "2026.257.3",
+      version: "2026.257.4",
     },
     capabilities: { experimentalApi: true },
   });

@@ -207,25 +207,192 @@
     return blocks;
   }
 
+  const MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
   const LATEX_SYMBOLS = new Map(Object.entries({
-    times: "×", cdot: "·", pm: "±", mp: "∓", le: "≤", leq: "≤",
-    ge: "≥", geq: "≥", neq: "≠", approx: "≈", sim: "∼", infty: "∞",
-    to: "→", rightarrow: "→", leftarrow: "←", Rightarrow: "⇒", Leftarrow: "⇐",
-    alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", theta: "θ",
-    lambda: "λ", mu: "μ", pi: "π", rho: "ρ", sigma: "σ", tau: "τ", phi: "φ",
-    omega: "ω", Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Sigma: "Σ", Omega: "Ω",
+    times: "×", cdot: "·", div: "÷", pm: "±", mp: "∓", le: "≤", leq: "≤",
+    ge: "≥", geq: "≥", neq: "≠", approx: "≈", sim: "∼", simeq: "≃",
+    equiv: "≡", propto: "∝", in: "∈", notin: "∉", subset: "⊂", supset: "⊃",
+    subseteq: "⊆", supseteq: "⊇", cup: "∪", cap: "∩", emptyset: "∅",
+    infty: "∞", partial: "∂", nabla: "∇", forall: "∀", exists: "∃",
+    to: "→", mapsto: "↦", rightarrow: "→", leftarrow: "←", leftrightarrow: "↔",
+    Rightarrow: "⇒", Leftarrow: "⇐", Leftrightarrow: "⇔",
+    alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", varepsilon: "ε",
+    zeta: "ζ", eta: "η", theta: "θ", vartheta: "ϑ", iota: "ι", kappa: "κ",
+    lambda: "λ", mu: "μ", nu: "ν", xi: "ξ", omicron: "ο", pi: "π", varpi: "ϖ",
+    rho: "ρ", varrho: "ϱ", sigma: "σ", varsigma: "ς", tau: "τ", upsilon: "υ",
+    phi: "φ", varphi: "ϕ", chi: "χ", psi: "ψ", omega: "ω",
+    Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Xi: "Ξ", Pi: "Π",
+    Sigma: "Σ", Upsilon: "Υ", Phi: "Φ", Psi: "Ψ", Omega: "Ω",
+    ldots: "…", cdots: "⋯", vdots: "⋮", ddots: "⋱",
+  }));
+  const LATEX_NAMED_OPERATORS = new Set([
+    "min", "max", "argmin", "argmax", "lim", "sup", "inf", "log", "ln", "exp",
+    "sin", "cos", "tan", "arcsin", "arccos", "arctan", "det", "dim", "gcd",
+  ]);
+  const LATEX_LARGE_OPERATORS = new Map(Object.entries({
+    sum: "∑", prod: "∏", coprod: "∐", int: "∫", iint: "∬", iiint: "∭", oint: "∮",
+  }));
+  const BINARY_MATH_OPERATORS = new Set([
+    "+", "-", "*", "/", "=", "×", "·", "÷", "±", "∓", "≤", "≥", "≠", "≈", "≃",
+    "≡", "∝", "∈", "∉", "⊂", "⊃", "⊆", "⊇", "∪", "∩", "→", "↦", "←", "↔",
+    "⇒", "⇐", "⇔",
+  ]);
+  const LATEX_VARIANTS = new Map(Object.entries({
+    mathrm: "normal", mathbf: "bold", mathit: "italic", mathbb: "double-struck",
+    mathsf: "sans-serif", mathtt: "monospace",
+  }));
+  const SUBSCRIPT_CHARACTERS = new Map(Object.entries({
+    0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉",
+    "+": "₊", "-": "₋", "=": "₌", "(": "₍", ")": "₎", a: "ₐ", e: "ₑ", h: "ₕ",
+    i: "ᵢ", j: "ⱼ", k: "ₖ", l: "ₗ", m: "ₘ", n: "ₙ", o: "ₒ", p: "ₚ", r: "ᵣ",
+    s: "ₛ", t: "ₜ", u: "ᵤ", v: "ᵥ", x: "ₓ",
+  }));
+  const SUPERSCRIPT_CHARACTERS = new Map(Object.entries({
+    0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹",
+    "+": "⁺", "-": "⁻", "=": "⁼", "(": "⁽", ")": "⁾", n: "ⁿ", i: "ⁱ",
   }));
 
+  function parseLatex(value) {
+    const source = String(value || "");
+    let index = 0;
+
+    const skipSpaces = () => {
+      while (/\s/u.test(source[index] || "")) index++;
+    };
+
+    const parseRawGroup = () => {
+      skipSpaces();
+      if (source[index] !== "{") return "";
+      index++;
+      let depth = 1;
+      let text = "";
+      while (index < source.length && depth > 0) {
+        const character = source[index++];
+        if (character === "{") depth++;
+        else if (character === "}") depth--;
+        if (depth > 0) text += character;
+      }
+      return text;
+    };
+
+    const parseGroup = () => {
+      skipSpaces();
+      if (source[index] !== "{") return parseAtom();
+      index++;
+      const group = parseSequence("}");
+      if (source[index] === "}") index++;
+      return group;
+    };
+
+    const parseCommand = () => {
+      index++;
+      const start = index;
+      while (/[A-Za-z]/u.test(source[index] || "")) index++;
+      const name = source.slice(start, index) || source[index++] || "";
+      if (name === "left" || name === "right") {
+        skipSpaces();
+        return parseAtom();
+      }
+      if (["frac", "dfrac", "tfrac"].includes(name)) {
+        return { type: "fraction", numerator: parseGroup(), denominator: parseGroup() };
+      }
+      if (name === "sqrt") return { type: "sqrt", body: parseGroup() };
+      if (name === "text" || name === "operatorname") {
+        return { type: name === "text" ? "text" : "namedOperator", text: parseRawGroup() };
+      }
+      if (LATEX_VARIANTS.has(name)) {
+        return { type: "style", variant: LATEX_VARIANTS.get(name), body: parseGroup() };
+      }
+      if (LATEX_NAMED_OPERATORS.has(name)) return { type: "namedOperator", text: name };
+      if (LATEX_LARGE_OPERATORS.has(name)) {
+        return { type: "operator", text: LATEX_LARGE_OPERATORS.get(name), large: true };
+      }
+      if (LATEX_SYMBOLS.has(name)) {
+        const text = LATEX_SYMBOLS.get(name);
+        return /[α-ωΑ-Ωϑϕϖϱς]/u.test(text)
+          ? { type: "identifier", text }
+          : { type: "operator", text };
+      }
+      if ([",", ";", ":", "!", "quad", "qquad", " "].includes(name)) {
+        const width = name === "qquad" ? "2em" : name === "quad" ? "1em" : ".28em";
+        return { type: "space", width };
+      }
+      return { type: "identifier", text: name };
+    };
+
+    function parseAtom() {
+      skipSpaces();
+      const character = source[index];
+      if (!character) return { type: "row", children: [] };
+      if (character === "{") return parseGroup();
+      if (character === "\\") return parseCommand();
+      if (/\d/u.test(character)) {
+        const start = index++;
+        while (/[\d.]/u.test(source[index] || "")) index++;
+        return { type: "number", text: source.slice(start, index) };
+      }
+      index++;
+      if (/[A-Za-z]/u.test(character)) return { type: "identifier", text: character };
+      if (/[,;:=+\-*/<>()[\]|]/u.test(character)) return { type: "operator", text: character };
+      return { type: "identifier", text: character };
+    }
+
+    function parseSequence(stop = "") {
+      const children = [];
+      while (index < source.length && (!stop || source[index] !== stop)) {
+        skipSpaces();
+        if (index >= source.length || (stop && source[index] === stop)) break;
+        let base = parseAtom();
+        let subscript = null;
+        let superscript = null;
+        while (source[index] === "_" || source[index] === "^") {
+          const marker = source[index++];
+          const script = parseGroup();
+          if (marker === "_") subscript = script;
+          else superscript = script;
+        }
+        if (subscript || superscript) {
+          base = { type: "script", base, subscript, superscript };
+        }
+        children.push(base);
+      }
+      return { type: "row", children };
+    }
+
+    return parseSequence();
+  }
+
+  function latexAstToText(node) {
+    if (!node) return "";
+    if (node.type === "row") return node.children.map(latexAstToText).join("");
+    if (["identifier", "number", "text"].includes(node.type)) return node.text;
+    if (node.type === "operator") {
+      return BINARY_MATH_OPERATORS.has(node.text) ? ` ${node.text} ` : node.text;
+    }
+    if (node.type === "namedOperator") return `${node.text} `;
+    if (node.type === "space") return " ";
+    if (node.type === "style") return latexAstToText(node.body);
+    if (node.type === "fraction") {
+      return `(${latexAstToText(node.numerator)})/(${latexAstToText(node.denominator)})`;
+    }
+    if (node.type === "sqrt") return `√(${latexAstToText(node.body)})`;
+    if (node.type === "script") {
+      const convert = (script, characters, marker) => {
+        const text = latexAstToText(script);
+        const converted = [...text].map((character) => characters.get(character) || "").join("");
+        return converted.length === text.length ? converted : `${marker}(${text})`;
+      };
+      return [
+        latexAstToText(node.base),
+        node.subscript ? convert(node.subscript, SUBSCRIPT_CHARACTERS, "₍") : "",
+        node.superscript ? convert(node.superscript, SUPERSCRIPT_CHARACTERS, "⁽") : "",
+      ].join("");
+    }
+    return "";
+  }
+
   function latexToText(value) {
-    return String(value || "")
-      .replace(/\\(?:mathrm|mathbf|mathit|text|operatorname)\{([^{}]*)\}/gu, "$1")
-      .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/gu, "($1)/($2)")
-      .replace(/\\sqrt\{([^{}]+)\}/gu, "√($1)")
-      .replace(/\\left|\\right/gu, "")
-      .replace(/\\([A-Za-z]+)/gu, (match, name) => LATEX_SYMBOLS.get(name) || match)
-      .replace(/\{([^{}]*)\}/gu, "$1")
-      .replace(/\s+/gu, " ")
-      .trim();
+    return latexAstToText(parseLatex(value)).replace(/\s+/gu, " ").trim();
   }
 
   function pushText(tokens, value) {
@@ -244,7 +411,8 @@
       if (source.startsWith("\\(", index)) {
         const end = source.indexOf("\\)", index + 2);
         if (end > index + 2) {
-          tokens.push({ type: "math", text: latexToText(source.slice(index + 2, end)) });
+          const latex = source.slice(index + 2, end);
+          tokens.push({ type: "math", latex, text: latexToText(latex) });
           index = end + 2;
           continue;
         }
@@ -253,7 +421,8 @@
       if (source[index] === "$" && source[index + 1] !== "$" && !/\s/u.test(source[index + 1] || "")) {
         const end = source.indexOf("$", index + 1);
         if (end > index + 1 && !/\s/u.test(source[end - 1])) {
-          tokens.push({ type: "math", text: latexToText(source.slice(index + 1, end)) });
+          const latex = source.slice(index + 1, end);
+          tokens.push({ type: "math", latex, text: latexToText(latex) });
           index = end + 1;
           continue;
         }
@@ -354,12 +523,84 @@
     return node;
   }
 
+  function createMathML(doc, tag, text = null) {
+    const node = doc.createElementNS(MATHML_NAMESPACE, tag);
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  function renderMathNode(doc, node) {
+    if (!node || node.type === "row") {
+      const row = createMathML(doc, "mrow");
+      for (const child of node?.children || []) row.append(renderMathNode(doc, child));
+      return row;
+    }
+    if (node.type === "identifier") return createMathML(doc, "mi", node.text);
+    if (node.type === "number") return createMathML(doc, "mn", node.text);
+    if (node.type === "text") return createMathML(doc, "mtext", node.text);
+    if (node.type === "namedOperator") {
+      const operator = createMathML(doc, "mo", node.text);
+      operator.setAttribute("form", "prefix");
+      return operator;
+    }
+    if (node.type === "operator") {
+      const operator = createMathML(doc, "mo", node.text);
+      if (node.large) {
+        operator.setAttribute("largeop", "true");
+        operator.setAttribute("movablelimits", "true");
+      }
+      return operator;
+    }
+    if (node.type === "space") {
+      const space = createMathML(doc, "mspace");
+      space.setAttribute("width", node.width || ".28em");
+      return space;
+    }
+    if (node.type === "style") {
+      const style = createMathML(doc, "mstyle");
+      style.setAttribute("mathvariant", node.variant);
+      style.append(renderMathNode(doc, node.body));
+      return style;
+    }
+    if (node.type === "fraction") {
+      const fraction = createMathML(doc, "mfrac");
+      fraction.append(renderMathNode(doc, node.numerator), renderMathNode(doc, node.denominator));
+      return fraction;
+    }
+    if (node.type === "sqrt") {
+      const root = createMathML(doc, "msqrt");
+      root.append(renderMathNode(doc, node.body));
+      return root;
+    }
+    if (node.type === "script") {
+      const tag = node.subscript && node.superscript
+        ? "msubsup"
+        : node.subscript ? "msub" : "msup";
+      const script = createMathML(doc, tag);
+      script.append(renderMathNode(doc, node.base));
+      if (node.subscript) script.append(renderMathNode(doc, node.subscript));
+      if (node.superscript) script.append(renderMathNode(doc, node.superscript));
+      return script;
+    }
+    return createMathML(doc, "mtext", "");
+  }
+
+  function createRenderedMath(doc, latex, display = false) {
+    const wrapper = create(doc, display ? "div" : "span", display ? "zcs-display-math" : "zcs-inline-math");
+    const math = createMathML(doc, "math");
+    math.setAttribute("display", display ? "block" : "inline");
+    math.setAttribute("aria-label", latexToText(latex));
+    math.append(renderMathNode(doc, parseLatex(latex)));
+    wrapper.append(math);
+    return wrapper;
+  }
+
   function appendInlineTokens(doc, parent, tokens, options) {
     for (const token of tokens) {
       if (token.type === "text") parent.append(doc.createTextNode(token.text));
       else if (token.type === "break") parent.append(doc.createElement("br"));
       else if (token.type === "code") parent.append(create(doc, "code", "zcs-inline-code", token.text));
-      else if (token.type === "math") parent.append(create(doc, "span", "zcs-inline-math", token.text));
+      else if (token.type === "math") parent.append(createRenderedMath(doc, token.latex || token.text));
       else if (["strong", "em", "del"].includes(token.type)) {
         const node = create(doc, token.type);
         appendInlineTokens(doc, node, token.children, options);
@@ -415,7 +656,7 @@
         parent.append(wrapper);
       }
       else if (block.type === "math") {
-        parent.append(create(doc, "div", "zcs-display-math", latexToText(block.text)));
+        parent.append(createRenderedMath(doc, block.text, true));
       }
       else if (block.type === "list") {
         const list = create(doc, block.ordered ? "ol" : "ul", "zcs-markdown-list");
@@ -474,6 +715,7 @@
     tableAlignmentRow,
     parseBlocks,
     parseInlines,
+    parseLatex,
     latexToText,
     appendMarkdown,
   };

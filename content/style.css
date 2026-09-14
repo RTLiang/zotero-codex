@@ -668,12 +668,15 @@
 
 .zcs-inline-math,
 .zcs-display-math {
-  font-family: "STIX Two Math", "STIXGeneral", "Times New Roman", serif;
+  font-family: math, "STIX Two Math", "STIXGeneral", "Times New Roman", serif;
 }
 
 .zcs-inline-math {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: baseline;
   padding: 0 2px;
-  white-space: nowrap;
+  vertical-align: -.08em;
 }
 
 .zcs-display-math {
@@ -681,7 +684,17 @@
   padding: 4px 8px;
   overflow-x: auto;
   text-align: center;
-  white-space: pre-wrap;
+}
+
+.zcs-inline-math math,
+.zcs-display-math math {
+  font-family: inherit;
+  font-size: 1em;
+}
+
+.zcs-display-math math {
+  min-width: max-content;
+  margin-inline: auto;
 }
 
 .zcs-table-wrap {
