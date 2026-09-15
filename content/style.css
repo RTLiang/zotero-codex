@@ -527,6 +527,13 @@
 .zcs-message-content {
   min-width: 0;
   overflow-wrap: anywhere;
+  user-select: text !important;
+}
+
+.zcs-message-content *,
+.zcs-process-body,
+.zcs-process-body * {
+  user-select: text !important;
 }
 
 .zcs-user {
