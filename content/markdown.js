@@ -7,6 +7,33 @@
     return String(value || "").replace(/\r\n?/gu, "\n");
   }
 
+  function normalizeLatex(value) {
+    return String(value || "")
+      // Recover the common shorthand `\sum_j=1^K` as actual lower/upper limits.
+      .replace(
+        /\\(sum|prod|coprod)_([A-Za-z])=([A-Za-z0-9.]+)\^([A-Za-z0-9]+)/gu,
+        "\\$1{$2=$3}^{$4}",
+      )
+      // Models commonly omit braces around a one-letter styled symbol.
+      .replace(
+        /\\(mathcal|mathbb|mathrm|mathbf|mathit|mathsf|mathtt)([A-Za-z])(?=[^A-Za-z]|$)/gu,
+        "\\$1{$2}",
+      )
+      // Multi-letter uppercase subscripts are conventionally a single label.
+      .replace(/_([A-Z]{2,})(?=[^A-Za-z]|$)/gu, "_{$1}");
+  }
+
+  function isBareLatexLine(value) {
+    const line = String(value || "").trim();
+    if (!line || line.includes("`") || !line.includes("\\")) return false;
+    const commands = [...line.matchAll(/\\([A-Za-z]+)/gu)].map((match) => match[1]);
+    const recognized = commands.some((command) =>
+      /^(?:frac|dfrac|tfrac|sqrt|sum|prod|coprod|int|iint|iiint|oint|log|ln|exp|min|max|argmin|argmax|lim|sup|inf)$/u.test(command)
+      || /^(?:mathcal|mathbb|mathrm|mathbf|mathit|mathsf|mathtt)(?:[A-Za-z])?$/u.test(command));
+    if (!recognized) return false;
+    return /(?:[=<>≤≥≈]|\\(?:frac|dfrac|tfrac|sqrt|sum|prod|coprod|int|iint|iiint|oint)\b|[_^](?:\{|[A-Za-z0-9]))/u.test(line);
+  }
+
   function splitTableRow(value) {
     let source = String(value || "").trim();
     if (source.startsWith("|")) source = source.slice(1);
@@ -64,6 +91,7 @@
     if (/^ {0,3}>/u.test(line)) return true;
     if (/^ {0,3}(?:[-+*]|\d+[.)])\s+/u.test(line)) return true;
     if (/^\s*(?:\$\$|\\\[)/u.test(line)) return true;
+    if (isBareLatexLine(line)) return true;
     if (isHorizontalRule(line)) return true;
     return Boolean(line.includes("|") && tableAlignmentRow(lines[index + 1] || ""));
   }
@@ -121,6 +149,12 @@
           }
         }
         blocks.push({ type: "math", text: content.join("\n").trim() });
+        continue;
+      }
+
+      if (isBareLatexLine(line)) {
+        blocks.push({ type: "math", text: normalizeLatex(line.trim()), inferred: true });
+        index++;
         continue;
       }
 
@@ -239,6 +273,7 @@
   ]);
   const LATEX_VARIANTS = new Map(Object.entries({
     mathrm: "normal", mathbf: "bold", mathit: "italic", mathbb: "double-struck",
+    mathcal: "script",
     mathsf: "sans-serif", mathtt: "monospace",
   }));
   const SUBSCRIPT_CHARACTERS = new Map(Object.entries({
@@ -253,7 +288,7 @@
   }));
 
   function parseLatex(value) {
-    const source = String(value || "");
+    const source = normalizeLatex(value);
     let index = 0;
 
     const skipSpaces = () => {
@@ -377,15 +412,15 @@
     }
     if (node.type === "sqrt") return `√(${latexAstToText(node.body)})`;
     if (node.type === "script") {
-      const convert = (script, characters, marker) => {
+      const convert = (script, characters, opening, closing) => {
         const text = latexAstToText(script);
         const converted = [...text].map((character) => characters.get(character) || "").join("");
-        return converted.length === text.length ? converted : `${marker}(${text})`;
+        return converted.length === text.length ? converted : `${opening}${text}${closing}`;
       };
       return [
         latexAstToText(node.base),
-        node.subscript ? convert(node.subscript, SUBSCRIPT_CHARACTERS, "₍") : "",
-        node.superscript ? convert(node.superscript, SUPERSCRIPT_CHARACTERS, "⁽") : "",
+        node.subscript ? convert(node.subscript, SUBSCRIPT_CHARACTERS, "₍", "₎") : "",
+        node.superscript ? convert(node.superscript, SUPERSCRIPT_CHARACTERS, "⁽", "⁾") : "",
       ].join("");
     }
     return "";
@@ -711,6 +746,8 @@
 
   const exported = {
     normalizeSource,
+    normalizeLatex,
+    isBareLatexLine,
     splitTableRow,
     tableAlignmentRow,
     parseBlocks,

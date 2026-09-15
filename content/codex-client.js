@@ -186,7 +186,7 @@
           clientInfo: {
             name: "zotero-codex-sidebar",
             title: "Codex Sidebar for Zotero",
-            version: "2026.257.4",
+            version: "2026.258.1",
           },
           capabilities: { experimentalApi: true },
         });
@@ -413,6 +413,43 @@
       await this.connect();
       await this.request("thread/resume", { threadId: threadID, excludeTurns: true });
       this.loadedThreads.add(threadID);
+    }
+
+    async forkThreadBeforeTurn({ threadID, beforeTurnID, model } = {}) {
+      await this.connect();
+      const result = await this.request("thread/fork", {
+        threadId: threadID,
+        beforeTurnId: beforeTurnID,
+        excludeTurns: false,
+        ephemeral: false,
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandbox: "read-only",
+        ...(model ? { model } : {}),
+      });
+      const thread = Protocol.extractThread(result);
+      if (!thread?.id) throw clientError(
+        "zotero-codex-error-fork-id-missing",
+        null,
+        "Codex App Server did not return an edited task ID",
+      );
+      this.loadedThreads.add(thread.id);
+      return thread;
+    }
+
+    async revertThreadBeforeTurn({ threadID, beforeTurnID } = {}) {
+      await this.ensureThreadLoaded(threadID);
+      const result = await this.request("thread/revert", {
+        threadId: threadID,
+        beforeTurnId: beforeTurnID,
+      });
+      const thread = Protocol.extractThread(result);
+      if (!thread?.id) throw clientError(
+        "zotero-codex-error-revert-thread-missing",
+        null,
+        "Codex App Server did not return the edited task",
+      );
+      return thread;
     }
 
     async startTurn({ threadID, text, context, model, effort }) {

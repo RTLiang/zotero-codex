@@ -507,8 +507,11 @@
 }
 
 .zcs-message {
+  position: relative;
   display: flex;
-  margin: 0 0 19px;
+  flex-direction: column;
+  align-items: flex-start;
+  margin: 0 0 28px;
   line-height: 1.55;
 }
 
@@ -527,7 +530,7 @@
 }
 
 .zcs-user {
-  justify-content: flex-end;
+  align-items: flex-end;
 }
 
 .zcs-user .zcs-message-body {
@@ -536,6 +539,50 @@
   padding: 9px 12px;
   border-radius: 20px;
   background: var(--zcs-soft);
+}
+
+.zcs-message-actions {
+  position: absolute;
+  top: calc(100% + 1px);
+  left: 0;
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.zcs-user .zcs-message-actions {
+  right: 0;
+  left: auto;
+}
+
+.zcs-message:hover .zcs-message-actions,
+.zcs-message:focus-within .zcs-message-actions {
+  opacity: 1;
+}
+
+.zcs-message-action {
+  min-height: 24px !important;
+  padding: 2px 7px !important;
+  border-radius: 7px !important;
+  color: var(--zcs-muted) !important;
+  font-size: 10px !important;
+}
+
+.zcs-message-action:hover,
+.zcs-message-action:focus-visible {
+  color: CanvasText !important;
+  background: var(--zcs-soft) !important;
+}
+
+.zcs-clipboard-fallback {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  inset: -10000px auto auto -10000px;
+  opacity: 0;
 }
 
 .zcs-process,
@@ -842,6 +889,44 @@
   box-shadow: 0 2px 8px color-mix(in srgb, CanvasText 9%, transparent);
 }
 
+.zcs-composer-editing {
+  border-color: color-mix(in srgb, AccentColor 68%, var(--zcs-border-strong));
+  box-shadow: 0 0 0 1px color-mix(in srgb, AccentColor 18%, transparent),
+    0 2px 8px color-mix(in srgb, CanvasText 9%, transparent);
+}
+
+.zcs-edit-banner {
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -2px 1px 4px;
+  padding: 0 5px 5px;
+  border-bottom: 1px solid var(--zcs-border);
+  color: var(--zcs-muted);
+  font-size: 10.5px;
+}
+
+.zcs-edit-banner[hidden],
+.zcs-model-next-turn[hidden] {
+  display: none;
+}
+
+.zcs-edit-cancel {
+  min-height: 24px !important;
+  padding: 2px 6px !important;
+  border-radius: 7px !important;
+  color: var(--zcs-muted) !important;
+  font-size: 10px !important;
+}
+
+.zcs-edit-cancel:hover,
+.zcs-edit-cancel:focus-visible {
+  color: CanvasText !important;
+  background: var(--zcs-soft) !important;
+}
+
 .zcs-attachments {
   display: grid;
   max-height: 132px;
@@ -1111,6 +1196,12 @@
   margin-bottom: 12px;
   font-size: 13px;
   font-weight: 680;
+}
+
+.zcs-model-next-turn {
+  margin: -7px 0 11px;
+  color: var(--zcs-muted);
+  font-size: 10.5px;
 }
 
 .zcs-model-field {

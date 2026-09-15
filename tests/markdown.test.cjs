@@ -70,3 +70,31 @@ test("keeps fractions, roots, subscripts, and superscripts structural", () => {
   assert.equal(fraction.denominator.children[0].type, "sqrt");
   assert.equal(Markdown.latexToText(String.raw`\frac{x_i^2}{\sqrt{n}}`), "(xᵢ²)/(√(n))");
 });
+
+test("renders bare model-generated LaTeX and repairs common missing braces", () => {
+  const blocks = Markdown.parseBlocks(String.raw`论文提出的损失是：
+
+\mathcalL_NCE = -\mathbbE[ \log \frac{\exp h(v_1,i,v_2,i)} {\sum_j=1^K\exp h(v_1,i,v_2,j)} ]
+
+并且有：
+
+I(v_1;v_2) ≥ \log K-\mathcalL_NCE`);
+
+  assert.deepEqual(blocks.map((block) => block.type), ["paragraph", "math", "paragraph", "math"]);
+  assert.equal(blocks[1].inferred, true);
+  assert.match(blocks[1].text, /^\\mathcal\{L\}_\{NCE\}/u);
+  assert.match(blocks[1].text, /\\mathbb\{E\}/u);
+  assert.match(blocks[1].text, /\\sum\{j=1\}\^\{K\}/u);
+  assert.match(Markdown.latexToText(blocks[1].text), /^L₍NCE₎ = - E\[/u);
+
+  const styled = Markdown.parseLatex(String.raw`\mathcalL_NCE`).children[0];
+  assert.equal(styled.type, "script");
+  assert.equal(styled.base.type, "style");
+  assert.equal(styled.base.variant, "script");
+  assert.equal(Markdown.latexToText(String.raw`\mathcalL_NCE`), "L₍NCE₎");
+});
+
+test("does not mistake ordinary backslash text for display math", () => {
+  const blocks = Markdown.parseBlocks(String.raw`Use C:\Users\name and \path for this file.`);
+  assert.deepEqual(blocks.map((block) => block.type), ["paragraph"]);
+});

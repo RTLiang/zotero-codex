@@ -85,6 +85,36 @@
     }
   }
 
+  async function copyMessageText(doc, value) {
+    const text = String(value || "");
+    try {
+      const clipboard = doc?.defaultView?.navigator?.clipboard;
+      if (clipboard?.writeText) {
+        await clipboard.writeText(text);
+        return true;
+      }
+    }
+    catch (_error) {}
+    try {
+      const helper = global.Cc["@mozilla.org/widget/clipboardhelper;1"]
+        .getService(global.Ci.nsIClipboardHelper);
+      helper.copyString(text);
+      return true;
+    }
+    catch (_error) {}
+    try {
+      const input = create(doc, "textarea", "zcs-clipboard-fallback", text);
+      doc.body.append(input);
+      input.select();
+      const copied = Boolean(doc.execCommand?.("copy"));
+      input.remove();
+      return copied;
+    }
+    catch (_error) {
+      return false;
+    }
+  }
+
   function setButtonLabel(button, label, l10nID, fallbackTitle) {
     button.textContent = label;
     button.title = fallbackTitle;
@@ -211,11 +241,13 @@
       this.models = [];
       this.selectedModel = "";
       this.selectedEffort = "";
+      this.nextTurnSelectionPending = false;
       this.activeTurnID = "";
       this.running = false;
       this.creatingTask = false;
       this.streamingText = "";
       this.streamingNode = null;
+      this.editingMessage = null;
       this.loadSerial = 0;
       this.destroyed = false;
       this.pendingRequests = new Map();
@@ -387,6 +419,24 @@
       requestArea.hidden = true;
 
       const composer = create(doc, "div", "zcs-composer");
+      const editBanner = create(doc, "div", "zcs-edit-banner");
+      editBanner.hidden = true;
+      const editBannerLabel = createL10n(
+        doc,
+        "span",
+        "zcs-edit-banner-label",
+        "zotero-codex-editing-message",
+        "Editing message",
+      );
+      const cancelEditButton = createL10n(
+        doc,
+        "button",
+        "zcs-edit-cancel",
+        "zotero-codex-cancel-edit",
+        "Cancel",
+      );
+      cancelEditButton.type = "button";
+      editBanner.append(editBannerLabel, cancelEditButton);
       const attachments = create(doc, "div", "zcs-attachments");
       attachments.hidden = true;
       const input = create(doc, "textarea", "zcs-input");
@@ -429,7 +479,7 @@
       sendButton.setAttribute("aria-label", "Send");
       setL10n(sendButton, "zotero-codex-send");
       composerFooter.append(composerTools, modelTrigger, sendButton);
-      composer.append(attachments, input, composerFooter);
+      composer.append(editBanner, attachments, input, composerFooter);
 
       const contextPopover = create(doc, "div", "zcs-popover zcs-context-popover");
       contextPopover.hidden = true;
@@ -469,6 +519,14 @@
         "zotero-codex-model-and-reasoning",
         "Model and reasoning",
       );
+      const modelNextTurnHint = createL10n(
+        doc,
+        "div",
+        "zcs-model-next-turn",
+        "zotero-codex-model-next-reply",
+        "Applies to the next reply",
+      );
+      modelNextTurnHint.hidden = true;
       const modelField = create(doc, "div", "zcs-model-field");
       modelField.append(createL10n(doc, "span", "zcs-model-field-label", "zotero-codex-model", "Model"));
       const modelChoice = create(doc, "button", "zcs-model-choice");
@@ -503,7 +561,7 @@
       effortOptions.hidden = true;
       effortOptions.setAttribute("role", "listbox");
       effortField.append(effortChoice, effortOptions);
-      modelPopover.append(modelPopoverTitle, modelField, effortField);
+      modelPopover.append(modelPopoverTitle, modelNextTurnHint, modelField, effortField);
 
       const status = create(doc, "div", "zcs-toast");
       status.hidden = true;
@@ -552,11 +610,14 @@
         transcript,
         requestArea,
         composer,
+        editBanner,
+        cancelEditButton,
         input,
         modelTrigger,
         modelTriggerName,
         modelTriggerEffort,
         modelPopover,
+        modelNextTurnHint,
         modelChoice,
         modelChoiceText,
         modelOptions,
@@ -580,6 +641,7 @@
         toggleModelMenu: () => this.togglePopover("model"),
         toggleModelOptions: () => this.toggleModelOptions("model"),
         toggleEffortOptions: () => this.toggleModelOptions("effort"),
+        cancelEdit: () => this.cancelEdit(),
         newTask: () => void this.newTask(),
         refresh: () => {
           this.closePopovers();
@@ -619,6 +681,7 @@
       modelTrigger.addEventListener("click", this.handlers.toggleModelMenu);
       modelChoice.addEventListener("click", this.handlers.toggleModelOptions);
       effortChoice.addEventListener("click", this.handlers.toggleEffortOptions);
+      cancelEditButton.addEventListener("click", this.handlers.cancelEdit);
       newThreadButton.addEventListener("click", this.handlers.newTask);
       refreshButton.addEventListener("click", this.handlers.refresh);
       openSettingsButton.addEventListener("click", this.handlers.openSettings);
@@ -709,9 +772,10 @@
 
     updateComposerState() {
       const send = this.elements.sendButton;
-      this.elements.modelTrigger.disabled = this.running || this.creatingTask || !this.models.length;
-      this.elements.modelChoice.disabled = this.running || this.creatingTask || !this.models.length;
-      this.elements.effortChoice.disabled = this.running || this.creatingTask || !this.selectedEffort;
+      this.elements.modelTrigger.disabled = this.creatingTask || !this.models.length;
+      this.elements.modelChoice.disabled = this.creatingTask || !this.models.length;
+      this.elements.effortChoice.disabled = this.creatingTask || !this.selectedEffort;
+      this.elements.modelNextTurnHint.hidden = !this.running;
       if (this.creatingTask) {
         send.disabled = true;
         setButtonLabel(send, "…", "zotero-codex-creating-task", "Creating task");
@@ -775,7 +839,7 @@
     }
 
     toggleModelOptions(name) {
-      if (this.running || this.creatingTask) return;
+      if (this.creatingTask) return;
       const map = {
         model: [this.elements.modelOptions, this.elements.modelChoice],
         effort: [this.elements.effortOptions, this.elements.effortChoice],
@@ -789,17 +853,19 @@
     }
 
     selectModel(model) {
-      if (this.running || this.creatingTask) return;
+      if (this.creatingTask) return;
       this.applyModelSelection(model, this.selectedEffort, { persist: true });
+      if (this.running) this.nextTurnSelectionPending = true;
       this.closeModelOptions();
       this.elements.modelChoice.focus();
     }
 
     selectEffort(effort) {
-      if (this.running || this.creatingTask) return;
+      if (this.creatingTask) return;
       const selection = Protocol.resolveModelSelection(this.models, this.selectedModel, effort);
       if (selection.effort !== effort) return;
       this.selectedEffort = effort;
+      if (this.running) this.nextTurnSelectionPending = true;
       this.manager.setPreference("reasoningEffort", effort);
       this.renderModelControls();
       this.updateComposerState();
@@ -1262,6 +1328,10 @@
 
     async selectThread(threadID) {
       if (!threadID || this.destroyed) return;
+      const preserveNextTurnSelection = Boolean(
+        this.nextTurnSelectionPending && threadID === this.threadID,
+      );
+      this.cancelEdit({ clearInput: true, focus: false });
       const serial = ++this.loadSerial;
       this.threadID = threadID;
       this.updateThreadHeader();
@@ -1271,7 +1341,10 @@
         const thread = await this.client.readThread(threadID);
         if (serial !== this.loadSerial || this.destroyed || this.threadID !== threadID) return;
         this.thread = thread;
-        this.applyModelSelection(thread.model, thread.reasoningEffort);
+        if (!preserveNextTurnSelection) {
+          this.nextTurnSelectionPending = false;
+          this.applyModelSelection(thread.model, thread.reasoningEffort);
+        }
         this.renderTranscript(Protocol.flattenTurns(thread.turns));
         this.updateThreadHeader();
         this.setStatus("ready", this.connectionLabel());
@@ -1313,7 +1386,16 @@
         this.renderEmpty("", "");
         return;
       }
-      for (const entry of messages) this.appendEntry(entry);
+      const latestUserIndex = messages.findLastIndex?.((entry) => entry.role === "user")
+        ?? (() => {
+          for (let index = messages.length - 1; index >= 0; index--) {
+            if (messages[index]?.role === "user") return index;
+          }
+          return -1;
+        })();
+      messages.forEach((entry, index) => this.appendEntry(entry, {
+        editMode: index === latestUserIndex ? "revert" : "fork",
+      }));
       transcript.scrollTop = transcript.scrollHeight;
     }
 
@@ -1359,7 +1441,7 @@
       return details;
     }
 
-    appendEntry(entry, { streaming = false } = {}) {
+    appendEntry(entry, { streaming = false, editMode = "fork" } = {}) {
       const transcript = this.elements.transcript;
       if (entry.role === "process") return this.appendProcessGroup(entry.entries || []);
       if (entry.role === "activity") {
@@ -1393,7 +1475,40 @@
       appendMarkdown(this.doc, content, entry.text);
       const body = create(this.doc, "div", "zcs-message-body");
       body.append(content);
-      article.append(body);
+      if (!streaming && (entry.role === "user" || entry.role === "assistant")) {
+        const actions = create(this.doc, "div", "zcs-message-actions");
+        const copyButton = createL10n(
+          this.doc,
+          "button",
+          "zcs-message-action",
+          "zotero-codex-copy-message",
+          "Copy",
+        );
+        copyButton.type = "button";
+        copyButton.addEventListener("click", async () => {
+          if (!(await copyMessageText(this.doc, entry.text))) return;
+          setLocalizedText(copyButton, "zotero-codex-message-copied", "Copied");
+          global.setTimeout(() => {
+            if (!copyButton.isConnected) return;
+            setLocalizedText(copyButton, "zotero-codex-copy-message", "Copy");
+          }, 2000);
+        });
+        actions.append(copyButton);
+        if (entry.role === "user" && entry.turnID) {
+          const editButton = createL10n(
+            this.doc,
+            "button",
+            "zcs-message-action",
+            "zotero-codex-edit-message",
+            "Edit",
+          );
+          editButton.type = "button";
+          editButton.addEventListener("click", () => this.beginEdit(entry, editMode));
+          actions.append(editButton);
+        }
+        article.append(actions);
+      }
+      article.prepend(body);
       if (streaming) article.classList.add("zcs-streaming");
       transcript.append(article);
       return article;
@@ -1403,6 +1518,39 @@
       this.elements.transcript.querySelector(".zcs-empty")?.remove();
       this.appendEntry({ role: "user", text });
       this.elements.transcript.scrollTop = this.elements.transcript.scrollHeight;
+    }
+
+    beginEdit(entry, mode = "fork") {
+      if (this.running || this.creatingTask || !entry?.turnID || !this.threadID) return;
+      this.closePopovers();
+      this.editingMessage = {
+        threadID: this.threadID,
+        turnID: entry.turnID,
+        text: String(entry.text || ""),
+        mode: mode === "revert" ? "revert" : "fork",
+      };
+      this.elements.editBanner.hidden = false;
+      this.elements.composer.classList.add("zcs-composer-editing");
+      this.elements.input.value = this.editingMessage.text;
+      this.resizeComposer();
+      this.updateComposerState();
+      this.elements.input.focus();
+      this.elements.input.setSelectionRange?.(
+        this.elements.input.value.length,
+        this.elements.input.value.length,
+      );
+    }
+
+    cancelEdit({ clearInput = false, focus = true } = {}) {
+      if (!this.elements) return;
+      const hadEdit = Boolean(this.editingMessage);
+      this.editingMessage = null;
+      this.elements.editBanner.hidden = true;
+      this.elements.composer.classList.remove("zcs-composer-editing");
+      if (clearInput && hadEdit) this.elements.input.value = "";
+      this.resizeComposer();
+      this.updateComposerState();
+      if (focus && hadEdit) this.elements.input.focus();
     }
 
     renderStreamingDelta(delta) {
@@ -1433,7 +1581,9 @@
       this.activeTurnID = "";
       this.streamingText = "";
       this.streamingNode = null;
+      this.nextTurnSelectionPending = false;
       this.manager.setPreference("lastThreadId", "");
+      this.cancelEdit({ clearInput: true, focus: false });
       this.applyModelSelection(
         String(this.manager.getPreference("model") || ""),
         String(this.manager.getPreference("reasoningEffort") || ""),
@@ -1486,7 +1636,8 @@
       let clearedInput = false;
       try {
         if (!this.context) await this.refreshContext();
-        if (!this.threadID) await this.createThreadForMessage(text);
+        if (this.editingMessage) await this.prepareEditedThread(this.editingMessage);
+        else if (!this.threadID) await this.createThreadForMessage(text);
         if (!this.threadID) return;
 
         const pinnedSelections = this.manager.getSelections(this.context?.attachmentID);
@@ -1513,6 +1664,7 @@
           effort: this.selectedEffort,
         });
         this.activeTurnID = turn.id;
+        this.nextTurnSelectionPending = false;
         if (pinnedSelections.length) this.manager.clearSelections(this.context?.attachmentID);
       }
       catch (error) {
@@ -1523,7 +1675,43 @@
           this.resizeComposer();
           this.updateComposerState();
         }
-        if (this.threadID) await this.selectThread(this.threadID).catch(() => null);
+        if (this.threadID && !this.editingMessage) {
+          await this.selectThread(this.threadID).catch(() => null);
+        }
+      }
+    }
+
+    async prepareEditedThread(edit) {
+      if (!edit?.threadID || !edit?.turnID) return;
+      this.creatingTask = true;
+      this.updateComposerState();
+      try {
+        const thread = edit.mode === "revert"
+          ? await this.client.revertThreadBeforeTurn({
+              threadID: edit.threadID,
+              beforeTurnID: edit.turnID,
+            })
+          : await this.client.forkThreadBeforeTurn({
+              threadID: edit.threadID,
+              beforeTurnID: edit.turnID,
+              model: this.selectedModel,
+            });
+        this.threadID = thread.id;
+        this.thread = thread;
+        this.manager.setPreference("lastThreadId", thread.id);
+        if (edit.mode === "fork") {
+          this.threads = [
+            { ...thread, label: Protocol.threadLabel(thread), timestamp: Date.now() },
+            ...this.threads.filter((candidate) => candidate.id !== thread.id),
+          ];
+        }
+        this.cancelEdit({ clearInput: false, focus: false });
+        this.renderTranscript(Protocol.flattenTurns(thread.turns));
+        this.updateThreadHeader();
+      }
+      finally {
+        this.creatingTask = false;
+        this.updateComposerState();
       }
     }
 
@@ -2093,5 +2281,6 @@
     SidebarView,
     resolveItemContext,
     appendMarkdown,
+    copyMessageText,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

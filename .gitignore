@@ -2,4 +2,4 @@
 .playwright-cli/
 output/
 dist/*.xpi
-!dist/zotero-codex-sidebar-2026.257.4.xpi
+!dist/zotero-codex-sidebar-2026.258.1.xpi
