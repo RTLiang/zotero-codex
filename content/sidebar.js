@@ -205,6 +205,7 @@
     const pdfPath = await attachmentPath(pdfItem);
     return {
       tabType,
+      libraryID: Number(bibliographicItem.libraryID) || 0,
       itemID: Number(bibliographicItem.id) || null,
       itemKey: bibliographicItem.key || "",
       attachmentID: Number(pdfItem?.id) || null,
@@ -249,6 +250,9 @@
       this.streamingNode = null;
       this.editingMessage = null;
       this.loadSerial = 0;
+      this.initialized = false;
+      this.initializing = false;
+      this.activePaperKey = "";
       this.destroyed = false;
       this.pendingRequests = new Map();
       this.cleanupClient = this.client.subscribe((event) => this._handleClientEvent(event));
@@ -960,13 +964,21 @@
     }
 
     setItem(item, tabType) {
+      const changed = item !== this.item || tabType !== this.tabType;
       this.item = item;
       this.tabType = tabType;
       this.context = null;
       if (this.elements) this.renderSelections();
+      if (changed && this.initialized) {
+        void this.refreshContext()
+          .then((context) => context && this.activatePaperConversation())
+          .catch((error) => this.showError(error));
+      }
     }
 
     async initialize() {
+      if (this.initialized || this.initializing) return;
+      this.initializing = true;
       const serial = ++this.loadSerial;
       try {
         this.setStatus("busy", "");
@@ -981,16 +993,20 @@
         await this.refreshModels();
         await this.refreshContext();
         await this.refreshThreads();
+        this.initialized = true;
       }
       catch (error) {
         this.showError(error);
+      }
+      finally {
+        this.initializing = false;
       }
     }
 
     async refreshContext() {
       const item = this.item;
       const context = await resolveItemContext(item, this.tabType);
-      if (this.destroyed || item !== this.item) return;
+      if (this.destroyed || item !== this.item) return null;
       this.context = context;
       if (context.title) setPlainText(this.elements.contextMeta, context.title);
       else setLocalizedText(
@@ -1002,7 +1018,7 @@
         formatValue(this.doc, "zotero-codex-pdf-available", null, "PDF available"),
         formatValue(this.doc, "zotero-codex-no-local-pdf", null, "No local PDF"),
       ]);
-      if (this.destroyed || item !== this.item) return;
+      if (this.destroyed || item !== this.item) return null;
       const meta = [
         Protocol.firstLine(context.creators, 58),
         context.date,
@@ -1011,6 +1027,7 @@
       this.elements.contextMeta.title = [context.title, ...meta].filter(Boolean).join("\n");
       this.renderSelections();
       this.renderContextAttachment();
+      return context;
     }
 
     renderSelections({ highlightSelectionID = "" } = {}) {
@@ -1240,14 +1257,21 @@
         this.threads = await this.client.listThreads(100);
         if (this.destroyed) return;
         this.renderThreadPicker();
-        const remembered = String(this.manager.getPreference("lastThreadId") || "");
-        const nextID =
-          (previousID && this.threads.some((thread) => thread.id === previousID) && previousID) ||
-          (remembered && this.threads.some((thread) => thread.id === remembered) && remembered) ||
-          this.threads[0]?.id ||
+        const paperKey = Protocol.paperContextKey(this.context);
+        this.activePaperKey = paperKey;
+        const boundID = paperKey ? this.manager.getPaperThread(paperKey) : "";
+        const remembered = paperKey ? "" : String(this.manager.getPreference("lastThreadId") || "");
+        const nextID = boundID ||
+          (!paperKey && previousID && this.threads.some((thread) => thread.id === previousID) && previousID) ||
+          (!paperKey && remembered && this.threads.some((thread) => thread.id === remembered) && remembered) ||
+          (!paperKey && this.threads[0]?.id) ||
           "";
         if (nextID && (reloadCurrent || nextID !== this.threadID || !this.thread)) {
-          await this.selectThread(nextID);
+          const selected = await this.selectThread(nextID, { bind: false, quiet: Boolean(paperKey) });
+          if (!selected && paperKey) {
+            this.manager.clearPaperThread(paperKey);
+            this.resetConversation({ focus: false });
+          }
         }
         else if (!nextID) {
           this.threadID = "";
@@ -1263,6 +1287,25 @@
       catch (error) {
         this.showError(error);
       }
+    }
+
+    async activatePaperConversation() {
+      const paperKey = Protocol.paperContextKey(this.context);
+      if (paperKey === this.activePaperKey) return;
+      this.activePaperKey = paperKey;
+      if (this.running) {
+        this.running = false;
+        this.activeTurnID = "";
+        this.streamingText = "";
+        this.streamingNode = null;
+      }
+      const threadID = paperKey ? this.manager.getPaperThread(paperKey) : "";
+      if (threadID) {
+        const selected = await this.selectThread(threadID, { bind: false, quiet: true });
+        if (selected) return;
+        this.manager.clearPaperThread(paperKey);
+      }
+      this.resetConversation({ focus: false });
     }
 
     renderThreadPicker() {
@@ -1326,8 +1369,8 @@
       this.renderThreadPicker();
     }
 
-    async selectThread(threadID) {
-      if (!threadID || this.destroyed) return;
+    async selectThread(threadID, { bind = true, quiet = false } = {}) {
+      if (!threadID || this.destroyed) return false;
       const preserveNextTurnSelection = Boolean(
         this.nextTurnSelectionPending && threadID === this.threadID,
       );
@@ -1341,6 +1384,7 @@
         const thread = await this.client.readThread(threadID);
         if (serial !== this.loadSerial || this.destroyed || this.threadID !== threadID) return;
         this.thread = thread;
+        if (bind) this.manager.setPaperThread(this.context, threadID);
         if (!preserveNextTurnSelection) {
           this.nextTurnSelectionPending = false;
           this.applyModelSelection(thread.model, thread.reasoningEffort);
@@ -1348,9 +1392,11 @@
         this.renderTranscript(Protocol.flattenTurns(thread.turns));
         this.updateThreadHeader();
         this.setStatus("ready", this.connectionLabel());
+        return true;
       }
       catch (error) {
-        if (serial === this.loadSerial) this.showError(error);
+        if (serial === this.loadSerial && !quiet) this.showError(error);
+        return false;
       }
     }
 
@@ -1572,7 +1618,7 @@
       if (follow) transcript.scrollTop = transcript.scrollHeight;
     }
 
-    newTask() {
+    resetConversation({ clearBinding = false, focus = true } = {}) {
       if (this.running || this.creatingTask) return;
       this.closePopovers();
       this.loadSerial++;
@@ -1583,6 +1629,7 @@
       this.streamingNode = null;
       this.nextTurnSelectionPending = false;
       this.manager.setPreference("lastThreadId", "");
+      if (clearBinding) this.manager.clearPaperThread(Protocol.paperContextKey(this.context));
       this.cancelEdit({ clearInput: true, focus: false });
       this.applyModelSelection(
         String(this.manager.getPreference("model") || ""),
@@ -1594,7 +1641,11 @@
       this.renderEmpty("", "");
       this.updateThreadHeader();
       this.setStatus("ready", "");
-      this.elements.input.focus();
+      if (focus) this.elements.input.focus();
+    }
+
+    newTask() {
+      this.resetConversation({ clearBinding: true, focus: true });
     }
 
     async createThreadForMessage(text) {
@@ -1615,6 +1666,7 @@
         this.threadID = thread.id;
         this.thread = thread;
         this.manager.setPreference("lastThreadId", thread.id);
+        this.manager.setPaperThread(this.context, thread.id);
         this.threads = [
           { ...thread, label: Protocol.threadLabel(thread), timestamp: Date.now() },
           ...this.threads.filter((candidate) => candidate.id !== thread.id),
@@ -1699,6 +1751,7 @@
         this.threadID = thread.id;
         this.thread = thread;
         this.manager.setPreference("lastThreadId", thread.id);
+        this.manager.setPaperThread(this.context, thread.id);
         if (edit.mode === "fork") {
           this.threads = [
             { ...thread, label: Protocol.threadLabel(thread), timestamp: Date.now() },
@@ -2014,6 +2067,38 @@
       this.readerSelectionHandler = (event) => this.handleReaderSelection(event);
     }
 
+    getPaperThread(contextOrKey) {
+      const key = typeof contextOrKey === "string"
+        ? contextOrKey
+        : Protocol.paperContextKey(contextOrKey);
+      if (!key) return "";
+      return Protocol.normalizePaperThreadBindings(
+        this.getPreference("paperThreads"),
+      )[key] || "";
+    }
+
+    setPaperThread(contextOrKey, threadID) {
+      const key = typeof contextOrKey === "string"
+        ? contextOrKey
+        : Protocol.paperContextKey(contextOrKey);
+      if (!key || !threadID) return;
+      this.setPreference(
+        "paperThreads",
+        Protocol.updatePaperThreadBindings(this.getPreference("paperThreads"), key, threadID),
+      );
+    }
+
+    clearPaperThread(contextOrKey) {
+      const key = typeof contextOrKey === "string"
+        ? contextOrKey
+        : Protocol.paperContextKey(contextOrKey);
+      if (!key) return;
+      this.setPreference(
+        "paperThreads",
+        Protocol.updatePaperThreadBindings(this.getPreference("paperThreads"), key, ""),
+      );
+    }
+
     ensureLocalization(win) {
       if (!win?.document) return null;
       win.MozXULElement?.insertFTLIfNeeded?.(L10N_RESOURCE);
@@ -2077,13 +2162,16 @@
         onAsyncRender: async ({ body }) => {
           const view = this.views.get(body);
           if (!view) return;
-          await view.refreshContext();
-          if (!view.thread) await view.initialize();
+          if (!view.initialized) await view.initialize();
+          else {
+            await view.refreshContext();
+            await view.activatePaperConversation();
+          }
         },
         onToggle: ({ body, event }) => {
           if (!event?.target?.open) return;
           const view = this.views.get(body);
-          if (view && !view.thread) void view.initialize();
+          if (view && !view.initialized) void view.initialize();
         },
       });
       if (!this.paneID) throw ClientTools.clientError(

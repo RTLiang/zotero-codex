@@ -292,6 +292,45 @@
     return merged;
   }
 
+  function paperContextKey(context) {
+    const row = asRecord(context);
+    const item = String(row.itemKey || row.itemID || "").trim();
+    if (!item) return "";
+    const libraryID = Number.isSafeInteger(Number(row.libraryID)) ? Number(row.libraryID) : 0;
+    return `${libraryID}:${item}`;
+  }
+
+  function normalizePaperThreadBindings(value) {
+    let source = value;
+    if (typeof source === "string") {
+      try {
+        source = JSON.parse(source || "{}");
+      }
+      catch (_error) {
+        source = {};
+      }
+    }
+    const bindings = {};
+    for (const [key, threadID] of Object.entries(asRecord(source))) {
+      const normalizedKey = String(key || "").trim();
+      const normalizedThreadID = String(threadID || "").trim();
+      if (normalizedKey && normalizedThreadID) bindings[normalizedKey] = normalizedThreadID;
+    }
+    return bindings;
+  }
+
+  function updatePaperThreadBindings(value, key, threadID, maximum = 500) {
+    const bindings = normalizePaperThreadBindings(value);
+    const normalizedKey = String(key || "").trim();
+    if (!normalizedKey) return JSON.stringify(bindings);
+    delete bindings[normalizedKey];
+    const normalizedThreadID = String(threadID || "").trim();
+    if (normalizedThreadID) bindings[normalizedKey] = normalizedThreadID;
+    return JSON.stringify(Object.fromEntries(
+      Object.entries(bindings).slice(-Math.max(1, Number(maximum) || 500)),
+    ));
+  }
+
   function buildZoteroContext(context, selections = [], { includeItem = true } = {}) {
     const row = asRecord(context);
     const lines = [
@@ -337,6 +376,9 @@
     extractTurn,
     formatCreators,
     mergeContextSelections,
+    paperContextKey,
+    normalizePaperThreadBindings,
+    updatePaperThreadBindings,
     buildZoteroContext,
   };
 

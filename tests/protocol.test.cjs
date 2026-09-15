@@ -166,3 +166,22 @@ test("merges the live PDF selection with pinned selections without duplicates", 
     ],
   );
 });
+
+test("keeps a separate Codex task binding for each Zotero paper", () => {
+  const first = { libraryID: 1, itemKey: "PAPER-A", itemID: 10 };
+  const second = { libraryID: 1, itemKey: "PAPER-B", itemID: 11 };
+  assert.equal(Protocol.paperContextKey(first), "1:PAPER-A");
+  assert.equal(Protocol.paperContextKey(second), "1:PAPER-B");
+
+  let stored = Protocol.updatePaperThreadBindings("{}", Protocol.paperContextKey(first), "thread-a");
+  stored = Protocol.updatePaperThreadBindings(stored, Protocol.paperContextKey(second), "thread-b");
+  assert.deepEqual(Protocol.normalizePaperThreadBindings(stored), {
+    "1:PAPER-A": "thread-a",
+    "1:PAPER-B": "thread-b",
+  });
+
+  stored = Protocol.updatePaperThreadBindings(stored, Protocol.paperContextKey(first), "");
+  assert.deepEqual(Protocol.normalizePaperThreadBindings(stored), {
+    "1:PAPER-B": "thread-b",
+  });
+});
