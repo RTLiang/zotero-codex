@@ -31,6 +31,11 @@ zotero-codex-use-auto-detect = Use auto-detect
 zotero-codex-save-reconnect = Save and reconnect
 zotero-codex-task-sharing = Task sharing
 zotero-codex-task-sharing-copy = Tasks opened or created here also appear in Codex Desktop, the CLI, and the browser sidebar on this computer.
+zotero-codex-chat-settings = Chat
+zotero-codex-show-work-process = Show work process (CoT)
+zotero-codex-show-work-process-description = Show reasoning summaries, tool activity, and processed steps provided by Codex.
+zotero-codex-show-work-process-control =
+    .aria-label = Show work process (CoT)
 
 zotero-codex-composer-input =
     .placeholder = Ask anything

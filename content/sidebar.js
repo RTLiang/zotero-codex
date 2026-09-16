@@ -411,7 +411,46 @@
           "Tasks opened or created here also appear in Codex Desktop, the CLI, and the browser sidebar on this computer.",
         ),
       );
-      settingsContent.append(connectionCard, sharingNote);
+      const chatSectionTitle = createL10n(
+        doc,
+        "div",
+        "zcs-settings-section-title zcs-settings-section-spaced",
+        "zotero-codex-chat-settings",
+        "Chat",
+      );
+      const chatSettingsCard = create(doc, "div", "zcs-settings-toggle-card");
+      const workProcessLabel = create(doc, "label", "zcs-settings-toggle-row");
+      const workProcessCopy = create(doc, "span", "zcs-settings-toggle-copy");
+      workProcessCopy.append(
+        createL10n(
+          doc,
+          "span",
+          "zcs-settings-toggle-title",
+          "zotero-codex-show-work-process",
+          "Show work process (CoT)",
+        ),
+        createL10n(
+          doc,
+          "span",
+          "zcs-settings-toggle-description",
+          "zotero-codex-show-work-process-description",
+          "Show reasoning summaries, tool activity, and processed steps when available.",
+        ),
+      );
+      const showWorkProcessToggle = create(doc, "input", "zcs-switch-input");
+      showWorkProcessToggle.type = "checkbox";
+      showWorkProcessToggle.setAttribute("role", "switch");
+      setL10n(showWorkProcessToggle, "zotero-codex-show-work-process-control");
+      const workProcessSwitch = create(doc, "span", "zcs-switch");
+      workProcessSwitch.setAttribute("aria-hidden", "true");
+      workProcessLabel.append(workProcessCopy, showWorkProcessToggle, workProcessSwitch);
+      chatSettingsCard.append(workProcessLabel);
+      settingsContent.append(
+        connectionCard,
+        sharingNote,
+        chatSectionTitle,
+        chatSettingsCard,
+      );
       settingsView.append(settingsHeader, settingsContent);
 
       const transcript = create(doc, "div", "zcs-transcript");
@@ -636,6 +675,7 @@
         connectionTitle,
         connectionSubtitle,
         reconnectButton,
+        showWorkProcessToggle,
       };
 
       this.handlers = {
@@ -661,6 +701,9 @@
         toggleContext: () => this.toggleItemContext(),
         sendOrStop: () => this.running ? void this.stop() : void this.send(),
         reconnect: () => void this.reconnect(),
+        toggleWorkProcess: () => {
+          this.manager.setShowWorkProcess(showWorkProcessToggle.checked);
+        },
         input: () => {
           this.resizeComposer();
           this.updateComposerState();
@@ -695,11 +738,13 @@
       contextOption.addEventListener("click", this.handlers.toggleContext);
       sendButton.addEventListener("click", this.handlers.sendOrStop);
       reconnectButton.addEventListener("click", this.handlers.reconnect);
+      showWorkProcessToggle.addEventListener("change", this.handlers.toggleWorkProcess);
       input.addEventListener("input", this.handlers.input);
       input.addEventListener("keydown", this.handlers.keydown);
       doc.addEventListener("click", this.handlers.documentClick);
       doc.addEventListener("keydown", this.handlers.documentKeydown);
       this.setStatus("idle", "");
+      this.applyWorkProcessPreference();
       this.renderContextAttachment();
       this.updateComposerState();
     }
@@ -708,7 +753,15 @@
       this.closePopovers();
       this.elements.settingsView.hidden = false;
       this.elements.pathInput.value = String(this.manager.getPreference("codexPath") || "");
+      this.applyWorkProcessPreference();
       this.elements.settingsView.focus({ preventScroll: true });
+    }
+
+    applyWorkProcessPreference() {
+      if (!this.elements) return;
+      const visible = this.manager.isWorkProcessVisible();
+      this.elements.root.classList.toggle("zcs-show-work-process", visible);
+      this.elements.showWorkProcessToggle.checked = visible;
     }
 
     closeSettings() {
@@ -2040,6 +2093,7 @@
       e.contextOption.removeEventListener("click", this.handlers.toggleContext);
       e.sendButton.removeEventListener("click", this.handlers.sendOrStop);
       e.reconnectButton.removeEventListener("click", this.handlers.reconnect);
+      e.showWorkProcessToggle.removeEventListener("change", this.handlers.toggleWorkProcess);
       e.input.removeEventListener("input", this.handlers.input);
       e.input.removeEventListener("keydown", this.handlers.keydown);
       this.doc.removeEventListener("click", this.handlers.documentClick);
@@ -2065,6 +2119,15 @@
       this.selections = new Map();
       this.liveSelections = new Map();
       this.readerSelectionHandler = (event) => this.handleReaderSelection(event);
+    }
+
+    isWorkProcessVisible() {
+      return this.getPreference("showWorkProcess") !== false;
+    }
+
+    setShowWorkProcess(visible) {
+      this.setPreference("showWorkProcess", Boolean(visible));
+      for (const view of this.views.values()) view.applyWorkProcessPreference();
     }
 
     getPaperThread(contextOrKey) {

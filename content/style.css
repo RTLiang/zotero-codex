@@ -360,6 +360,10 @@
   text-transform: uppercase;
 }
 
+.zcs-settings-section-spaced {
+  margin-top: 20px;
+}
+
 .zcs-connection-card,
 .zcs-settings-note {
   border: 1px solid var(--zcs-border);
@@ -436,6 +440,85 @@
   color: var(--zcs-muted);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.zcs-settings-toggle-card {
+  overflow: hidden;
+  border: 1px solid var(--zcs-border);
+  border-radius: 15px;
+  background: var(--zcs-softer);
+}
+
+.zcs-settings-toggle-row {
+  position: relative;
+  display: flex;
+  min-height: 66px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 13px;
+  cursor: pointer;
+}
+
+.zcs-settings-toggle-copy {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 3px;
+}
+
+.zcs-settings-toggle-title {
+  font-weight: 680;
+}
+
+.zcs-settings-toggle-description {
+  color: var(--zcs-muted);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.zcs-switch-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.zcs-switch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 34px;
+  border-radius: 999px;
+  background: color-mix(in srgb, CanvasText 18%, transparent);
+  transition: background 140ms ease;
+}
+
+.zcs-switch::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: Canvas;
+  box-shadow: 0 1px 3px color-mix(in srgb, CanvasText 24%, transparent);
+  content: "";
+  transition: transform 140ms ease;
+}
+
+.zcs-switch-input:checked + .zcs-switch {
+  background: AccentColor;
+}
+
+.zcs-switch-input:checked + .zcs-switch::after {
+  transform: translateX(14px);
+}
+
+.zcs-switch-input:focus-visible + .zcs-switch {
+  outline: 2px solid AccentColor;
+  outline-offset: 2px;
 }
 
 .zcs-primary-button,
@@ -597,6 +680,11 @@
   margin: -3px 0 16px;
   color: var(--zcs-muted);
   font-size: 11px;
+}
+
+.zcs-shell:not(.zcs-show-work-process) .zcs-process,
+.zcs-shell:not(.zcs-show-work-process) .zcs-activity {
+  display: none;
 }
 
 .zcs-process > summary,

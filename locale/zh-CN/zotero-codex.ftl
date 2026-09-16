@@ -31,6 +31,11 @@ zotero-codex-use-auto-detect = 使用自动检测
 zotero-codex-save-reconnect = 保存并重新连接
 zotero-codex-task-sharing = 任务共享
 zotero-codex-task-sharing-copy = 这里打开和创建的任务会出现在本机 Codex Desktop、CLI 与浏览器侧栏中。
+zotero-codex-chat-settings = 对话
+zotero-codex-show-work-process = 显示工作过程（CoT）
+zotero-codex-show-work-process-description = 显示 Codex 提供的思考摘要、工具活动和处理步骤。
+zotero-codex-show-work-process-control =
+    .aria-label = 显示工作过程（CoT）
 
 zotero-codex-composer-input =
     .placeholder = 做任何事
