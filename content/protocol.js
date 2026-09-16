@@ -122,7 +122,7 @@
             return row.name ? `$${row.name}` : "[Skill]";
           case "image":
           case "localImage":
-            return "🖼";
+            return "";
           case "audio":
           case "localAudio":
             return "🔊";
@@ -132,6 +132,40 @@
       })
       .filter(Boolean)
       .join("\n");
+  }
+
+  function userInputImages(content) {
+    if (!Array.isArray(content)) return [];
+    return content.flatMap((entry) => {
+      const row = asRecord(entry);
+      if (row.type === "image" && typeof row.url === "string" && row.url) {
+        return [{ type: "image", url: row.url, detail: row.detail || null }];
+      }
+      if (row.type === "localImage" && typeof row.path === "string" && row.path) {
+        return [{ type: "localImage", path: row.path, detail: row.detail || null }];
+      }
+      return [];
+    });
+  }
+
+  function buildTurnInput(text, images = []) {
+    const input = [];
+    const normalizedText = String(text || "").trim();
+    if (normalizedText) input.push({ type: "text", text: normalizedText });
+    for (const image of Array.isArray(images) ? images : []) {
+      const row = asRecord(image);
+      if (typeof row.path === "string" && row.path) {
+        input.push({ type: "localImage", path: row.path, detail: row.detail || "auto" });
+      }
+      else if (typeof row.url === "string" && row.url) {
+        input.push({ type: "image", url: row.url, detail: row.detail || "auto" });
+      }
+    }
+    return input;
+  }
+
+  function normalizeMessagePhase(value) {
+    return value === "commentary" ? "commentary" : "final";
   }
 
   function activityDescriptor(item) {
@@ -196,7 +230,8 @@
         if (!item || typeof item !== "object") continue;
         if (item.type === "userMessage") {
           const text = userInputText(item.content);
-          if (text) output.push({ id: item.id, turnID, role: "user", text });
+          const images = userInputImages(item.content);
+          if (text || images.length) output.push({ id: item.id, turnID, role: "user", text, images });
           continue;
         }
         if (item.type === "agentMessage") {
@@ -368,6 +403,9 @@
     filterThreads,
     relativeThreadTime,
     userInputText,
+    userInputImages,
+    buildTurnInput,
+    normalizeMessagePhase,
     activityDescriptor,
     describeActivity,
     flattenTurns,

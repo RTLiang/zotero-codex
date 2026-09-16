@@ -16,6 +16,14 @@
     max: "zotero-codex-effort-max",
     ultra: "zotero-codex-effort-ultra",
   };
+  const MAX_IMAGE_COUNT = 10;
+  const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+  const ACCEPTED_IMAGE_TYPES = new Set([
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+  ]);
 
   function create(doc, tag, className = "", text = null) {
     const element = doc.createElement(tag);
@@ -41,6 +49,46 @@
     lines.setAttribute("d", "M5.25 5.5h5.5M5.25 8h5.5M5.25 10.5h3.75");
     icon.append(page, lines);
     return icon;
+  }
+
+  function createImageIcon(doc) {
+    const namespace = "http://www.w3.org/2000/svg";
+    const icon = doc.createElementNS(namespace, "svg");
+    icon.setAttribute("class", "zcs-image-icon");
+    icon.setAttribute("viewBox", "0 0 16 16");
+    icon.setAttribute("fill", "none");
+    icon.setAttribute("aria-hidden", "true");
+    const frame = doc.createElementNS(namespace, "rect");
+    frame.setAttribute("x", "2.25");
+    frame.setAttribute("y", "2.25");
+    frame.setAttribute("width", "11.5");
+    frame.setAttribute("height", "11.5");
+    frame.setAttribute("rx", "2");
+    const picture = doc.createElementNS(namespace, "path");
+    picture.setAttribute("d", "m4.25 11 2.4-2.55 1.8 1.7 1.35-1.35 1.95 2.2M5.5 5.75h.01");
+    icon.append(frame, picture);
+    return icon;
+  }
+
+  function fileToDataURL(doc, file) {
+    return new Promise((resolve, reject) => {
+      const reader = new doc.defaultView.FileReader();
+      reader.addEventListener("load", () => resolve(String(reader.result || "")), { once: true });
+      reader.addEventListener("error", () => reject(reader.error || new Error("Could not read image")), { once: true });
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function formatFileSize(bytes) {
+    const value = Math.max(0, Number(bytes) || 0);
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${Math.round(value / 102.4) / 10} KB`;
+    return `${Math.round(value / 1024 / 102.4) / 10} MB`;
+  }
+
+  function displayableImageSource(image) {
+    const url = String(image?.url || "");
+    return /^data:image\/(?:gif|jpeg|png|webp);base64,/iu.test(url) ? url : "";
   }
 
   function setL10n(element, id, args = null) {
@@ -248,7 +296,10 @@
       this.creatingTask = false;
       this.streamingText = "";
       this.streamingNode = null;
+      this.streamingItemID = "";
+      this.streamingPhase = "final";
       this.editingMessage = null;
+      this.images = [];
       this.loadSerial = 0;
       this.initialized = false;
       this.initializing = false;
@@ -486,6 +537,11 @@
       input.rows = 1;
       input.placeholder = "Ask anything";
       setL10n(input, "zotero-codex-composer-input");
+      const imageInput = create(doc, "input", "zcs-image-input");
+      imageInput.type = "file";
+      imageInput.accept = "image/png,image/jpeg,image/webp,image/gif";
+      imageInput.multiple = true;
+      imageInput.hidden = true;
       const composerFooter = create(doc, "div", "zcs-composer-footer");
       const composerTools = create(doc, "div", "zcs-composer-tools");
       const contextAddButton = create(doc, "button", "zcs-composer-tool zcs-add-button", "+");
@@ -522,11 +578,19 @@
       sendButton.setAttribute("aria-label", "Send");
       setL10n(sendButton, "zotero-codex-send");
       composerFooter.append(composerTools, modelTrigger, sendButton);
-      composer.append(editBanner, attachments, input, composerFooter);
+      composer.append(editBanner, attachments, input, imageInput, composerFooter);
 
       const contextPopover = create(doc, "div", "zcs-popover zcs-context-popover");
       contextPopover.hidden = true;
       contextPopover.setAttribute("role", "menu");
+      const imageOption = create(doc, "button", "zcs-menu-row zcs-image-option");
+      imageOption.type = "button";
+      const imageOptionIcon = create(doc, "span", "zcs-row-icon");
+      imageOptionIcon.append(createImageIcon(doc));
+      imageOption.append(
+        imageOptionIcon,
+        createL10n(doc, "span", "zcs-row-copy", "zotero-codex-add-image", "Add image"),
+      );
       const contextOption = create(doc, "button", "zcs-menu-row zcs-context-option");
       contextOption.type = "button";
       const contextCheck = create(doc, "span", "zcs-row-icon zcs-context-check", "✓");
@@ -548,7 +612,7 @@
       contextCopy.append(contextTitle, contextMeta);
       contextOption.append(contextCheck, contextCopy);
       const selections = create(doc, "div", "zcs-context-selections");
-      contextPopover.append(contextOption, selections);
+      contextPopover.append(imageOption, contextOption, selections);
 
       const modelPopover = create(doc, "div", "zcs-popover zcs-model-popover");
       modelPopover.hidden = true;
@@ -644,6 +708,7 @@
         contextPopover,
         contextAddButton,
         contextModeButton,
+        imageOption,
         contextOption,
         contextCheck,
         contextTitle,
@@ -656,6 +721,7 @@
         editBanner,
         cancelEditButton,
         input,
+        imageInput,
         modelTrigger,
         modelTriggerName,
         modelTriggerEffort,
@@ -699,6 +765,45 @@
         },
         searchThreads: () => this.renderThreadPicker(),
         toggleContext: () => this.toggleItemContext(),
+        chooseImages: () => {
+          this.closePopovers();
+          imageInput.click();
+        },
+        imagesSelected: () => {
+          const files = Array.from(imageInput.files || []);
+          imageInput.value = "";
+          void this.addImageFiles(files);
+        },
+        paste: (event) => {
+          const files = Array.from(event.clipboardData?.items || [])
+            .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+            .map((item) => item.getAsFile())
+            .filter(Boolean);
+          if (!files.length) return;
+          event.preventDefault();
+          void this.addImageFiles(files);
+        },
+        dragover: (event) => {
+          if (this.running || this.creatingTask) return;
+          const hasImage = Array.from(event.dataTransfer?.items || [])
+            .some((item) => item.kind === "file" && item.type.startsWith("image/"));
+          if (!hasImage) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          composer.classList.add("zcs-composer-dragging");
+        },
+        dragleave: (event) => {
+          if (!composer.contains(event.relatedTarget)) composer.classList.remove("zcs-composer-dragging");
+        },
+        drop: (event) => {
+          composer.classList.remove("zcs-composer-dragging");
+          if (this.running || this.creatingTask) return;
+          const files = Array.from(event.dataTransfer?.files || [])
+            .filter((file) => file.type.startsWith("image/"));
+          if (!files.length) return;
+          event.preventDefault();
+          void this.addImageFiles(files);
+        },
         sendOrStop: () => this.running ? void this.stop() : void this.send(),
         reconnect: () => void this.reconnect(),
         toggleWorkProcess: () => {
@@ -736,11 +841,17 @@
       autoPathButton.addEventListener("click", this.handlers.useAutoPath);
       threadSearch.addEventListener("input", this.handlers.searchThreads);
       contextOption.addEventListener("click", this.handlers.toggleContext);
+      imageOption.addEventListener("click", this.handlers.chooseImages);
       sendButton.addEventListener("click", this.handlers.sendOrStop);
       reconnectButton.addEventListener("click", this.handlers.reconnect);
       showWorkProcessToggle.addEventListener("change", this.handlers.toggleWorkProcess);
       input.addEventListener("input", this.handlers.input);
       input.addEventListener("keydown", this.handlers.keydown);
+      input.addEventListener("paste", this.handlers.paste);
+      imageInput.addEventListener("change", this.handlers.imagesSelected);
+      composer.addEventListener("dragover", this.handlers.dragover);
+      composer.addEventListener("dragleave", this.handlers.dragleave);
+      composer.addEventListener("drop", this.handlers.drop);
       doc.addEventListener("click", this.handlers.documentClick);
       doc.addEventListener("keydown", this.handlers.documentKeydown);
       this.setStatus("idle", "");
@@ -845,7 +956,7 @@
         send.classList.add("zcs-send-stop");
         return;
       }
-      send.disabled = !this.elements.input.value.trim();
+      send.disabled = !this.elements.input.value.trim() && !this.images.length;
       setButtonLabel(send, "↑", "zotero-codex-send", "Send");
       send.classList.remove("zcs-send-stop");
     }
@@ -1149,6 +1260,63 @@
       this.renderContextAttachment({ highlightSelectionID });
     }
 
+    async addImageFiles(files) {
+      if (this.running || this.creatingTask || !files?.length) return;
+      const room = Math.max(0, MAX_IMAGE_COUNT - this.images.length);
+      if (!room) {
+        this.showError(ClientTools.clientError(
+          "zotero-codex-error-image-count",
+          { count: MAX_IMAGE_COUNT },
+          `You can attach up to ${MAX_IMAGE_COUNT} images.`,
+        ));
+        return;
+      }
+      const candidates = [...files].slice(0, room);
+      try {
+        for (const file of candidates) {
+          const type = String(file?.type || "").toLowerCase();
+          if (!ACCEPTED_IMAGE_TYPES.has(type)) throw ClientTools.clientError(
+            "zotero-codex-error-image-type",
+            null,
+            "Use a PNG, JPEG, WebP, or GIF image.",
+          );
+          if (Number(file.size || 0) > MAX_IMAGE_BYTES) throw ClientTools.clientError(
+            "zotero-codex-error-image-size",
+            { size: 20 },
+            "Each image must be 20 MB or smaller.",
+          );
+          const url = await fileToDataURL(this.doc, file);
+          if (!url.startsWith("data:image/")) throw new Error("Could not read image");
+          this.images.push({
+            id: global.crypto?.randomUUID?.() || `${Date.now()}-${this.images.length}`,
+            name: String(file.name || "image").trim() || "image",
+            size: Number(file.size || 0),
+            type,
+            url,
+            detail: "auto",
+          });
+        }
+        if (files.length > room) this.showError(ClientTools.clientError(
+          "zotero-codex-error-image-count",
+          { count: MAX_IMAGE_COUNT },
+          `You can attach up to ${MAX_IMAGE_COUNT} images.`,
+        ));
+        else this.setStatus("ready", "");
+        this.renderContextAttachment();
+        this.updateComposerState();
+        this.elements.input.focus();
+      }
+      catch (error) {
+        this.showError(error);
+      }
+    }
+
+    removeImage(imageID) {
+      this.images = this.images.filter((image) => image.id !== imageID);
+      this.renderContextAttachment();
+      this.updateComposerState();
+    }
+
     renderContextAttachment({ highlightSelectionID = "" } = {}) {
       if (!this.elements) return;
       const enabled = Boolean(this.manager.getPreference("includeItemContext"));
@@ -1184,7 +1352,32 @@
       const attachments = this.elements.attachments;
       attachments.replaceChildren();
       const showItem = enabled && itemAvailable;
-      attachments.hidden = !showItem && !showLiveSelection && !selections.length;
+      attachments.hidden = !this.images.length && !showItem && !showLiveSelection && !selections.length;
+
+      for (const image of this.images) {
+        const chip = create(this.doc, "div", "zcs-attachment-chip zcs-image-attachment");
+        const preview = create(this.doc, "img", "zcs-image-preview");
+        preview.src = image.url;
+        preview.alt = "";
+        const copy = create(this.doc, "span", "zcs-attachment-copy");
+        copy.append(
+          create(this.doc, "span", "zcs-attachment-title", image.name),
+          createL10n(
+            this.doc,
+            "span",
+            "zcs-attachment-meta",
+            "zotero-codex-image-attachment-meta",
+            `Image · ${formatFileSize(image.size)}`,
+            { size: formatFileSize(image.size) },
+          ),
+        );
+        const remove = create(this.doc, "button", "zcs-attachment-remove", "×");
+        remove.type = "button";
+        setL10n(remove, "zotero-codex-remove-image");
+        remove.addEventListener("click", () => this.removeImage(image.id));
+        chip.append(preview, copy, remove);
+        attachments.append(chip);
+      }
 
       if (showItem) {
         const chip = create(this.doc, "div", "zcs-attachment-chip");
@@ -1427,6 +1620,8 @@
       const preserveNextTurnSelection = Boolean(
         this.nextTurnSelectionPending && threadID === this.threadID,
       );
+      this.images = [];
+      this.renderContextAttachment();
       this.cancelEdit({ clearInput: true, focus: false });
       const serial = ++this.loadSerial;
       this.threadID = threadID;
@@ -1540,6 +1735,23 @@
       return details;
     }
 
+    appendMessageImages(parent, images) {
+      const visible = (Array.isArray(images) ? images : [])
+        .map((image) => ({ image, source: displayableImageSource(image) }))
+        .filter(({ source }) => source);
+      if (!visible.length) return;
+      const gallery = create(this.doc, "div", "zcs-message-images");
+      gallery.dataset.count = String(visible.length);
+      for (const { image, source } of visible) {
+        const preview = create(this.doc, "img", "zcs-message-image");
+        preview.src = source;
+        preview.alt = String(image.name || "");
+        preview.loading = "lazy";
+        gallery.append(preview);
+      }
+      parent.append(gallery);
+    }
+
     appendEntry(entry, { streaming = false, editMode = "fork" } = {}) {
       const transcript = this.elements.transcript;
       if (entry.role === "process") return this.appendProcessGroup(entry.entries || []);
@@ -1571,28 +1783,31 @@
       }
       const article = create(this.doc, "article", `zcs-message zcs-${entry.role}`);
       const content = create(this.doc, "div", "zcs-message-content");
-      appendMarkdown(this.doc, content, entry.text);
+      if (entry.text) appendMarkdown(this.doc, content, entry.text);
       const body = create(this.doc, "div", "zcs-message-body");
-      body.append(content);
+      if (entry.text) body.append(content);
+      this.appendMessageImages(body, entry.images);
       if (!streaming && (entry.role === "user" || entry.role === "assistant")) {
         const actions = create(this.doc, "div", "zcs-message-actions");
-        const copyButton = createL10n(
-          this.doc,
-          "button",
-          "zcs-message-action",
-          "zotero-codex-copy-message",
-          "Copy",
-        );
-        copyButton.type = "button";
-        copyButton.addEventListener("click", async () => {
-          if (!(await copyMessageText(this.doc, entry.text))) return;
-          setLocalizedText(copyButton, "zotero-codex-message-copied", "Copied");
-          global.setTimeout(() => {
-            if (!copyButton.isConnected) return;
-            setLocalizedText(copyButton, "zotero-codex-copy-message", "Copy");
-          }, 2000);
-        });
-        actions.append(copyButton);
+        if (entry.text) {
+          const copyButton = createL10n(
+            this.doc,
+            "button",
+            "zcs-message-action",
+            "zotero-codex-copy-message",
+            "Copy",
+          );
+          copyButton.type = "button";
+          copyButton.addEventListener("click", async () => {
+            if (!(await copyMessageText(this.doc, entry.text))) return;
+            setLocalizedText(copyButton, "zotero-codex-message-copied", "Copied");
+            global.setTimeout(() => {
+              if (!copyButton.isConnected) return;
+              setLocalizedText(copyButton, "zotero-codex-copy-message", "Copy");
+            }, 2000);
+          });
+          actions.append(copyButton);
+        }
         if (entry.role === "user" && entry.turnID) {
           const editButton = createL10n(
             this.doc,
@@ -1605,7 +1820,7 @@
           editButton.addEventListener("click", () => this.beginEdit(entry, editMode));
           actions.append(editButton);
         }
-        article.append(actions);
+        if (actions.childElementCount) article.append(actions);
       }
       article.prepend(body);
       if (streaming) article.classList.add("zcs-streaming");
@@ -1613,9 +1828,9 @@
       return article;
     }
 
-    appendOptimisticUser(text) {
+    appendOptimisticUser(text, images = []) {
       this.elements.transcript.querySelector(".zcs-empty")?.remove();
-      this.appendEntry({ role: "user", text });
+      this.appendEntry({ role: "user", text, images });
       this.elements.transcript.scrollTop = this.elements.transcript.scrollHeight;
     }
 
@@ -1626,11 +1841,19 @@
         threadID: this.threadID,
         turnID: entry.turnID,
         text: String(entry.text || ""),
+        images: Array.isArray(entry.images) ? entry.images : [],
         mode: mode === "revert" ? "revert" : "fork",
       };
+      this.images = this.editingMessage.images.map((image, index) => ({
+        ...image,
+        id: global.crypto?.randomUUID?.() || `${Date.now()}-${index}`,
+        name: image.name || image.path?.split(/[\\/]/u).pop() || `image-${index + 1}`,
+        size: Number(image.size || 0),
+      }));
       this.elements.editBanner.hidden = false;
       this.elements.composer.classList.add("zcs-composer-editing");
       this.elements.input.value = this.editingMessage.text;
+      this.renderContextAttachment();
       this.resizeComposer();
       this.updateComposerState();
       this.elements.input.focus();
@@ -1646,20 +1869,40 @@
       this.editingMessage = null;
       this.elements.editBanner.hidden = true;
       this.elements.composer.classList.remove("zcs-composer-editing");
+      if (hadEdit) {
+        this.images = [];
+        this.renderContextAttachment();
+      }
       if (clearInput && hadEdit) this.elements.input.value = "";
       this.resizeComposer();
       this.updateComposerState();
       if (focus && hadEdit) this.elements.input.focus();
     }
 
-    renderStreamingDelta(delta) {
+    beginStreamingMessage(item) {
+      if (!item || item.type !== "agentMessage") return;
+      const itemID = String(item.id || "");
+      if (itemID && itemID === this.streamingItemID) return;
+      this.streamingItemID = itemID;
+      this.streamingPhase = Protocol.normalizeMessagePhase(item.phase);
+      this.streamingText = "";
+      this.streamingNode = null;
+    }
+
+    renderStreamingDelta(delta, itemID = "") {
       if (!delta) return;
       const transcript = this.elements.transcript;
       const follow = isNearBottom(transcript);
+      if (itemID && itemID !== this.streamingItemID) {
+        this.streamingItemID = itemID;
+        this.streamingPhase = "final";
+        this.streamingText = "";
+        this.streamingNode = null;
+      }
       this.streamingText += delta;
       if (!this.streamingNode) {
         this.streamingNode = this.appendEntry(
-          { role: "assistant", phase: "commentary", text: this.streamingText },
+          { role: "assistant", phase: this.streamingPhase, text: this.streamingText },
           { streaming: true },
         );
       }
@@ -1680,7 +1923,10 @@
       this.activeTurnID = "";
       this.streamingText = "";
       this.streamingNode = null;
+      this.streamingItemID = "";
+      this.streamingPhase = "final";
       this.nextTurnSelectionPending = false;
+      this.images = [];
       this.manager.setPreference("lastThreadId", "");
       if (clearBinding) this.manager.clearPaperThread(Protocol.paperContextKey(this.context));
       this.cancelEdit({ clearInput: true, focus: false });
@@ -1689,6 +1935,7 @@
         String(this.manager.getPreference("reasoningEffort") || ""),
       );
       this.elements.input.value = "";
+      this.renderContextAttachment();
       this.resizeComposer();
       this.updateComposerState();
       this.renderEmpty("", "");
@@ -1737,12 +1984,15 @@
 
     async send() {
       const text = this.elements.input.value.trim();
-      if (!text || this.running || this.creatingTask) return;
+      const images = this.images.map((image) => ({ ...image }));
+      if ((!text && !images.length) || this.running || this.creatingTask) return;
       let clearedInput = false;
       try {
         if (!this.context) await this.refreshContext();
         if (this.editingMessage) await this.prepareEditedThread(this.editingMessage);
-        else if (!this.threadID) await this.createThreadForMessage(text);
+        else if (!this.threadID) await this.createThreadForMessage(
+          text || images[0]?.name || "Image",
+        );
         if (!this.threadID) return;
 
         const pinnedSelections = this.manager.getSelections(this.context?.attachmentID);
@@ -1753,17 +2003,22 @@
           ? Protocol.buildZoteroContext(this.context, selections, { includeItem })
           : null;
         this.elements.input.value = "";
+        this.images = [];
         clearedInput = true;
         this.resizeComposer();
+        this.renderContextAttachment();
         this.updateComposerState();
-        this.appendOptimisticUser(text);
+        this.appendOptimisticUser(text, images);
         this.streamingText = "";
         this.streamingNode = null;
+        this.streamingItemID = "";
+        this.streamingPhase = "final";
         this.setRunning(true);
 
         const turn = await this.client.startTurn({
           threadID: this.threadID,
           text,
+          images,
           context,
           model: this.selectedModel,
           effort: this.selectedEffort,
@@ -1777,7 +2032,9 @@
         this.showError(error);
         if (clearedInput && !this.elements.input.value) {
           this.elements.input.value = text;
+          this.images = images;
           this.resizeComposer();
+          this.renderContextAttachment();
           this.updateComposerState();
         }
         if (this.threadID && !this.editingMessage) {
@@ -1827,6 +2084,8 @@
       this.elements.threadButton.disabled = running;
       this.elements.contextAddButton.disabled = running;
       this.elements.contextModeButton.disabled = running;
+      this.elements.imageOption.disabled = running;
+      this.elements.imageInput.disabled = running;
       this.elements.reconnectButton.disabled = running;
       this.updateComposerState();
       if (running) this.setStatus("busy", statusText);
@@ -1902,10 +2161,11 @@
         this.setRunning(true);
       }
       else if (event.method === "item/agentMessage/delta") {
-        this.renderStreamingDelta(String(params.delta || ""));
+        this.renderStreamingDelta(String(params.delta || ""), String(params.itemId || ""));
       }
       else if (event.method === "item/started") {
         const type = params.item?.type;
+        if (type === "agentMessage") this.beginStreamingMessage(params.item);
         if (type && !["agentMessage", "userMessage", "reasoning"].includes(type)) {
           this.setStatus("busy", Protocol.describeActivity(params.item));
         }
@@ -1915,6 +2175,8 @@
         this.setRunning(false);
         this.streamingText = "";
         this.streamingNode = null;
+        this.streamingItemID = "";
+        this.streamingPhase = "final";
         void this.selectThread(this.threadID).then(() => this.refreshThreads()).catch((error) => this.showError(error));
       }
       else if (event.method === "error") {
@@ -2091,11 +2353,17 @@
       e.autoPathButton.removeEventListener("click", this.handlers.useAutoPath);
       e.threadSearch.removeEventListener("input", this.handlers.searchThreads);
       e.contextOption.removeEventListener("click", this.handlers.toggleContext);
+      e.imageOption.removeEventListener("click", this.handlers.chooseImages);
       e.sendButton.removeEventListener("click", this.handlers.sendOrStop);
       e.reconnectButton.removeEventListener("click", this.handlers.reconnect);
       e.showWorkProcessToggle.removeEventListener("change", this.handlers.toggleWorkProcess);
       e.input.removeEventListener("input", this.handlers.input);
       e.input.removeEventListener("keydown", this.handlers.keydown);
+      e.input.removeEventListener("paste", this.handlers.paste);
+      e.imageInput.removeEventListener("change", this.handlers.imagesSelected);
+      e.composer.removeEventListener("dragover", this.handlers.dragover);
+      e.composer.removeEventListener("dragleave", this.handlers.dragleave);
+      e.composer.removeEventListener("drop", this.handlers.drop);
       this.doc.removeEventListener("click", this.handlers.documentClick);
       this.doc.removeEventListener("keydown", this.handlers.documentKeydown);
       this.body.replaceChildren();

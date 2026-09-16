@@ -179,6 +179,15 @@
   line-height: 1;
 }
 
+.zcs-image-icon {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.25;
+}
+
 .zcs-row-copy {
   display: grid;
   min-width: 0;
@@ -631,6 +640,33 @@
   background: var(--zcs-soft);
 }
 
+.zcs-message-images {
+  display: grid;
+  max-width: min(100%, 340px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.zcs-message-content + .zcs-message-images {
+  margin-top: 8px;
+}
+
+.zcs-message-images[data-count="1"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.zcs-message-image {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.zcs-user .zcs-message-image {
+  max-width: 260px;
+}
+
 .zcs-message-actions {
   position: absolute;
   top: calc(100% + 1px);
@@ -990,6 +1026,12 @@
     0 2px 8px color-mix(in srgb, CanvasText 9%, transparent);
 }
 
+.zcs-composer-dragging {
+  border-color: AccentColor;
+  box-shadow: 0 0 0 2px color-mix(in srgb, AccentColor 20%, transparent),
+    0 2px 8px color-mix(in srgb, CanvasText 9%, transparent);
+}
+
 .zcs-edit-banner {
   display: flex;
   min-height: 26px;
@@ -1077,6 +1119,19 @@
 .zcs-attachment-icon .zcs-document-icon {
   width: 13px;
   height: 13px;
+}
+
+.zcs-image-attachment {
+  padding-left: 6px;
+}
+
+.zcs-image-preview {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 8px;
+  background: var(--zcs-soft);
+  object-fit: cover;
 }
 
 .zcs-attachment-copy {

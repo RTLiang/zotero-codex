@@ -186,7 +186,7 @@
           clientInfo: {
             name: "zotero-codex-sidebar",
             title: "Codex Sidebar for Zotero",
-            version: "2026.258.1",
+            version: "2026.259.4",
           },
           capabilities: { experimentalApi: true },
         });
@@ -452,11 +452,11 @@
       return thread;
     }
 
-    async startTurn({ threadID, text, context, model, effort }) {
+    async startTurn({ threadID, text, images, context, model, effort }) {
       await this.ensureThreadLoaded(threadID);
       const result = await this.request("turn/start", {
         threadId: threadID,
-        input: [{ type: "text", text }],
+        input: Protocol.buildTurnInput(text, images),
         ...(context ? { additionalContext: context } : {}),
         ...(model ? { model } : {}),
         ...(effort ? { effort } : {}),

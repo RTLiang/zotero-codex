@@ -109,6 +109,37 @@ test("flattens full turn history for the sidebar", () => {
   );
 });
 
+test("builds native Codex image input and restores images from task history", () => {
+  const dataURL = "data:image/png;base64,iVBORw0KGgo=";
+  assert.deepEqual(
+    Protocol.buildTurnInput("看这张图", [
+      { url: dataURL },
+      { path: "/tmp/chart.png", detail: "high" },
+    ]),
+    [
+      { type: "text", text: "看这张图" },
+      { type: "image", url: dataURL, detail: "auto" },
+      { type: "localImage", path: "/tmp/chart.png", detail: "high" },
+    ],
+  );
+  const [entry] = Protocol.flattenTurns([{
+    id: "turn-image",
+    items: [{
+      id: "user-image",
+      type: "userMessage",
+      content: [{ type: "image", url: dataURL }],
+    }],
+  }]);
+  assert.equal(entry.text, "");
+  assert.deepEqual(entry.images, [{ type: "image", url: dataURL, detail: null }]);
+});
+
+test("keeps final and phase-less assistant messages visible while CoT is hidden", () => {
+  assert.equal(Protocol.normalizeMessagePhase("commentary"), "commentary");
+  assert.equal(Protocol.normalizeMessagePhase("final"), "final");
+  assert.equal(Protocol.normalizeMessagePhase(null), "final");
+});
+
 test("collapses adjacent progress and tool activity into one transcript group", () => {
   const grouped = Protocol.groupTranscriptEntries([
     { role: "user", text: "检查一下" },
