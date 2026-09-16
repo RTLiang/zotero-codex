@@ -1613,6 +1613,7 @@
 
     async selectThread(threadID, { bind = true, quiet = false, preserveScroll = false } = {}) {
       if (!threadID || this.destroyed) return false;
+      if (!preserveScroll) this.clearResponseScrollSpace();
       const preserveNextTurnSelection = Boolean(
         this.nextTurnSelectionPending && threadID === this.threadID,
       );
@@ -1689,6 +1690,44 @@
         editMode: index === latestUserIndex ? "revert" : "fork",
       }));
       transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    clearResponseScrollSpace() {
+      this.elements?.transcript.style.removeProperty("--zcs-transcript-bottom-space");
+    }
+
+    positionMessageAtTop(message) {
+      const transcript = this.elements.transcript;
+      this.clearResponseScrollSpace();
+      const style = this.doc.defaultView?.getComputedStyle?.(transcript);
+      const topInset = Number.parseFloat(style?.paddingTop || "0") || 0;
+      const bottomInset = Number.parseFloat(style?.paddingBottom || "0") || 0;
+      const transcriptRect = transcript.getBoundingClientRect();
+      const messageRect = message.getBoundingClientRect();
+      const target = Math.max(
+        0,
+        transcript.scrollTop + messageRect.top - transcriptRect.top - topInset,
+      );
+      const extraSpace = Math.max(
+        0,
+        Math.ceil(target + transcript.clientHeight - transcript.scrollHeight),
+      );
+      transcript.style.setProperty(
+        "--zcs-transcript-bottom-space",
+        `${bottomInset + extraSpace}px`,
+      );
+      transcript.scrollTop = target;
+      const shortfall = Math.max(0, Math.ceil(target - transcript.scrollTop));
+      if (shortfall) {
+        const appliedBottom = Number.parseFloat(
+          this.doc.defaultView?.getComputedStyle?.(transcript)?.paddingBottom || "0",
+        ) || 0;
+        transcript.style.setProperty(
+          "--zcs-transcript-bottom-space",
+          `${appliedBottom + shortfall}px`,
+        );
+        transcript.scrollTop = target;
+      }
     }
 
     renderEmpty(title, copy, { busy = false } = {}) {
@@ -1828,8 +1867,8 @@
 
     appendOptimisticUser(text, images = []) {
       this.elements.transcript.querySelector(".zcs-empty")?.remove();
-      this.appendEntry({ role: "user", text, images });
-      this.elements.transcript.scrollTop = this.elements.transcript.scrollHeight;
+      const message = this.appendEntry({ role: "user", text, images });
+      this.positionMessageAtTop(message);
     }
 
     beginEdit(entry, mode = "fork") {
@@ -1922,6 +1961,7 @@
       this.streamingPhase = "final";
       this.nextTurnSelectionPending = false;
       this.images = [];
+      this.clearResponseScrollSpace();
       this.manager.setPreference("lastThreadId", "");
       if (clearBinding) this.manager.clearPaperThread(Protocol.paperContextKey(this.context));
       this.cancelEdit({ clearInput: true, focus: false });
