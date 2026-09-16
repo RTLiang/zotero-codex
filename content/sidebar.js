@@ -267,10 +267,6 @@
     };
   }
 
-  function isNearBottom(element) {
-    return element.scrollHeight - element.scrollTop - element.clientHeight < 72;
-  }
-
   function appendMarkdown(doc, parent, value) {
     Markdown.appendMarkdown(doc, parent, value, { openTarget: openMarkdownTarget });
   }
@@ -1615,7 +1611,7 @@
       this.renderThreadPicker();
     }
 
-    async selectThread(threadID, { bind = true, quiet = false } = {}) {
+    async selectThread(threadID, { bind = true, quiet = false, preserveScroll = false } = {}) {
       if (!threadID || this.destroyed) return false;
       const preserveNextTurnSelection = Boolean(
         this.nextTurnSelectionPending && threadID === this.threadID,
@@ -1637,7 +1633,9 @@
           this.nextTurnSelectionPending = false;
           this.applyModelSelection(thread.model, thread.reasoningEffort);
         }
+        const scrollTop = preserveScroll ? this.elements.transcript.scrollTop : null;
         this.renderTranscript(Protocol.flattenTurns(thread.turns));
+        if (scrollTop !== null) this.elements.transcript.scrollTop = scrollTop;
         this.updateThreadHeader();
         this.setStatus("ready", this.connectionLabel());
         return true;
@@ -1891,8 +1889,6 @@
 
     renderStreamingDelta(delta, itemID = "") {
       if (!delta) return;
-      const transcript = this.elements.transcript;
-      const follow = isNearBottom(transcript);
       if (itemID && itemID !== this.streamingItemID) {
         this.streamingItemID = itemID;
         this.streamingPhase = "final";
@@ -1911,7 +1907,6 @@
         content.replaceChildren();
         appendMarkdown(this.doc, content, this.streamingText);
       }
-      if (follow) transcript.scrollTop = transcript.scrollHeight;
     }
 
     resetConversation({ clearBinding = false, focus = true } = {}) {
@@ -2177,7 +2172,9 @@
         this.streamingNode = null;
         this.streamingItemID = "";
         this.streamingPhase = "final";
-        void this.selectThread(this.threadID).then(() => this.refreshThreads()).catch((error) => this.showError(error));
+        void this.selectThread(this.threadID, { preserveScroll: true })
+          .then(() => this.refreshThreads())
+          .catch((error) => this.showError(error));
       }
       else if (event.method === "error") {
         this.showError(
