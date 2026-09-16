@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Codex Sidebar for Zotero",
-  "version": "2026.259.1",
+  "version": "2026.259.2",
   "description": "Use the local Codex App Server from Zotero and continue the same Codex tasks.",
   "homepage_url": "https://github.com/RTLiang/zotero-codex",
   "icons": {

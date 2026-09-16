@@ -2122,7 +2122,7 @@
     }
 
     isWorkProcessVisible() {
-      return this.getPreference("showWorkProcess") !== false;
+      return this.getPreference("showWorkProcess") === true;
     }
 
     setShowWorkProcess(visible) {
