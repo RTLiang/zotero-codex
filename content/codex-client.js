@@ -186,7 +186,7 @@
           clientInfo: {
             name: "zotero-codex-sidebar",
             title: "Codex Sidebar for Zotero",
-            version: "2026.259.6",
+            version: "2026.260.1",
           },
           capabilities: { experimentalApi: true },
         });

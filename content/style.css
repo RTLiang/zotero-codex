@@ -763,6 +763,19 @@
   animation: zcs-pulse 1s step-end infinite;
 }
 
+.zcs-pending-response {
+  width: fit-content;
+  margin: -3px 0 16px;
+  color: var(--zcs-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  animation: zcs-waiting-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes zcs-waiting-pulse {
+  50% { opacity: .48; }
+}
+
 @keyframes zcs-pulse {
   50% { opacity: .28; }
 }
@@ -1539,6 +1552,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .zcs-selection-attachment[data-new="true"],
+  .zcs-pending-response,
   .zcs-streaming::after,
   .zcs-spinner {
     animation: none;

@@ -294,6 +294,7 @@
       this.streamingNode = null;
       this.streamingItemID = "";
       this.streamingPhase = "final";
+      this.pendingResponseNode = null;
       this.editingMessage = null;
       this.images = [];
       this.loadSerial = 0;
@@ -1926,6 +1927,27 @@
       this.streamingNode = null;
     }
 
+    showPendingResponse() {
+      this.hidePendingResponse();
+      const pending = create(this.doc, "div", "zcs-pending-response");
+      pending.setAttribute("role", "status");
+      pending.setAttribute("aria-live", "polite");
+      pending.append(createL10n(
+        this.doc,
+        "span",
+        "zcs-pending-response-label",
+        "zotero-codex-working",
+        "Working…",
+      ));
+      this.elements.transcript.append(pending);
+      this.pendingResponseNode = pending;
+    }
+
+    hidePendingResponse() {
+      this.pendingResponseNode?.remove();
+      this.pendingResponseNode = null;
+    }
+
     renderStreamingDelta(delta, itemID = "") {
       if (!delta) return;
       if (itemID && itemID !== this.streamingItemID) {
@@ -1935,6 +1957,9 @@
         this.streamingNode = null;
       }
       this.streamingText += delta;
+      if (this.streamingPhase !== "commentary" || this.manager.isWorkProcessVisible()) {
+        this.hidePendingResponse();
+      }
       if (!this.streamingNode) {
         this.streamingNode = this.appendEntry(
           { role: "assistant", phase: this.streamingPhase, text: this.streamingText },
@@ -1961,6 +1986,7 @@
       this.streamingPhase = "final";
       this.nextTurnSelectionPending = false;
       this.images = [];
+      this.hidePendingResponse();
       this.clearResponseScrollSpace();
       this.manager.setPreference("lastThreadId", "");
       if (clearBinding) this.manager.clearPaperThread(Protocol.paperContextKey(this.context));
@@ -2048,6 +2074,7 @@
         this.streamingNode = null;
         this.streamingItemID = "";
         this.streamingPhase = "final";
+        this.showPendingResponse();
         this.setRunning(true);
 
         const turn = await this.client.startTurn({
@@ -2064,6 +2091,7 @@
       }
       catch (error) {
         this.setRunning(false);
+        this.hidePendingResponse();
         this.showError(error);
         if (clearedInput && !this.elements.input.value) {
           this.elements.input.value = text;
@@ -2175,6 +2203,7 @@
       }
       if (event.type === "disconnected") {
         this.setRunning(false);
+        this.hidePendingResponse();
         this.showError(event.error || ClientTools.clientError(
           "zotero-codex-error-disconnected",
           null,
@@ -2208,6 +2237,7 @@
       else if (event.method === "turn/completed") {
         this.activeTurnID = "";
         this.setRunning(false);
+        this.hidePendingResponse();
         this.streamingText = "";
         this.streamingNode = null;
         this.streamingItemID = "";
@@ -2217,6 +2247,7 @@
           .catch((error) => this.showError(error));
       }
       else if (event.method === "error") {
+        this.hidePendingResponse();
         this.showError(
           params.error?.message || params.message
             ? new Error(params.error?.message || params.message)
