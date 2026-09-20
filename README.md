@@ -42,7 +42,7 @@ npm run check
 npm run build
 ```
 
-随后在 Zotero 中打开“工具 → 插件”，点击齿轮按钮，选择“Install Plugin From File…”，安装 `dist/zotero-codex-sidebar-2026.263.2.xpi`。选中文献或打开 PDF 后，点击右侧边栏中的 Codex 图标。
+随后在 Zotero 中打开“工具 → 插件”，点击齿轮按钮，选择“Install Plugin From File…”，安装 `dist/zotero-codex-sidebar-2026.263.3.xpi`。选中文献或打开 PDF 后，点击右侧边栏中的 Codex 图标。
 
 版本号使用 `年份.当年第几天.当天小版本号`，例如 2026 年第 257 天的第一个版本为 `2026.257.1`。
 

@@ -2189,7 +2189,10 @@
         });
         this.activeTurnID = turn.id;
         this.nextTurnSelectionPending = false;
-        if (pinnedSelections.length) this.manager.clearSelections(this.context?.attachmentID);
+        this.manager.consumeSelections?.(this.context?.attachmentID, {
+          liveSelectionID: liveSelection?.id || "",
+          selectionIDs: pinnedSelections.map((selection) => selection.id),
+        });
       }
       catch (error) {
         this.setRunning(false);
@@ -2561,6 +2564,7 @@
       this.styles = new Set();
       this.selections = new Map();
       this.liveSelections = new Map();
+      this.liveSelectionSequence = 0;
       this.readerSelectionHandler = (event) => this.handleReaderSelection(event);
     }
 
@@ -2732,7 +2736,7 @@
         pageNumber: Number.isInteger(pageIndex) ? pageIndex + 1 : null,
         pageLabel: String(params?.annotation?.pageLabel || "").trim(),
       };
-      this.setLiveSelection(attachmentID, selection);
+      const liveSelection = this.setLiveSelection(attachmentID, selection);
       const button = createL10n(
         doc,
         "button",
@@ -2748,7 +2752,7 @@
         event.preventDefault();
         event.stopPropagation();
         const added = this.addSelection(attachmentID, selection);
-        this.clearLiveSelection(attachmentID);
+        this.clearLiveSelection(attachmentID, liveSelection?.id);
         setLocalizedText(
           button,
           added ? "zotero-codex-reader-added-selection" : "zotero-codex-reader-selection-exists",
@@ -2762,6 +2766,23 @@
       button.addEventListener("click", addToCodex);
       button.addEventListener("command", addToCodex);
       append(button);
+      this.watchReaderSelectionPopup(doc, button, attachmentID, liveSelection?.id);
+    }
+
+    watchReaderSelectionPopup(doc, button, attachmentID, liveSelectionID) {
+      const Observer = doc.defaultView?.MutationObserver;
+      if (!Observer || !doc.documentElement || !liveSelectionID) return;
+      let wasConnected = button.isConnected;
+      const observer = new Observer(() => {
+        if (button.isConnected) {
+          wasConnected = true;
+          return;
+        }
+        if (!wasConnected) return;
+        observer.disconnect();
+        this.clearLiveSelection(attachmentID, liveSelectionID);
+      });
+      observer.observe(doc.documentElement, { childList: true, subtree: true });
     }
 
     async revealReaderPane(reader) {
@@ -2811,18 +2832,12 @@
       if (!Number.isSafeInteger(id) || !text) return false;
       const next = {
         ...value,
-        id: `current-${id}`,
+        id: `current-${id}-${++this.liveSelectionSequence}`,
         text,
       };
-      const current = this.liveSelections.get(id);
-      if (
-        current?.text === next.text &&
-        current?.pageNumber === next.pageNumber &&
-        current?.pageLabel === next.pageLabel
-      ) return false;
       this.liveSelections.set(id, next);
       this.refreshSelectionViews(id);
-      return true;
+      return next;
     }
 
     getLiveSelection(attachmentID) {
@@ -2830,10 +2845,27 @@
       return Number.isSafeInteger(id) ? this.liveSelections.get(id) || null : null;
     }
 
-    clearLiveSelection(attachmentID) {
+    clearLiveSelection(attachmentID, expectedSelectionID = "") {
       const id = Number(attachmentID);
       if (!Number.isSafeInteger(id) || !this.liveSelections.has(id)) return;
+      if (expectedSelectionID && this.liveSelections.get(id)?.id !== expectedSelectionID) return;
       this.liveSelections.delete(id);
+      this.refreshSelectionViews(id);
+    }
+
+    consumeSelections(attachmentID, { liveSelectionID = "", selectionIDs = [] } = {}) {
+      const id = Number(attachmentID);
+      if (!Number.isSafeInteger(id)) return;
+      const sentIDs = new Set(selectionIDs);
+      if (sentIDs.size) {
+        const remaining = (this.selections.get(id) || [])
+          .filter((selection) => !sentIDs.has(selection.id));
+        if (remaining.length) this.selections.set(id, remaining);
+        else this.selections.delete(id);
+      }
+      if (liveSelectionID && this.liveSelections.get(id)?.id === liveSelectionID) {
+        this.liveSelections.delete(id);
+      }
       this.refreshSelectionViews(id);
     }
 
