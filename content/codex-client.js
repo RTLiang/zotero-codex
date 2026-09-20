@@ -4,6 +4,7 @@
   const modules = global.ZoteroCodexModules = global.ZoteroCodexModules || {};
   const Protocol = modules.Protocol;
   const REQUEST_TIMEOUT_MS = 60_000;
+  const MAX_LOADED_THREADS = 500;
 
   function dirname(path) {
     const separator = path.includes("\\") ? "\\" : "/";
@@ -147,6 +148,9 @@
     }
 
     async _connect() {
+      this.stdoutBuffer = "";
+      this.stderrTail = "";
+      this.account = null;
       const configuredPath = this.getPreference("codexPath");
       this.binaryPath = await resolveCodexPath(configuredPath);
       const Subprocess = await this.loadSubprocessModule();
@@ -186,7 +190,7 @@
           clientInfo: {
             name: "zotero-codex-sidebar",
             title: "Codex Sidebar for Zotero",
-            version: "2026.263.3",
+            version: "2026.263.4",
           },
           capabilities: { experimentalApi: true },
         });
@@ -400,7 +404,7 @@
         null,
         "Codex App Server did not return a new task ID",
       );
-      this.loadedThreads.add(thread.id);
+      this.markThreadLoaded(thread.id);
       if (title) {
         await this.request("thread/name/set", { threadId: thread.id, name: title }).catch(() => null);
         thread.name = title;
@@ -409,10 +413,22 @@
     }
 
     async ensureThreadLoaded(threadID) {
-      if (this.loadedThreads.has(threadID)) return;
+      if (this.loadedThreads.has(threadID)) {
+        this.markThreadLoaded(threadID);
+        return;
+      }
       await this.connect();
       await this.request("thread/resume", { threadId: threadID, excludeTurns: true });
+      this.markThreadLoaded(threadID);
+    }
+
+    markThreadLoaded(threadID) {
+      if (!threadID) return;
+      this.loadedThreads.delete(threadID);
       this.loadedThreads.add(threadID);
+      while (this.loadedThreads.size > MAX_LOADED_THREADS) {
+        this.loadedThreads.delete(this.loadedThreads.values().next().value);
+      }
     }
 
     async forkThreadBeforeTurn({ threadID, beforeTurnID, model } = {}) {
@@ -433,7 +449,7 @@
         null,
         "Codex App Server did not return an edited task ID",
       );
-      this.loadedThreads.add(thread.id);
+      this.markThreadLoaded(thread.id);
       return thread;
     }
 

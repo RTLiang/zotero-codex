@@ -18,6 +18,7 @@
   };
   const MAX_IMAGE_COUNT = 10;
   const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+  const MAX_SELECTION_ATTACHMENTS = 50;
   const MIN_SHELL_HEIGHT = 360;
   const MAX_SHELL_HEIGHT = 1200;
   const SHELL_HEIGHT_STEP = 24;
@@ -313,6 +314,10 @@
       this.destroyed = false;
       this.pendingRequests = new Map();
       this.shellResize = null;
+      this.contextEpoch = 0;
+      this.contextTransitioning = false;
+      this.threadRefreshSerial = 0;
+      this.statusRevision = 0;
       this.cleanupClient = this.client.subscribe((event) => this._handleClientEvent(event));
       this.mount();
     }
@@ -1039,10 +1044,24 @@
 
     updateComposerState() {
       const send = this.elements.sendButton;
-      this.elements.modelTrigger.disabled = this.creatingTask || !this.models.length;
-      this.elements.modelChoice.disabled = this.creatingTask || !this.models.length;
-      this.elements.effortChoice.disabled = this.creatingTask || !this.selectedEffort;
+      const unavailable = this.creatingTask || this.contextTransitioning;
+      this.elements.input.disabled = this.contextTransitioning;
+      this.elements.newThreadButton.disabled = this.running || unavailable;
+      this.elements.threadButton.disabled = this.running || this.contextTransitioning;
+      this.elements.contextAddButton.disabled = this.running || this.contextTransitioning;
+      this.elements.contextModeButton.disabled = this.running || this.contextTransitioning;
+      this.elements.imageOption.disabled = this.running || this.contextTransitioning;
+      this.elements.imageInput.disabled = this.running || this.contextTransitioning;
+      this.elements.modelTrigger.disabled = unavailable || !this.models.length;
+      this.elements.modelChoice.disabled = unavailable || !this.models.length;
+      this.elements.effortChoice.disabled = unavailable || !this.selectedEffort;
       this.elements.modelNextTurnHint.hidden = !this.running;
+      if (this.contextTransitioning) {
+        send.disabled = true;
+        setButtonLabel(send, "↑", "zotero-codex-send", "Send");
+        send.classList.remove("zcs-send-stop");
+        return;
+      }
       if (this.creatingTask) {
         send.disabled = true;
         setButtonLabel(send, "…", "zotero-codex-creating-task", "Creating task");
@@ -1230,12 +1249,61 @@
       const changed = item !== this.item || tabType !== this.tabType;
       this.item = item;
       this.tabType = tabType;
-      this.context = null;
-      if (this.elements) this.renderSelections();
+      if (changed) this.beginContextTransition();
       if (changed && this.initialized) {
-        void this.refreshContext()
-          .then((context) => context && this.activatePaperConversation())
-          .catch((error) => this.showError(error));
+        void this.loadCurrentItem(this.contextEpoch);
+      }
+    }
+
+    beginContextTransition() {
+      this.contextEpoch++;
+      this.contextTransitioning = true;
+      this.loadSerial++;
+      this.threadRefreshSerial++;
+      this.context = null;
+      this.threadID = "";
+      this.thread = null;
+      this.activePaperKey = "";
+      this.activeTurnID = "";
+      this.running = false;
+      this.streamingText = "";
+      this.streamingNode = null;
+      this.streamingItemID = "";
+      this.streamingPhase = "final";
+      this.nextTurnSelectionPending = false;
+      this.images = [];
+      if (!this.elements) return;
+      this.hidePendingResponse();
+      this.clearResponseScrollSpace();
+      this.cancelEdit({ clearInput: true, focus: false });
+      this.elements.input.value = "";
+      this.renderSelections();
+      this.renderContextAttachment();
+      this.renderRequests();
+      this.renderEmpty("", "");
+      this.updateThreadHeader();
+      this.resizeComposer();
+      this.updateComposerState();
+    }
+
+    isCurrentContext(epoch, context = this.context) {
+      return !this.destroyed && epoch === this.contextEpoch && context === this.context;
+    }
+
+    async loadCurrentItem(epoch) {
+      try {
+        const context = await this.refreshContext();
+        if (!context || !this.isCurrentContext(epoch, context)) return;
+        await this.activatePaperConversation(epoch);
+      }
+      catch (error) {
+        if (epoch === this.contextEpoch && !this.destroyed) this.showError(error);
+      }
+      finally {
+        if (epoch === this.contextEpoch && !this.destroyed) {
+          this.contextTransitioning = false;
+          this.updateComposerState();
+        }
       }
     }
 
@@ -1254,15 +1322,21 @@
           "Connected using auto-detect.",
         );
         await this.refreshModels();
-        await this.refreshContext();
-        await this.refreshThreads();
         this.initialized = true;
+        const epoch = this.contextEpoch;
+        const context = await this.refreshContext();
+        if (context && this.isCurrentContext(epoch, context)) await this.refreshThreads();
+        else if (!this.destroyed) await this.loadCurrentItem(this.contextEpoch);
       }
       catch (error) {
         this.showError(error);
       }
       finally {
         this.initializing = false;
+        if (!this.destroyed) {
+          this.contextTransitioning = false;
+          this.updateComposerState();
+        }
       }
     }
 
@@ -1361,6 +1435,7 @@
 
     async addImageFiles(files) {
       if (this.running || this.creatingTask || !files?.length) return;
+      const contextEpoch = this.contextEpoch;
       const room = Math.max(0, MAX_IMAGE_COUNT - this.images.length);
       if (!room) {
         this.showError(ClientTools.clientError(
@@ -1385,6 +1460,7 @@
             "Each image must be 20 MB or smaller.",
           );
           const url = await fileToDataURL(this.doc, file);
+          if (this.destroyed || contextEpoch !== this.contextEpoch) return;
           if (!url.startsWith("data:image/")) throw new Error("Could not read image");
           this.images.push({
             id: global.crypto?.randomUUID?.() || `${Date.now()}-${this.images.length}`,
@@ -1406,7 +1482,7 @@
         this.elements.input.focus();
       }
       catch (error) {
-        this.showError(error);
+        if (!this.destroyed && contextEpoch === this.contextEpoch) this.showError(error);
       }
     }
 
@@ -1596,11 +1672,18 @@
     }
 
     async refreshThreads({ reloadCurrent = false } = {}) {
+      const refreshSerial = ++this.threadRefreshSerial;
+      const contextEpoch = this.contextEpoch;
       const previousID = this.threadID;
       this.setStatus("busy", "");
       try {
-        this.threads = await this.client.listThreads(100);
-        if (this.destroyed) return;
+        const threads = await this.client.listThreads(100);
+        if (
+          this.destroyed ||
+          refreshSerial !== this.threadRefreshSerial ||
+          contextEpoch !== this.contextEpoch
+        ) return;
+        this.threads = threads;
         this.renderThreadPicker();
         const paperKey = Protocol.paperContextKey(this.context);
         this.activePaperKey = paperKey;
@@ -1613,6 +1696,11 @@
           "";
         if (nextID && (reloadCurrent || nextID !== this.threadID || !this.thread)) {
           const selected = await this.selectThread(nextID, { bind: false, quiet: Boolean(paperKey) });
+          if (
+            this.destroyed ||
+            refreshSerial !== this.threadRefreshSerial ||
+            contextEpoch !== this.contextEpoch
+          ) return;
           if (!selected && paperKey) {
             this.manager.clearPaperThread(paperKey);
             this.resetConversation({ focus: false });
@@ -1630,11 +1718,16 @@
         this.updateThreadHeader();
       }
       catch (error) {
-        this.showError(error);
+        if (
+          !this.destroyed &&
+          refreshSerial === this.threadRefreshSerial &&
+          contextEpoch === this.contextEpoch
+        ) this.showError(error);
       }
     }
 
-    async activatePaperConversation() {
+    async activatePaperConversation(expectedEpoch = this.contextEpoch) {
+      if (expectedEpoch !== this.contextEpoch || this.destroyed) return;
       const paperKey = Protocol.paperContextKey(this.context);
       if (paperKey === this.activePaperKey) return;
       this.activePaperKey = paperKey;
@@ -1647,10 +1740,11 @@
       const threadID = paperKey ? this.manager.getPaperThread(paperKey) : "";
       if (threadID) {
         const selected = await this.selectThread(threadID, { bind: false, quiet: true });
+        if (expectedEpoch !== this.contextEpoch || this.destroyed) return;
         if (selected) return;
         this.manager.clearPaperThread(paperKey);
       }
-      this.resetConversation({ focus: false });
+      this.resetConversation({ focus: false, force: true });
     }
 
     renderThreadPicker() {
@@ -1716,6 +1810,8 @@
 
     async selectThread(threadID, { bind = true, quiet = false, preserveScroll = false } = {}) {
       if (!threadID || this.destroyed) return false;
+      const contextEpoch = this.contextEpoch;
+      const context = this.context;
       if (!preserveScroll) this.clearResponseScrollSpace();
       const preserveNextTurnSelection = Boolean(
         this.nextTurnSelectionPending && threadID === this.threadID,
@@ -1726,11 +1822,17 @@
       const serial = ++this.loadSerial;
       this.threadID = threadID;
       this.updateThreadHeader();
+      this.renderRequests();
       this.manager.setPreference("lastThreadId", threadID);
       this.setStatus("busy", "");
       try {
         const thread = await this.client.readThread(threadID);
-        if (serial !== this.loadSerial || this.destroyed || this.threadID !== threadID) return;
+        if (
+          serial !== this.loadSerial ||
+          this.destroyed ||
+          this.threadID !== threadID ||
+          !this.isCurrentContext(contextEpoch, context)
+        ) return false;
         this.thread = thread;
         if (bind) this.manager.setPaperThread(this.context, threadID);
         if (!preserveNextTurnSelection) {
@@ -1745,7 +1847,11 @@
         return true;
       }
       catch (error) {
-        if (serial === this.loadSerial && !quiet) this.showError(error);
+        if (
+          serial === this.loadSerial &&
+          this.isCurrentContext(contextEpoch, context) &&
+          !quiet
+        ) this.showError(error);
         return false;
       }
     }
@@ -1755,18 +1861,20 @@
     }
 
     setStatus(state, text) {
+      const revision = ++this.statusRevision;
       this.elements.status.dataset.state = state;
       this.elements.statusText.textContent = text;
       this.elements.status.hidden = state !== "error";
+      return revision;
     }
 
     showError(error) {
       const message = ClientTools.publicError(error);
-      this.setStatus("error", message);
+      const revision = this.setStatus("error", message);
       setPlainText(this.elements.pathStatus, message);
       if (error?.l10nID) {
         void formatValue(this.doc, error.l10nID, error.l10nArgs, message).then((localized) => {
-          if (this.destroyed) return;
+          if (this.destroyed || revision !== this.statusRevision) return;
           this.setStatus("error", localized);
           setPlainText(this.elements.pathStatus, localized);
         });
@@ -2075,8 +2183,8 @@
       }
     }
 
-    resetConversation({ clearBinding = false, focus = true } = {}) {
-      if (this.running || this.creatingTask) return;
+    resetConversation({ clearBinding = false, focus = true, force = false } = {}) {
+      if (!force && (this.running || this.creatingTask)) return;
       this.closePopovers();
       this.loadSerial++;
       this.threadID = "";
@@ -2111,25 +2219,27 @@
       this.resetConversation({ clearBinding: true, focus: true });
     }
 
-    async createThreadForMessage(text) {
+    async createThreadForMessage(text, { epoch = this.contextEpoch, context = this.context } = {}) {
       if (this.threadID) return this.thread;
       this.creatingTask = true;
       this.elements.newThreadButton.disabled = true;
       this.elements.threadButton.disabled = true;
       this.updateComposerState();
       try {
-        if (!this.context) await this.refreshContext();
+        if (!context) context = await this.refreshContext();
+        if (!context || !this.isCurrentContext(epoch, context)) return null;
         this.setStatus("busy", "");
         const title = Protocol.firstLine(text, 58) || "Zotero research";
         const thread = await this.client.startThread({
-          cwd: pathDirectory(this.context?.pdfPath) || ClientTools.getHomeDirectory(),
+          cwd: pathDirectory(context.pdfPath) || ClientTools.getHomeDirectory(),
           title,
           model: this.selectedModel,
         });
+        if (!this.isCurrentContext(epoch, context)) return null;
         this.threadID = thread.id;
         this.thread = thread;
         this.manager.setPreference("lastThreadId", thread.id);
-        this.manager.setPaperThread(this.context, thread.id);
+        this.manager.setPaperThread(context, thread.id);
         this.threads = [
           { ...thread, label: Protocol.threadLabel(thread), timestamp: Date.now() },
           ...this.threads.filter((candidate) => candidate.id !== thread.id),
@@ -2148,22 +2258,38 @@
     async send() {
       const text = this.elements.input.value.trim();
       const images = this.images.map((image) => ({ ...image }));
-      if ((!text && !images.length) || this.running || this.creatingTask) return;
+      if (
+        (!text && !images.length) ||
+        this.running ||
+        this.creatingTask ||
+        this.contextTransitioning
+      ) return;
+      const contextEpoch = this.contextEpoch;
       let clearedInput = false;
       try {
-        if (!this.context) await this.refreshContext();
-        if (this.editingMessage) await this.prepareEditedThread(this.editingMessage);
+        let paperContext = this.context;
+        if (!paperContext) paperContext = await this.refreshContext();
+        if (!paperContext || !this.isCurrentContext(contextEpoch, paperContext)) return;
+        if (this.editingMessage) {
+          const prepared = await this.prepareEditedThread(this.editingMessage, {
+            epoch: contextEpoch,
+            context: paperContext,
+          });
+          if (!prepared || !this.isCurrentContext(contextEpoch, paperContext)) return;
+        }
         else if (!this.threadID) await this.createThreadForMessage(
           text || images[0]?.name || "Image",
+          { epoch: contextEpoch, context: paperContext },
         );
-        if (!this.threadID) return;
+        if (!this.threadID || !this.isCurrentContext(contextEpoch, paperContext)) return;
+        const threadID = this.threadID;
 
-        const pinnedSelections = this.manager.getSelections(this.context?.attachmentID);
-        const liveSelection = this.manager.getLiveSelection(this.context?.attachmentID);
+        const pinnedSelections = this.manager.getSelections(paperContext.attachmentID);
+        const liveSelection = this.manager.getLiveSelection(paperContext.attachmentID);
         const selections = Protocol.mergeContextSelections(liveSelection, pinnedSelections);
         const includeItem = Boolean(this.manager.getPreference("includeItemContext"));
-        const context = includeItem || selections.length
-          ? Protocol.buildZoteroContext(this.context, selections, { includeItem })
+        const additionalContext = includeItem || selections.length
+          ? Protocol.buildZoteroContext(paperContext, selections, { includeItem })
           : null;
         this.elements.input.value = "";
         this.images = [];
@@ -2180,21 +2306,23 @@
         this.setRunning(true);
 
         const turn = await this.client.startTurn({
-          threadID: this.threadID,
+          threadID,
           text,
           images,
-          context,
+          context: additionalContext,
           model: this.selectedModel,
           effort: this.selectedEffort,
         });
-        this.activeTurnID = turn.id;
-        this.nextTurnSelectionPending = false;
-        this.manager.consumeSelections?.(this.context?.attachmentID, {
+        this.manager.consumeSelections?.(paperContext.attachmentID, {
           liveSelectionID: liveSelection?.id || "",
           selectionIDs: pinnedSelections.map((selection) => selection.id),
         });
+        if (!this.isCurrentContext(contextEpoch, paperContext) || this.threadID !== threadID) return;
+        this.activeTurnID = turn.id;
+        this.nextTurnSelectionPending = false;
       }
       catch (error) {
+        if (contextEpoch !== this.contextEpoch || this.destroyed) return;
         this.setRunning(false);
         this.hidePendingResponse();
         this.showError(error);
@@ -2211,7 +2339,10 @@
       }
     }
 
-    async prepareEditedThread(edit) {
+    async prepareEditedThread(
+      edit,
+      { epoch = this.contextEpoch, context = this.context } = {},
+    ) {
       if (!edit?.threadID || !edit?.turnID) return;
       this.creatingTask = true;
       this.updateComposerState();
@@ -2226,10 +2357,11 @@
               beforeTurnID: edit.turnID,
               model: this.selectedModel,
             });
+        if (!this.isCurrentContext(epoch, context)) return null;
         this.threadID = thread.id;
         this.thread = thread;
         this.manager.setPreference("lastThreadId", thread.id);
-        this.manager.setPaperThread(this.context, thread.id);
+        this.manager.setPaperThread(context, thread.id);
         if (edit.mode === "fork") {
           this.threads = [
             { ...thread, label: Protocol.threadLabel(thread), timestamp: Date.now() },
@@ -2239,6 +2371,7 @@
         this.cancelEdit({ clearInput: false, focus: false });
         this.renderTranscript(Protocol.flattenTurns(thread.turns));
         this.updateThreadHeader();
+        return thread;
       }
       finally {
         this.creatingTask = false;
@@ -2248,12 +2381,12 @@
 
     setRunning(running, statusText = "") {
       this.running = running;
-      this.elements.newThreadButton.disabled = running || this.creatingTask;
-      this.elements.threadButton.disabled = running;
-      this.elements.contextAddButton.disabled = running;
-      this.elements.contextModeButton.disabled = running;
-      this.elements.imageOption.disabled = running;
-      this.elements.imageInput.disabled = running;
+      this.elements.newThreadButton.disabled = running || this.creatingTask || this.contextTransitioning;
+      this.elements.threadButton.disabled = running || this.contextTransitioning;
+      this.elements.contextAddButton.disabled = running || this.contextTransitioning;
+      this.elements.contextModeButton.disabled = running || this.contextTransitioning;
+      this.elements.imageOption.disabled = running || this.contextTransitioning;
+      this.elements.imageInput.disabled = running || this.contextTransitioning;
       this.elements.reconnectButton.disabled = running;
       this.updateComposerState();
       if (running) this.setStatus("busy", statusText);
@@ -2307,6 +2440,8 @@
         return;
       }
       if (event.type === "disconnected") {
+        this.pendingRequests.clear();
+        this.renderRequests();
         this.setRunning(false);
         this.hidePendingResponse();
         this.showError(event.error || ClientTools.clientError(
@@ -2317,13 +2452,43 @@
         return;
       }
       if (event.type === "serverRequest") {
-        if (event.params?.threadId && event.params.threadId !== this.threadID) return;
-        this.pendingRequests.set(event.id, event);
+        this.pendingRequests.set(event.id, {
+          ...event,
+          contextThreadID: String(event.params?.threadId || this.threadID || ""),
+          contextEpoch: this.contextEpoch,
+        });
+        while (this.pendingRequests.size > 100) {
+          this.pendingRequests.delete(this.pendingRequests.keys().next().value);
+        }
         this.renderRequests();
         return;
       }
       if (event.type !== "notification") return;
       const params = event.params || {};
+      if (event.method === "serverRequest/resolved") {
+        this.pendingRequests.delete(params.requestId);
+        this.renderRequests();
+        return;
+      }
+      if (event.method === "turn/completed") {
+        const completedThreadID = String(params.threadId || this.threadID || "");
+        for (const [requestID, request] of this.pendingRequests) {
+          if (request.contextThreadID === completedThreadID) this.pendingRequests.delete(requestID);
+        }
+        this.renderRequests();
+        if (params.threadId && params.threadId !== this.threadID) return;
+        this.activeTurnID = "";
+        this.setRunning(false);
+        this.hidePendingResponse();
+        this.streamingText = "";
+        this.streamingNode = null;
+        this.streamingItemID = "";
+        this.streamingPhase = "final";
+        void this.selectThread(this.threadID, { preserveScroll: true })
+          .then((selected) => selected && this.refreshThreads())
+          .catch((error) => this.showError(error));
+        return;
+      }
       if (params.threadId && params.threadId !== this.threadID) return;
       if (event.method === "turn/started") {
         this.activeTurnID = params.turn?.id || this.activeTurnID;
@@ -2339,18 +2504,6 @@
           this.setStatus("busy", Protocol.describeActivity(params.item));
         }
       }
-      else if (event.method === "turn/completed") {
-        this.activeTurnID = "";
-        this.setRunning(false);
-        this.hidePendingResponse();
-        this.streamingText = "";
-        this.streamingNode = null;
-        this.streamingItemID = "";
-        this.streamingPhase = "final";
-        void this.selectThread(this.threadID, { preserveScroll: true })
-          .then(() => this.refreshThreads())
-          .catch((error) => this.showError(error));
-      }
       else if (event.method === "error") {
         this.hidePendingResponse();
         this.showError(
@@ -2362,10 +2515,6 @@
                 "Codex returned an error",
               ),
         );
-      }
-      else if (event.method === "serverRequest/resolved") {
-        this.pendingRequests.delete(params.requestId);
-        this.renderRequests();
       }
     }
 
@@ -2403,8 +2552,13 @@
     renderRequests() {
       const area = this.elements.requestArea;
       area.replaceChildren();
-      area.hidden = this.pendingRequests.size === 0;
-      for (const request of this.pendingRequests.values()) {
+      const requests = [...this.pendingRequests.values()].filter(
+        (request) => request.contextThreadID
+          ? request.contextThreadID === this.threadID
+          : request.contextEpoch === this.contextEpoch,
+      );
+      area.hidden = requests.length === 0;
+      for (const request of requests) {
         const card = create(this.doc, "div", "zcs-request-card");
         const description = this.requestDescription(request);
         const descriptionNode = create(this.doc, "pre", "zcs-request-description", description.text);
@@ -2513,12 +2667,20 @@
       if (this.destroyed) return;
       this.destroyed = true;
       this.loadSerial++;
+      this.threadRefreshSerial++;
+      this.pendingRequests.clear();
+      this.shellResize = null;
+      this.hidePendingResponse();
       this.cleanupClient?.();
       const e = this.elements;
       e.threadButton.removeEventListener("click", this.handlers.toggleThreads);
       e.moreButton.removeEventListener("click", this.handlers.toggleSettings);
       e.contextAddButton.removeEventListener("click", this.handlers.toggleContextMenu);
       e.contextModeButton.removeEventListener("click", this.handlers.toggleContextMenu);
+      e.modelTrigger.removeEventListener("click", this.handlers.toggleModelMenu);
+      e.modelChoice.removeEventListener("click", this.handlers.toggleModelOptions);
+      e.effortChoice.removeEventListener("click", this.handlers.toggleEffortOptions);
+      e.cancelEditButton.removeEventListener("click", this.handlers.cancelEdit);
       e.newThreadButton.removeEventListener("click", this.handlers.newTask);
       e.refreshButton.removeEventListener("click", this.handlers.refresh);
       e.openSettingsButton.removeEventListener("click", this.handlers.openSettings);
@@ -2565,6 +2727,7 @@
       this.selections = new Map();
       this.liveSelections = new Map();
       this.liveSelectionSequence = 0;
+      this.selectionPopupCleanups = new Set();
       this.readerSelectionHandler = (event) => this.handleReaderSelection(event);
     }
 
@@ -2685,9 +2848,10 @@
           if (!view) return;
           view.lockInitialShellHeight();
           if (!view.initialized) await view.initialize();
-          else {
+          else if (!view.contextTransitioning) {
+            const epoch = view.contextEpoch;
             await view.refreshContext();
-            await view.activatePaperConversation();
+            await view.activatePaperConversation(epoch);
           }
         },
         onToggle: ({ body, event }) => {
@@ -2773,16 +2937,35 @@
       const Observer = doc.defaultView?.MutationObserver;
       if (!Observer || !doc.documentElement || !liveSelectionID) return;
       let wasConnected = button.isConnected;
-      const observer = new Observer(() => {
+      const win = doc.defaultView;
+      let observer;
+      const cleanup = () => {
+        observer?.disconnect();
+        win?.removeEventListener?.("unload", cleanup);
+        this.selectionPopupCleanups.delete(cleanup);
+      };
+      observer = new Observer(() => {
         if (button.isConnected) {
           wasConnected = true;
           return;
         }
         if (!wasConnected) return;
-        observer.disconnect();
+        cleanup();
         this.clearLiveSelection(attachmentID, liveSelectionID);
       });
       observer.observe(doc.documentElement, { childList: true, subtree: true });
+      this.selectionPopupCleanups.add(cleanup);
+      win?.addEventListener?.("unload", cleanup, { once: true });
+    }
+
+    setBoundedSelectionEntry(map, attachmentID, value) {
+      map.delete(attachmentID);
+      map.set(attachmentID, value);
+      while (map.size > MAX_SELECTION_ATTACHMENTS) {
+        const evictedID = map.keys().next().value;
+        map.delete(evictedID);
+        this.refreshSelectionViews(evictedID);
+      }
     }
 
     async revealReaderPane(reader) {
@@ -2816,7 +2999,7 @@
       if (duplicate) return false;
       const selection = { ...value, id: `${Date.now()}-${Math.random().toString(36).slice(2)}` };
       list.push(selection);
-      this.selections.set(id, list.slice(-10));
+      this.setBoundedSelectionEntry(this.selections, id, list.slice(-10));
       this.refreshSelectionViews(id, { highlightSelectionID: selection.id });
       return true;
     }
@@ -2835,7 +3018,7 @@
         id: `current-${id}-${++this.liveSelectionSequence}`,
         text,
       };
-      this.liveSelections.set(id, next);
+      this.setBoundedSelectionEntry(this.liveSelections, id, next);
       this.refreshSelectionViews(id);
       return next;
     }
@@ -2872,10 +3055,10 @@
     removeSelection(attachmentID, selectionID) {
       const id = Number(attachmentID);
       if (!Number.isSafeInteger(id)) return;
-      this.selections.set(
-        id,
-        (this.selections.get(id) || []).filter((selection) => selection.id !== selectionID),
-      );
+      const remaining = (this.selections.get(id) || [])
+        .filter((selection) => selection.id !== selectionID);
+      if (remaining.length) this.selections.set(id, remaining);
+      else this.selections.delete(id);
       this.refreshSelectionViews(id);
     }
 
@@ -2910,6 +3093,8 @@
       this.windowCleanups.clear();
       for (const style of this.styles) style.remove();
       this.styles.clear();
+      for (const cleanup of this.selectionPopupCleanups) cleanup();
+      this.selectionPopupCleanups.clear();
       this.selections.clear();
       this.liveSelections.clear();
     }

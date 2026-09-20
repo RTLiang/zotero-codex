@@ -43,7 +43,7 @@ try {
     clientInfo: {
       name: "zotero-codex-thread-start-probe",
       title: "Zotero Codex Thread Start Probe",
-      version: "2026.263.3",
+      version: "2026.263.4",
     },
     capabilities: { experimentalApi: true },
   });

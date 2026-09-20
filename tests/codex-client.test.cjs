@@ -62,3 +62,18 @@ test("reverts the latest turn in place before resending an edited message", asyn
     },
   });
 });
+
+test("bounds resumed task bookkeeping and refreshes recent entries", () => {
+  const client = new CodexAppServerClient();
+  for (let index = 0; index < 505; index++) client.markThreadLoaded(`task-${index}`);
+
+  assert.equal(client.loadedThreads.size, 500);
+  assert.equal(client.loadedThreads.has("task-0"), false);
+  assert.equal(client.loadedThreads.has("task-5"), true);
+
+  client.markThreadLoaded("task-5");
+  client.markThreadLoaded("task-new");
+  assert.equal(client.loadedThreads.size, 500);
+  assert.equal(client.loadedThreads.has("task-5"), true);
+  assert.equal(client.loadedThreads.has("task-6"), false);
+});
