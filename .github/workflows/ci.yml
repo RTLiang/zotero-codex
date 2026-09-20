@@ -21,3 +21,10 @@ jobs:
       - run: npm run build
       - name: Verify XPI archive
         run: unzip -t "dist/zotero-codex-sidebar-$(node -p "require('./package.json').version").xpi"
+      - name: Upload CI build
+        uses: actions/upload-artifact@v4
+        with:
+          name: zotero-codex-sidebar-${{ github.sha }}
+          path: dist/*.xpi
+          if-no-files-found: error
+          retention-days: 14

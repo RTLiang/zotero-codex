@@ -22,7 +22,8 @@ jobs:
           node-version: 20
       - run: npm run check
       - run: npm test
-      - name: Validate tag and release artifact
+      - run: npm run build
+      - name: Prepare release artifact and update manifest
         id: artifact
         shell: bash
         run: |
@@ -35,23 +36,48 @@ jobs:
           xpi="dist/zotero-codex-sidebar-${version}.xpi"
           test -f "$xpi"
           unzip -t "$xpi"
+          node scripts/prepare-release.mjs \
+            "$version" \
+            "$GITHUB_REPOSITORY" \
+            "$GITHUB_REF_NAME" \
+            "$xpi"
 
-          digest="$(sha256sum "$xpi" | cut -d' ' -f1)"
-          expected="$(node -e "const u=require('./updates.json'); process.stdout.write(u.addons['codex-sidebar@zotero.local'].updates[0].update_hash.replace(/^sha256:/, ''))")"
-          update_version="$(node -e "const u=require('./updates.json'); process.stdout.write(u.addons['codex-sidebar@zotero.local'].updates[0].version)")"
-          update_link="$(node -e "const u=require('./updates.json'); process.stdout.write(u.addons['codex-sidebar@zotero.local'].updates[0].update_link)")"
-          test "$digest" = "$expected"
-          test "$version" = "$update_version"
-          test "$update_link" = "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/zotero-codex-sidebar-${version}.xpi"
-
+          cp updates.json "$RUNNER_TEMP/updates.json"
           echo "xpi=$xpi" >> "$GITHUB_OUTPUT"
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           XPI: ${{ steps.artifact.outputs.xpi }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "$XPI" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Zotero Codex Sidebar ${GITHUB_REF_NAME#v}" \
-            --generate-notes \
-            --latest
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "$XPI" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Zotero Codex Sidebar ${GITHUB_REF_NAME#v}" \
+              --latest
+          else
+            gh release create "$GITHUB_REF_NAME" "$XPI" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Zotero Codex Sidebar ${GITHUB_REF_NAME#v}" \
+              --generate-notes \
+              --latest
+          fi
+      - name: Publish Zotero auto-update manifest
+        shell: bash
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          git checkout -B main origin/main
+          cp "$RUNNER_TEMP/updates.json" updates.json
+
+          if git diff --quiet -- updates.json; then
+            exit 0
+          fi
+
+          git config user.name "$(git log -1 --format=%an)"
+          git config user.email "$(git log -1 --format=%ae)"
+          git add updates.json
+          git commit -m "Update Zotero auto-update manifest for ${GITHUB_REF_NAME}"
+          git push origin HEAD:main

@@ -29,6 +29,7 @@ for (const file of [
   "content/markdown.js",
   "content/sidebar.js",
   "content/main.js",
+  "scripts/prepare-release.mjs",
 ]) {
   const result = spawnSync(process.execPath, ["--check", resolve(projectRoot, file)], {
     encoding: "utf8",
