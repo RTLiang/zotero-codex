@@ -5,3 +5,4 @@ pref("extensions.zotero.codexSidebar.paperThreads", "{}");
 pref("extensions.zotero.codexSidebar.model", "");
 pref("extensions.zotero.codexSidebar.reasoningEffort", "");
 pref("extensions.zotero.codexSidebar.showWorkProcess", false);
+pref("extensions.zotero.codexSidebar.sidebarHeight", 0);

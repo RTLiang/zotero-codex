@@ -167,6 +167,9 @@ zotero-codex-allow-once = 允许一次
 zotero-codex-reader-add-selection = 添加到 Codex
 zotero-codex-reader-added-selection = 已添加到 Codex
 zotero-codex-reader-selection-exists = 已在 Codex 中
+zotero-codex-resize-height =
+    .aria-label = 调整聊天区域高度
+    .title = 拖动以调整聊天区域高度
 
 zotero-codex-error-cli-not-found-path = 找不到 Codex CLI：{ $path }
 zotero-codex-error-cli-not-found = 找不到 Codex CLI。请在设置中填写 codex 可执行文件的绝对路径。

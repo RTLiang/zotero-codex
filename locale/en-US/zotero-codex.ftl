@@ -171,6 +171,9 @@ zotero-codex-allow-once = Allow once
 zotero-codex-reader-add-selection = Add to Codex
 zotero-codex-reader-added-selection = Added to Codex
 zotero-codex-reader-selection-exists = Already in Codex
+zotero-codex-resize-height =
+    .aria-label = Resize chat height
+    .title = Drag to resize chat height
 
 zotero-codex-error-cli-not-found-path = Could not find Codex CLI: { $path }
 zotero-codex-error-cli-not-found = Could not find Codex CLI. Enter the absolute path to the codex executable in Settings.

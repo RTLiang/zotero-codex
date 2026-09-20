@@ -26,6 +26,46 @@
   box-sizing: border-box;
 }
 
+.zcs-resize-handle {
+  position: absolute;
+  z-index: 35;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 10px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.zcs-resize-handle::before {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--zcs-border-strong);
+  content: "";
+  opacity: 0.55;
+  transform: translateX(-50%);
+  transition: opacity 120ms ease, width 120ms ease;
+}
+
+.zcs-resize-handle:hover::before,
+.zcs-resize-handle:focus-visible::before,
+.zcs-resizing .zcs-resize-handle::before {
+  width: 36px;
+  opacity: 1;
+}
+
+.zcs-resize-handle:focus-visible {
+  outline: 0;
+}
+
+.zcs-resizing {
+  user-select: none;
+}
+
 .zcs-shell [hidden] {
   display: none !important;
 }

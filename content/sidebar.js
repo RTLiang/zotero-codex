@@ -18,12 +18,21 @@
   };
   const MAX_IMAGE_COUNT = 10;
   const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+  const MIN_SHELL_HEIGHT = 360;
+  const MAX_SHELL_HEIGHT = 1200;
+  const SHELL_HEIGHT_STEP = 24;
   const ACCEPTED_IMAGE_TYPES = new Set([
     "image/gif",
     "image/jpeg",
     "image/png",
     "image/webp",
   ]);
+
+  function normalizeShellHeight(value) {
+    const height = Math.round(Number(value));
+    if (!Number.isFinite(height) || height <= 0) return 0;
+    return Math.max(MIN_SHELL_HEIGHT, Math.min(MAX_SHELL_HEIGHT, height));
+  }
 
   function create(doc, tag, className = "", text = null) {
     const element = doc.createElement(tag);
@@ -303,6 +312,7 @@
       this.activePaperKey = "";
       this.destroyed = false;
       this.pendingRequests = new Map();
+      this.shellResize = null;
       this.cleanupClient = this.client.subscribe((event) => this._handleClientEvent(event));
       this.mount();
     }
@@ -673,6 +683,16 @@
       const statusText = create(doc, "span", "zcs-status-text");
       status.append(statusText);
 
+      const resizeHandle = create(doc, "div", "zcs-resize-handle");
+      resizeHandle.tabIndex = 0;
+      resizeHandle.setAttribute("role", "separator");
+      resizeHandle.setAttribute("aria-orientation", "horizontal");
+      resizeHandle.setAttribute("aria-valuemin", String(MIN_SHELL_HEIGHT));
+      resizeHandle.setAttribute("aria-valuemax", String(MAX_SHELL_HEIGHT));
+      resizeHandle.setAttribute("aria-label", "Resize chat height");
+      resizeHandle.title = "Drag to resize chat height";
+      setL10n(resizeHandle, "zotero-codex-resize-height");
+
       root.append(
         topbar,
         threadPopover,
@@ -684,6 +704,7 @@
         contextPopover,
         modelPopover,
         status,
+        resizeHandle,
       );
       this.body.append(root);
       this.elements = {
@@ -702,6 +723,7 @@
         refreshButton,
         status,
         statusText,
+        resizeHandle,
         contextPopover,
         contextAddButton,
         contextModeButton,
@@ -806,6 +828,10 @@
         toggleWorkProcess: () => {
           this.manager.setShowWorkProcess(showWorkProcessToggle.checked);
         },
+        resizeStart: (event) => this.startShellResize(event),
+        resizeMove: (event) => this.moveShellResize(event),
+        resizeEnd: (event) => this.finishShellResize(event),
+        resizeKeydown: (event) => this.resizeShellWithKeyboard(event),
         input: () => {
           this.resizeComposer();
           this.updateComposerState();
@@ -842,6 +868,11 @@
       sendButton.addEventListener("click", this.handlers.sendOrStop);
       reconnectButton.addEventListener("click", this.handlers.reconnect);
       showWorkProcessToggle.addEventListener("change", this.handlers.toggleWorkProcess);
+      resizeHandle.addEventListener("pointerdown", this.handlers.resizeStart);
+      resizeHandle.addEventListener("pointermove", this.handlers.resizeMove);
+      resizeHandle.addEventListener("pointerup", this.handlers.resizeEnd);
+      resizeHandle.addEventListener("pointercancel", this.handlers.resizeEnd);
+      resizeHandle.addEventListener("keydown", this.handlers.resizeKeydown);
       input.addEventListener("input", this.handlers.input);
       input.addEventListener("keydown", this.handlers.keydown);
       input.addEventListener("paste", this.handlers.paste);
@@ -861,14 +892,71 @@
     lockInitialShellHeight(retries = 2) {
       const root = this.elements?.root;
       if (!root || root.dataset.shellHeightLocked === "true" || this.destroyed) return;
+      const savedHeight = this.manager.getSidebarHeight?.()
+        || normalizeShellHeight(this.manager.getPreference("sidebarHeight"));
+      if (savedHeight) {
+        this.applyShellHeight(savedHeight);
+        return;
+      }
       const height = Math.round(root.getBoundingClientRect().height);
       if (height > 0) {
-        root.style.setProperty("--zcs-shell-height", `${height}px`);
-        root.dataset.shellHeightLocked = "true";
+        this.applyShellHeight(height);
         return;
       }
       if (retries <= 0) return;
       this.doc.defaultView?.requestAnimationFrame?.(() => this.lockInitialShellHeight(retries - 1));
+    }
+
+    applyShellHeight(value) {
+      const height = normalizeShellHeight(value);
+      if (!height || !this.elements?.root) return 0;
+      this.elements.root.style.setProperty("--zcs-shell-height", `${height}px`);
+      this.elements.root.dataset.shellHeightLocked = "true";
+      this.elements.resizeHandle.setAttribute("aria-valuenow", String(height));
+      return height;
+    }
+
+    persistShellHeight(value) {
+      const height = normalizeShellHeight(value);
+      if (!height) return;
+      if (this.manager.setSidebarHeight) this.manager.setSidebarHeight(height);
+      else {
+        this.manager.setPreference("sidebarHeight", height);
+        this.applyShellHeight(height);
+      }
+    }
+
+    startShellResize(event) {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const height = Math.round(this.elements.root.getBoundingClientRect().height);
+      this.shellResize = { pointerID: event.pointerId, startY: event.clientY, height };
+      this.elements.root.classList.add("zcs-resizing");
+      this.elements.resizeHandle.setPointerCapture?.(event.pointerId);
+    }
+
+    moveShellResize(event) {
+      if (!this.shellResize || event.pointerId !== this.shellResize.pointerID) return;
+      event.preventDefault();
+      this.applyShellHeight(this.shellResize.height + event.clientY - this.shellResize.startY);
+    }
+
+    finishShellResize(event) {
+      if (!this.shellResize || event.pointerId !== this.shellResize.pointerID) return;
+      event.preventDefault();
+      const height = Math.round(this.elements.root.getBoundingClientRect().height);
+      this.elements.resizeHandle.releasePointerCapture?.(event.pointerId);
+      this.elements.root.classList.remove("zcs-resizing");
+      this.shellResize = null;
+      this.persistShellHeight(height);
+    }
+
+    resizeShellWithKeyboard(event) {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      event.preventDefault();
+      const current = Math.round(this.elements.root.getBoundingClientRect().height);
+      const direction = event.key === "ArrowUp" ? -1 : 1;
+      this.persistShellHeight(current + direction * SHELL_HEIGHT_STEP);
     }
 
     openSettings() {
@@ -2439,6 +2527,11 @@
       e.sendButton.removeEventListener("click", this.handlers.sendOrStop);
       e.reconnectButton.removeEventListener("click", this.handlers.reconnect);
       e.showWorkProcessToggle.removeEventListener("change", this.handlers.toggleWorkProcess);
+      e.resizeHandle.removeEventListener("pointerdown", this.handlers.resizeStart);
+      e.resizeHandle.removeEventListener("pointermove", this.handlers.resizeMove);
+      e.resizeHandle.removeEventListener("pointerup", this.handlers.resizeEnd);
+      e.resizeHandle.removeEventListener("pointercancel", this.handlers.resizeEnd);
+      e.resizeHandle.removeEventListener("keydown", this.handlers.resizeKeydown);
       e.input.removeEventListener("input", this.handlers.input);
       e.input.removeEventListener("keydown", this.handlers.keydown);
       e.input.removeEventListener("paste", this.handlers.paste);
@@ -2478,6 +2571,17 @@
     setShowWorkProcess(visible) {
       this.setPreference("showWorkProcess", Boolean(visible));
       for (const view of this.views.values()) view.applyWorkProcessPreference();
+    }
+
+    getSidebarHeight() {
+      return normalizeShellHeight(this.getPreference("sidebarHeight"));
+    }
+
+    setSidebarHeight(value) {
+      const height = normalizeShellHeight(value);
+      if (!height) return;
+      this.setPreference("sidebarHeight", height);
+      for (const view of this.views.values()) view.applyShellHeight(height);
     }
 
     getPaperThread(contextOrKey) {
