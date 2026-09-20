@@ -11,8 +11,8 @@
   display: grid;
   grid-template-rows: 42px minmax(0, 1fr) auto auto;
   width: 100%;
-  height: min(78vh, 840px);
-  min-height: min(540px, 72vh);
+  height: var(--zcs-shell-height, min(78vh, 840px));
+  min-height: var(--zcs-shell-height, min(540px, 72vh));
   overflow: hidden;
   color: CanvasText;
   background: Canvas;

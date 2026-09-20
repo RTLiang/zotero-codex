@@ -855,6 +855,20 @@
       this.applyWorkProcessPreference();
       this.renderContextAttachment();
       this.updateComposerState();
+      this.lockInitialShellHeight();
+    }
+
+    lockInitialShellHeight(retries = 2) {
+      const root = this.elements?.root;
+      if (!root || root.dataset.shellHeightLocked === "true" || this.destroyed) return;
+      const height = Math.round(root.getBoundingClientRect().height);
+      if (height > 0) {
+        root.style.setProperty("--zcs-shell-height", `${height}px`);
+        root.dataset.shellHeightLocked = "true";
+        return;
+      }
+      if (retries <= 0) return;
+      this.doc.defaultView?.requestAnimationFrame?.(() => this.lockInitialShellHeight(retries - 1));
     }
 
     openSettings() {
@@ -2561,6 +2575,7 @@
         onAsyncRender: async ({ body }) => {
           const view = this.views.get(body);
           if (!view) return;
+          view.lockInitialShellHeight();
           if (!view.initialized) await view.initialize();
           else {
             await view.refreshContext();
@@ -2570,6 +2585,7 @@
         onToggle: ({ body, event }) => {
           if (!event?.target?.open) return;
           const view = this.views.get(body);
+          view?.lockInitialShellHeight();
           if (view && !view.initialized) void view.initialize();
         },
       });
