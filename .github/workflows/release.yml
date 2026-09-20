@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm run check
+      - run: npm test
+      - name: Validate tag and release artifact
+        id: artifact
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          package_version="$(node -p "require('./package.json').version")"
+          manifest_version="$(node -p "require('./manifest.json').version")"
+          test "$version" = "$package_version"
+          test "$version" = "$manifest_version"
+
+          xpi="dist/zotero-codex-sidebar-${version}.xpi"
+          test -f "$xpi"
+          unzip -t "$xpi"
+
+          digest="$(sha256sum "$xpi" | cut -d' ' -f1)"
+          expected="$(node -e "const u=require('./updates.json'); process.stdout.write(u.addons['codex-sidebar@zotero.local'].updates[0].update_hash.replace(/^sha256:/, ''))")"
+          update_version="$(node -e "const u=require('./updates.json'); process.stdout.write(u.addons['codex-sidebar@zotero.local'].updates[0].version)")"
+          update_link="$(node -e "const u=require('./updates.json'); process.stdout.write(u.addons['codex-sidebar@zotero.local'].updates[0].update_link)")"
+          test "$digest" = "$expected"
+          test "$version" = "$update_version"
+          test "$update_link" = "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/zotero-codex-sidebar-${version}.xpi"
+
+          echo "xpi=$xpi" >> "$GITHUB_OUTPUT"
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          XPI: ${{ steps.artifact.outputs.xpi }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$XPI" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Zotero Codex Sidebar ${GITHUB_REF_NAME#v}" \
+            --generate-notes \
+            --latest
