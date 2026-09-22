@@ -77,3 +77,27 @@ test("bounds resumed task bookkeeping and refreshes recent entries", () => {
   assert.equal(client.loadedThreads.has("task-5"), true);
   assert.equal(client.loadedThreads.has("task-6"), false);
 });
+
+test("passes the imagegen skill item only for explicit image-generation turns", async () => {
+  const client = new CodexAppServerClient();
+  client.loadedThreads.add("task-imagegen");
+  const calls = [];
+  client.request = async (method, params) => {
+    calls.push({ method, params });
+    if (method === "skills/list") return {
+      data: [{ skills: [{ name: "imagegen", enabled: true, path: "/tmp/imagegen/SKILL.md" }] }],
+    };
+    return { turn: { id: "turn-imagegen" } };
+  };
+
+  await client.startTurn({ threadID: "task-imagegen", text: "$imagegen Draw a chart" });
+  assert.deepEqual(calls.map(({ method }) => method), ["skills/list", "turn/start"]);
+  assert.deepEqual(calls[1].params.input, [
+    { type: "text", text: "$imagegen Draw a chart" },
+    { type: "skill", name: "imagegen", path: "/tmp/imagegen/SKILL.md" },
+  ]);
+
+  calls.length = 0;
+  await client.startTurn({ threadID: "task-imagegen", text: "Explain this paper" });
+  assert.deepEqual(calls.map(({ method }) => method), ["turn/start"]);
+});

@@ -119,7 +119,7 @@
           case "mention":
             return row.name ? `@${row.name}` : "📎";
           case "skill":
-            return row.name ? `$${row.name}` : "[Skill]";
+            return "";
           case "image":
           case "localImage":
             return "";
@@ -162,6 +162,21 @@
       }
     }
     return input;
+  }
+
+  function generatedImageSource(item) {
+    if (item?.type !== "imageGeneration" || item.status !== "completed") return "";
+    const result = typeof item.result === "string" ? item.result.trim() : "";
+    if (!result) return "";
+    if (/^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/u.test(result)) {
+      return result;
+    }
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(result)) return "";
+    const mimeType = result.startsWith("iVBORw0KGgo") ? "image/png"
+      : result.startsWith("/9j/") ? "image/jpeg"
+        : result.startsWith("UklGR") ? "image/webp"
+          : result.startsWith("R0lGOD") ? "image/gif" : "";
+    return mimeType ? `data:${mimeType};base64,${result}` : "";
   }
 
   function normalizeMessagePhase(value) {
@@ -246,6 +261,18 @@
             });
           }
           continue;
+        }
+        if (item.type === "imageGeneration") {
+          const source = generatedImageSource(item);
+          if (source) {
+            output.push({
+              id: item.id,
+              turnID,
+              role: "generatedImage",
+              images: [{ url: source, name: item.revisedPrompt || "" }],
+            });
+            continue;
+          }
         }
         if (item.type === "hookPrompt" || item.type === "contextCompaction") continue;
         output.push({
@@ -405,6 +432,7 @@
     userInputText,
     userInputImages,
     buildTurnInput,
+    generatedImageSource,
     normalizeMessagePhase,
     activityDescriptor,
     describeActivity,

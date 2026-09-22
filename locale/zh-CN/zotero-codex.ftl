@@ -43,6 +43,7 @@ zotero-codex-add-context =
     .title = 添加内容
     .aria-label = 添加内容
 zotero-codex-add-image = 添加图片
+zotero-codex-generate-image = 生成图片
 zotero-codex-image-attachment-meta = 图片 · { $size }
 zotero-codex-remove-image =
     .title = 移除图片

@@ -43,6 +43,7 @@ zotero-codex-add-context =
     .title = Add attachment
     .aria-label = Add attachment
 zotero-codex-add-image = Add image
+zotero-codex-generate-image = Generate image
 zotero-codex-image-attachment-meta = Image · { $size }
 zotero-codex-remove-image =
     .title = Remove image

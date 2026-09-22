@@ -134,6 +134,38 @@ test("builds native Codex image input and restores images from task history", ()
   assert.deepEqual(entry.images, [{ type: "image", url: dataURL, detail: null }]);
 });
 
+test("renders completed generated images outside the collapsible work process", () => {
+  const png = "iVBORw0KGgoAAAANSUhEUg==";
+  const entries = Protocol.flattenTurns([{
+    id: "turn-imagegen",
+    items: [
+      {
+        id: "prompt",
+        type: "userMessage",
+        content: [
+          { type: "text", text: "$imagegen Draw a diagram" },
+          { type: "skill", name: "imagegen", path: "/tmp/imagegen/SKILL.md" },
+        ],
+      },
+      { id: "generated", type: "imageGeneration", status: "completed", result: png },
+      { id: "reply", type: "agentMessage", phase: "final", text: "Done" },
+    ],
+  }]);
+  assert.equal(entries[0].text, "$imagegen Draw a diagram");
+  assert.deepEqual(entries.map((entry) => entry.role), ["user", "generatedImage", "assistant"]);
+  assert.equal(entries[1].images[0].url, `data:image/png;base64,${png}`);
+  assert.deepEqual(
+    Protocol.groupTranscriptEntries(entries).map((entry) => entry.role),
+    ["user", "generatedImage", "assistant"],
+  );
+  assert.equal(Protocol.generatedImageSource({
+    type: "imageGeneration", status: "failed", result: png,
+  }), "");
+  assert.equal(Protocol.generatedImageSource({
+    type: "imageGeneration", status: "completed", result: "<svg onload=alert(1)>\n",
+  }), "");
+});
+
 test("keeps final and phase-less assistant messages visible while CoT is hidden", () => {
   assert.equal(Protocol.normalizeMessagePhase("commentary"), "commentary");
   assert.equal(Protocol.normalizeMessagePhase("final"), "final");

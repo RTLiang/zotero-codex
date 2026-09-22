@@ -190,7 +190,7 @@
           clientInfo: {
             name: "zotero-codex-sidebar",
             title: "Codex Sidebar for Zotero",
-            version: "2026.263.5",
+            version: "2026.265.1",
           },
           capabilities: { experimentalApi: true },
         });
@@ -470,9 +470,23 @@
 
     async startTurn({ threadID, text, images, context, model, effort }) {
       await this.ensureThreadLoaded(threadID);
+      const input = Protocol.buildTurnInput(text, images);
+      if (/(^|\s)\$imagegen\b/u.test(String(text || ""))) {
+        try {
+          const cwd = getHomeDirectory();
+          const result = await this.request("skills/list", { cwds: [cwd] });
+          const skill = result?.data?.flatMap((entry) => entry.skills || [])
+            .find((entry) => entry.name === "imagegen" && entry.enabled && entry.path);
+          if (skill) input.push({ type: "skill", name: "imagegen", path: skill.path });
+        }
+        catch (error) {
+          // The $imagegen marker still works without a skill input item.
+          this.log("Could not resolve imagegen skill path", error);
+        }
+      }
       const result = await this.request("turn/start", {
         threadId: threadID,
-        input: Protocol.buildTurnInput(text, images),
+        input,
         ...(context ? { additionalContext: context } : {}),
         ...(model ? { model } : {}),
         ...(effort ? { effort } : {}),

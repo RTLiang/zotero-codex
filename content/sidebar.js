@@ -80,6 +80,19 @@
     return icon;
   }
 
+  function createSparkleIcon(doc) {
+    const namespace = "http://www.w3.org/2000/svg";
+    const icon = doc.createElementNS(namespace, "svg");
+    icon.setAttribute("class", "zcs-image-icon");
+    icon.setAttribute("viewBox", "0 0 16 16");
+    icon.setAttribute("fill", "none");
+    icon.setAttribute("aria-hidden", "true");
+    const sparkles = doc.createElementNS(namespace, "path");
+    sparkles.setAttribute("d", "M8 1.75 9.4 6.6 14.25 8 9.4 9.4 8 14.25 6.6 9.4 1.75 8 6.6 6.6 8 1.75ZM12.75 1.75v2.5m-1.25-1.25H14");
+    icon.append(sparkles);
+    return icon;
+  }
+
   function fileToDataURL(doc, file) {
     return new Promise((resolve, reject) => {
       const reader = new doc.defaultView.FileReader();
@@ -603,6 +616,14 @@
         imageOptionIcon,
         createL10n(doc, "span", "zcs-row-copy", "zotero-codex-add-image", "Add image"),
       );
+      const generateImageOption = create(doc, "button", "zcs-menu-row zcs-generate-image-option");
+      generateImageOption.type = "button";
+      const generateImageIcon = create(doc, "span", "zcs-row-icon");
+      generateImageIcon.append(createSparkleIcon(doc));
+      generateImageOption.append(
+        generateImageIcon,
+        createL10n(doc, "span", "zcs-row-copy", "zotero-codex-generate-image", "Generate image"),
+      );
       const contextOption = create(doc, "button", "zcs-menu-row zcs-context-option");
       contextOption.type = "button";
       const contextCheck = create(doc, "span", "zcs-row-icon zcs-context-check", "✓");
@@ -624,7 +645,7 @@
       contextCopy.append(contextTitle, contextMeta);
       contextOption.append(contextCheck, contextCopy);
       const selections = create(doc, "div", "zcs-context-selections");
-      contextPopover.append(imageOption, contextOption, selections);
+      contextPopover.append(imageOption, generateImageOption, contextOption, selections);
 
       const modelPopover = create(doc, "div", "zcs-popover zcs-model-popover");
       modelPopover.hidden = true;
@@ -733,6 +754,7 @@
         contextAddButton,
         contextModeButton,
         imageOption,
+        generateImageOption,
         contextOption,
         contextCheck,
         contextTitle,
@@ -792,6 +814,17 @@
         chooseImages: () => {
           this.closePopovers();
           imageInput.click();
+        },
+        chooseImageGeneration: () => {
+          this.closePopovers();
+          const current = input.value.trim();
+          if (!/(^|\s)\$imagegen\b/u.test(current)) {
+            input.value = current ? `$imagegen ${current}` : "$imagegen ";
+          }
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+          this.resizeComposer();
+          this.updateComposerState();
         },
         imagesSelected: () => {
           const files = Array.from(imageInput.files || []);
@@ -870,6 +903,7 @@
       threadSearch.addEventListener("input", this.handlers.searchThreads);
       contextOption.addEventListener("click", this.handlers.toggleContext);
       imageOption.addEventListener("click", this.handlers.chooseImages);
+      generateImageOption.addEventListener("click", this.handlers.chooseImageGeneration);
       sendButton.addEventListener("click", this.handlers.sendOrStop);
       reconnectButton.addEventListener("click", this.handlers.reconnect);
       showWorkProcessToggle.addEventListener("change", this.handlers.toggleWorkProcess);
@@ -1051,6 +1085,7 @@
       this.elements.contextAddButton.disabled = this.running || this.contextTransitioning;
       this.elements.contextModeButton.disabled = this.running || this.contextTransitioning;
       this.elements.imageOption.disabled = this.running || this.contextTransitioning;
+      this.elements.generateImageOption.disabled = this.running || this.contextTransitioning;
       this.elements.imageInput.disabled = this.running || this.contextTransitioning;
       this.elements.modelTrigger.disabled = unavailable || !this.models.length;
       this.elements.modelChoice.disabled = unavailable || !this.models.length;
@@ -1074,7 +1109,8 @@
         send.classList.add("zcs-send-stop");
         return;
       }
-      send.disabled = !this.elements.input.value.trim() && !this.images.length;
+      const prompt = this.elements.input.value.trim().replace(/^\$imagegen\b\s*/u, "");
+      send.disabled = !prompt && !this.images.length;
       setButtonLabel(send, "↑", "zotero-codex-send", "Send");
       send.classList.remove("zcs-send-stop");
     }
@@ -2003,6 +2039,12 @@
     appendEntry(entry, { streaming = false, editMode = "fork" } = {}) {
       const transcript = this.elements.transcript;
       if (entry.role === "process") return this.appendProcessGroup(entry.entries || []);
+      if (entry.role === "generatedImage") {
+        const article = create(this.doc, "article", "zcs-message zcs-assistant zcs-generated-image");
+        this.appendMessageImages(article, entry.images);
+        transcript.append(article);
+        return article;
+      }
       if (entry.role === "activity") {
         const details = create(this.doc, "details", "zcs-activity");
         const summary = create(this.doc, "summary", "", entry.text);
@@ -2258,8 +2300,9 @@
     async send() {
       const text = this.elements.input.value.trim();
       const images = this.images.map((image) => ({ ...image }));
+      const prompt = text.replace(/^\$imagegen\b\s*/u, "");
       if (
-        (!text && !images.length) ||
+        (!prompt && !images.length) ||
         this.running ||
         this.creatingTask ||
         this.contextTransitioning
@@ -2386,6 +2429,7 @@
       this.elements.contextAddButton.disabled = running || this.contextTransitioning;
       this.elements.contextModeButton.disabled = running || this.contextTransitioning;
       this.elements.imageOption.disabled = running || this.contextTransitioning;
+      this.elements.generateImageOption.disabled = running || this.contextTransitioning;
       this.elements.imageInput.disabled = running || this.contextTransitioning;
       this.elements.reconnectButton.disabled = running;
       this.updateComposerState();
@@ -2689,6 +2733,7 @@
       e.threadSearch.removeEventListener("input", this.handlers.searchThreads);
       e.contextOption.removeEventListener("click", this.handlers.toggleContext);
       e.imageOption.removeEventListener("click", this.handlers.chooseImages);
+      e.generateImageOption.removeEventListener("click", this.handlers.chooseImageGeneration);
       e.sendButton.removeEventListener("click", this.handlers.sendOrStop);
       e.reconnectButton.removeEventListener("click", this.handlers.reconnect);
       e.showWorkProcessToggle.removeEventListener("change", this.handlers.toggleWorkProcess);
