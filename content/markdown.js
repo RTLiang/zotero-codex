@@ -8,7 +8,7 @@
   }
 
   function normalizeLatex(value) {
-    return String(value || "")
+    const normalizeMath = (source) => source
       // Recover the common shorthand `\sum_j=1^K` as actual lower/upper limits.
       .replace(
         /\\(sum|prod|coprod)_([A-Za-z])=([A-Za-z0-9.]+)\^([A-Za-z0-9]+)/gu,
@@ -21,17 +21,36 @@
       )
       // Multi-letter uppercase subscripts are conventionally a single label.
       .replace(/_([A-Z]{2,})(?=[^A-Za-z]|$)/gu, "_{$1}");
+    const source = String(value || "");
+    let result = "";
+    let start = 0;
+    const rawGroup = /\\(?:text|operatorname)\{/gu;
+    for (const match of source.matchAll(rawGroup)) {
+      if (match.index < start) continue;
+      result += normalizeMath(source.slice(start, match.index));
+      let end = match.index + match[0].length;
+      let depth = 1;
+      while (end < source.length && depth > 0) {
+        if (source[end] === "{" && source[end - 1] !== "\\") depth++;
+        else if (source[end] === "}" && source[end - 1] !== "\\") depth--;
+        end++;
+      }
+      result += source.slice(match.index, end);
+      start = end;
+    }
+    return result + normalizeMath(source.slice(start));
   }
 
   function isBareLatexLine(value) {
     const line = String(value || "").trim();
-    if (!line || line.includes("`") || !line.includes("\\")) return false;
+    if (!line || line.includes("`") || !line.includes("\\") || /[\u3400-\u9fff]/u.test(line)) return false;
     const commands = [...line.matchAll(/\\([A-Za-z]+)/gu)].map((match) => match[1]);
     const recognized = commands.some((command) =>
-      /^(?:frac|dfrac|tfrac|sqrt|sum|prod|coprod|int|iint|iiint|oint|log|ln|exp|min|max|argmin|argmax|lim|sup|inf)$/u.test(command)
-      || /^(?:mathcal|mathbb|mathrm|mathbf|mathit|mathsf|mathtt)(?:[A-Za-z])?$/u.test(command));
+      /^(?:frac|dfrac|tfrac|binom|sqrt|sum|prod|coprod|int|iint|iiint|oint|log|ln|exp|min|max|argmin|argmax|lim|sup|inf)$/u.test(command)
+      || /^(?:mathcal|mathbb|mathrm|mathbf|mathit|mathsf|mathtt)(?:[A-Za-z])?$/u.test(command)
+      || LATEX_SYMBOLS.has(command));
     if (!recognized) return false;
-    return /(?:[=<>≤≥≈]|\\(?:frac|dfrac|tfrac|sqrt|sum|prod|coprod|int|iint|iiint|oint)\b|[_^](?:\{|[A-Za-z0-9]))/u.test(line);
+    return /(?:[=<>≤≥≈+*/]|\\(?:frac|dfrac|tfrac|binom|sqrt|sum|prod|coprod|int|iint|iiint|oint)\b|[_^](?:\{|[A-Za-z0-9]))/u.test(line);
   }
 
   function splitTableRow(value) {
@@ -91,6 +110,7 @@
     if (/^ {0,3}>/u.test(line)) return true;
     if (/^ {0,3}(?:[-+*]|\d+[.)])\s+/u.test(line)) return true;
     if (/^\s*(?:\$\$|\\\[)/u.test(line)) return true;
+    if (/^\s*\\begin\{(?:matrix|pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|cases|aligned|align|gathered|gather|split)\}/u.test(line)) return true;
     if (isBareLatexLine(line)) return true;
     if (isHorizontalRule(line)) return true;
     return Boolean(line.includes("|") && tableAlignmentRow(lines[index + 1] || ""));
@@ -128,10 +148,12 @@
         const closing = displayMath[1] === "$$" ? "$$" : "\\]";
         const content = [];
         let remainder = displayMath[2];
-        const sameLineEnd = remainder.lastIndexOf(closing);
+        const sameLineEnd = remainder.indexOf(closing);
         if (sameLineEnd >= 0) {
           content.push(remainder.slice(0, sameLineEnd));
+          const tail = remainder.slice(sameLineEnd + closing.length).trim();
           index++;
+          if (tail) lines.splice(index, 0, tail);
         }
         else {
           if (remainder) content.push(remainder);
@@ -141,7 +163,9 @@
             const end = remainder.indexOf(closing);
             if (end >= 0) {
               content.push(remainder.slice(0, end));
+              const tail = remainder.slice(end + closing.length).trim();
               index++;
+              if (tail) lines.splice(index, 0, tail);
               break;
             }
             content.push(remainder);
@@ -149,6 +173,16 @@
           }
         }
         blocks.push({ type: "math", text: content.join("\n").trim() });
+        continue;
+      }
+
+      const environment = line.match(/^\s*\\begin\{(matrix|pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|cases|aligned|align|gathered|gather|split)\}/u);
+      if (environment) {
+        const content = [line];
+        const closing = `\\end{${environment[1]}}`;
+        index++;
+        while (!content.at(-1).includes(closing) && index < lines.length) content.push(lines[index++]);
+        blocks.push({ type: "math", text: content.join("\n") });
         continue;
       }
 
@@ -244,9 +278,13 @@
   const MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
   const LATEX_SYMBOLS = new Map(Object.entries({
     times: "×", cdot: "·", div: "÷", pm: "±", mp: "∓", le: "≤", leq: "≤",
-    ge: "≥", geq: "≥", neq: "≠", approx: "≈", sim: "∼", simeq: "≃",
+    ge: "≥", geq: "≥", ne: "≠", neq: "≠", leqslant: "⩽", geqslant: "⩾",
+    approx: "≈", sim: "∼", simeq: "≃", cong: "≅", asymp: "≍",
     equiv: "≡", propto: "∝", in: "∈", notin: "∉", subset: "⊂", supset: "⊃",
     subseteq: "⊆", supseteq: "⊇", cup: "∪", cap: "∩", emptyset: "∅",
+    land: "∧", wedge: "∧", lor: "∨", vee: "∨", neg: "¬",
+    otimes: "⊗", oplus: "⊕", setminus: "∖", perp: "⟂", parallel: "∥",
+    mid: "∣", vdash: "⊢", models: "⊨", therefore: "∴", because: "∵",
     infty: "∞", partial: "∂", nabla: "∇", forall: "∀", exists: "∃",
     to: "→", mapsto: "↦", rightarrow: "→", leftarrow: "←", leftrightarrow: "↔",
     Rightarrow: "⇒", Leftarrow: "⇐", Leftrightarrow: "⇔",
@@ -257,7 +295,10 @@
     phi: "φ", varphi: "ϕ", chi: "χ", psi: "ψ", omega: "ω",
     Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Xi: "Ξ", Pi: "Π",
     Sigma: "Σ", Upsilon: "Υ", Phi: "Φ", Psi: "Ψ", Omega: "Ω",
-    ldots: "…", cdots: "⋯", vdots: "⋮", ddots: "⋱",
+    ldots: "…", cdots: "⋯", vdots: "⋮", ddots: "⋱", dots: "…", circ: "∘",
+    lbrace: "{", rbrace: "}", langle: "⟨", rangle: "⟩", lvert: "|", rvert: "|",
+    lVert: "‖", rVert: "‖", Vert: "‖", lfloor: "⌊", rfloor: "⌋",
+    lceil: "⌈", rceil: "⌉", textbackslash: "\\",
   }));
   const LATEX_NAMED_OPERATORS = new Set([
     "min", "max", "argmin", "argmax", "lim", "sup", "inf", "log", "ln", "exp",
@@ -269,8 +310,14 @@
   const BINARY_MATH_OPERATORS = new Set([
     "+", "-", "*", "/", "=", "×", "·", "÷", "±", "∓", "≤", "≥", "≠", "≈", "≃",
     "≡", "∝", "∈", "∉", "⊂", "⊃", "⊆", "⊇", "∪", "∩", "→", "↦", "←", "↔",
-    "⇒", "⇐", "⇔",
+    "⇒", "⇐", "⇔", "∘", "⩽", "⩾", "≅", "≍", "∧", "∨", "⊗", "⊕",
+    "∖", "⟂", "∥", "∣", "⊢", "⊨",
   ]);
+  const LATEX_ACCENTS = new Map(Object.entries({
+    hat: "^", widehat: "^", bar: "¯", overline: "¯", vec: "→", tilde: "~",
+    widetilde: "~", dot: "˙", ddot: "¨", overrightarrow: "→", overleftarrow: "←",
+    underline: "_",
+  }));
   const LATEX_VARIANTS = new Map(Object.entries({
     mathrm: "normal", mathbf: "bold", mathit: "italic", mathbb: "double-struck",
     mathcal: "script",
@@ -312,11 +359,46 @@
 
     const parseGroup = () => {
       skipSpaces();
-      if (source[index] !== "{") return parseAtom();
+      if (source[index] !== "{") {
+        if (/\d/u.test(source[index] || "")) return { type: "number", text: source[index++] };
+        return parseAtom();
+      }
       index++;
       const group = parseSequence("}");
       if (source[index] === "}") index++;
       return group;
+    };
+
+    const parseEnvironment = () => {
+      const name = parseRawGroup();
+      const closing = `\\end{${name}}`;
+      const end = name ? source.indexOf(closing, index) : -1;
+      if (end < 0) return { type: "text", text: `\\begin{${name}}` };
+      const body = source.slice(index, end);
+      index = end + closing.length;
+      const rows = [[]];
+      let cell = "";
+      let depth = 0;
+      const addCell = () => {
+        rows.at(-1).push(parseLatex(cell.trim()));
+        cell = "";
+      };
+      for (let position = 0; position < body.length; position++) {
+        const character = body[position];
+        if (character === "{" && body[position - 1] !== "\\") depth++;
+        else if (character === "}" && body[position - 1] !== "\\") depth--;
+        if (depth === 0 && character === "&" && body[position - 1] !== "\\") {
+          addCell();
+        }
+        else if (depth === 0 && character === "\\" && body[position + 1] === "\\") {
+          addCell();
+          rows.push([]);
+          position++;
+        }
+        else cell += character;
+      }
+      addCell();
+      return { type: "environment", name, rows };
     };
 
     const parseCommand = () => {
@@ -324,14 +406,34 @@
       const start = index;
       while (/[A-Za-z]/u.test(source[index] || "")) index++;
       const name = source.slice(start, index) || source[index++] || "";
-      if (name === "left" || name === "right") {
+      if (name === "left" || name === "right" || name === "middle") {
         skipSpaces();
+        if (source[index] === ".") {
+          index++;
+          return { type: "row", children: [] };
+        }
         return parseAtom();
       }
+      if (name === "begin") return parseEnvironment();
       if (["frac", "dfrac", "tfrac"].includes(name)) {
         return { type: "fraction", numerator: parseGroup(), denominator: parseGroup() };
       }
-      if (name === "sqrt") return { type: "sqrt", body: parseGroup() };
+      if (name === "binom") {
+        return { type: "fraction", numerator: parseGroup(), denominator: parseGroup(), binomial: true };
+      }
+      if (name === "sqrt") {
+        skipSpaces();
+        let degree = null;
+        if (source[index] === "[") {
+          index++;
+          degree = parseSequence("]");
+          if (source[index] === "]") index++;
+        }
+        return { type: "sqrt", body: parseGroup(), degree };
+      }
+      if (LATEX_ACCENTS.has(name)) {
+        return { type: "accent", mark: LATEX_ACCENTS.get(name), body: parseGroup(), under: name === "underline" };
+      }
       if (name === "text" || name === "operatorname") {
         return { type: name === "text" ? "text" : "namedOperator", text: parseRawGroup() };
       }
@@ -348,11 +450,19 @@
           ? { type: "identifier", text }
           : { type: "operator", text };
       }
-      if ([",", ";", ":", "!", "quad", "qquad", " "].includes(name)) {
-        const width = name === "qquad" ? "2em" : name === "quad" ? "1em" : ".28em";
-        return { type: "space", width };
+      if (["displaystyle", "textstyle", "scriptstyle", "scriptscriptstyle", "limits", "nolimits"].includes(name)) {
+        return { type: "row", children: [] };
       }
-      return { type: "identifier", text: name };
+      const spaces = { ",": ".167em", ":": ".222em", ";": ".278em", "!": "-.167em",
+        quad: "1em", qquad: "2em", " ": ".333em" };
+      if (Object.hasOwn(spaces, name)) {
+        return { type: "space", width: spaces[name] };
+      }
+      if (["{", "}", "|", "[", "]", "(", ")", "%", "$", "#", "&", "_"].includes(name)) {
+        return { type: "operator", text: name };
+      }
+      const group = source[index] === "{" ? `{${parseRawGroup()}}` : "";
+      return { type: "text", text: `\\${name}${group}` };
     };
 
     function parseAtom() {
@@ -380,9 +490,17 @@
         let base = parseAtom();
         let subscript = null;
         let superscript = null;
+        while (source.startsWith("\\limits", index) || source.startsWith("\\nolimits", index)) {
+          index += source.startsWith("\\nolimits", index) ? 9 : 7;
+        }
         while (source[index] === "_" || source[index] === "^") {
           const marker = source[index++];
-          const script = parseGroup();
+          let script = parseGroup();
+          if (marker === "^" && (script.type === "operator" && script.text === "∘"
+            || script.type === "row" && script.children.length === 1
+              && script.children[0].type === "operator" && script.children[0].text === "∘")) {
+            script = { type: "operator", text: "°" };
+          }
           if (marker === "_") subscript = script;
           else superscript = script;
         }
@@ -408,9 +526,21 @@
     if (node.type === "space") return " ";
     if (node.type === "style") return latexAstToText(node.body);
     if (node.type === "fraction") {
+      if (node.binomial) return `(${latexAstToText(node.numerator)} choose ${latexAstToText(node.denominator)})`;
       return `(${latexAstToText(node.numerator)})/(${latexAstToText(node.denominator)})`;
     }
-    if (node.type === "sqrt") return `√(${latexAstToText(node.body)})`;
+    if (node.type === "sqrt") {
+      const root = node.degree ? `${latexAstToText(node.degree)}√` : "√";
+      return `${root}(${latexAstToText(node.body)})`;
+    }
+    if (node.type === "accent") return `${node.mark}(${latexAstToText(node.body)})`;
+    if (node.type === "environment") {
+      const rows = node.rows.map((row) => row.map(latexAstToText).join(" ")).join("; ");
+      const fences = { pmatrix: ["(", ")"], bmatrix: ["[", "]"], Bmatrix: ["{", "}"],
+        vmatrix: ["|", "|"], Vmatrix: ["‖", "‖"], cases: ["{", ""] };
+      const [left, right] = fences[node.name] || ["", ""];
+      return `${left}${rows}${right}`;
+    }
     if (node.type === "script") {
       const convert = (script, characters, opening, closing) => {
         const text = latexAstToText(script);
@@ -420,7 +550,9 @@
       return [
         latexAstToText(node.base),
         node.subscript ? convert(node.subscript, SUBSCRIPT_CHARACTERS, "₍", "₎") : "",
-        node.superscript ? convert(node.superscript, SUPERSCRIPT_CHARACTERS, "⁽", "⁾") : "",
+        node.superscript?.type === "operator" && node.superscript.text === "°"
+          ? "°"
+          : node.superscript ? convert(node.superscript, SUPERSCRIPT_CHARACTERS, "⁽", "⁾") : "",
       ].join("");
     }
     return "";
@@ -441,10 +573,20 @@
     const source = String(value || "");
     const tokens = [];
     let index = 0;
+    const findUnescaped = (delimiter, start) => {
+      let position = source.indexOf(delimiter, start);
+      while (position >= 0) {
+        let slashes = 0;
+        for (let previous = position - 1; source[previous] === "\\"; previous--) slashes++;
+        if (slashes % 2 === 0) return position;
+        position = source.indexOf(delimiter, position + delimiter.length);
+      }
+      return -1;
+    };
 
     while (index < source.length) {
       if (source.startsWith("\\(", index)) {
-        const end = source.indexOf("\\)", index + 2);
+        const end = findUnescaped("\\)", index + 2);
         if (end > index + 2) {
           const latex = source.slice(index + 2, end);
           tokens.push({ type: "math", latex, text: latexToText(latex) });
@@ -453,8 +595,9 @@
         }
       }
 
-      if (source[index] === "$" && source[index + 1] !== "$" && !/\s/u.test(source[index + 1] || "")) {
-        const end = source.indexOf("$", index + 1);
+      if (source[index] === "$" && source[index - 1] !== "$" && source[index + 1] !== "$"
+        && !/\s/u.test(source[index + 1] || "")) {
+        const end = findUnescaped("$", index + 1);
         if (end > index + 1 && !/\s/u.test(source[end - 1])) {
           const latex = source.slice(index + 1, end);
           tokens.push({ type: "math", latex, text: latexToText(latex) });
@@ -536,7 +679,7 @@
         continue;
       }
 
-      if (source[index] === "\\" && /[\\`*{}\[\]()#+.!_>~-]/u.test(source[index + 1] || "")) {
+      if (source[index] === "\\" && /[\\`*{}\[\]()#+.!_>~$-]/u.test(source[index + 1] || "")) {
         pushText(tokens, source[index + 1]);
         index += 2;
         continue;
@@ -599,13 +742,46 @@
     }
     if (node.type === "fraction") {
       const fraction = createMathML(doc, "mfrac");
+      if (node.binomial) fraction.setAttribute("linethickness", "0");
       fraction.append(renderMathNode(doc, node.numerator), renderMathNode(doc, node.denominator));
+      if (node.binomial) {
+        const fenced = createMathML(doc, "mrow");
+        fenced.append(createMathML(doc, "mo", "("), fraction, createMathML(doc, "mo", ")"));
+        return fenced;
+      }
       return fraction;
     }
     if (node.type === "sqrt") {
-      const root = createMathML(doc, "msqrt");
+      const root = createMathML(doc, node.degree ? "mroot" : "msqrt");
       root.append(renderMathNode(doc, node.body));
+      if (node.degree) root.append(renderMathNode(doc, node.degree));
       return root;
+    }
+    if (node.type === "accent") {
+      const accent = createMathML(doc, node.under ? "munder" : "mover");
+      accent.setAttribute(node.under ? "accentunder" : "accent", "true");
+      accent.append(renderMathNode(doc, node.body), createMathML(doc, "mo", node.mark));
+      return accent;
+    }
+    if (node.type === "environment") {
+      const table = createMathML(doc, "mtable");
+      for (const row of node.rows) {
+        const tableRow = createMathML(doc, "mtr");
+        for (const cell of row) {
+          const tableCell = createMathML(doc, "mtd");
+          tableCell.append(renderMathNode(doc, cell));
+          tableRow.append(tableCell);
+        }
+        table.append(tableRow);
+      }
+      const fences = { pmatrix: ["(", ")"], bmatrix: ["[", "]"], Bmatrix: ["{", "}"],
+        vmatrix: ["|", "|"], Vmatrix: ["‖", "‖"], cases: ["{", ""] };
+      const [left, right] = fences[node.name] || ["", ""];
+      if (!left) return table;
+      const fenced = createMathML(doc, "mrow");
+      fenced.append(createMathML(doc, "mo", left), table);
+      if (right) fenced.append(createMathML(doc, "mo", right));
+      return fenced;
     }
     if (node.type === "script") {
       const tag = node.subscript && node.superscript

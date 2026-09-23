@@ -71,6 +71,70 @@ test("keeps fractions, roots, subscripts, and superscripts structural", () => {
   assert.equal(Markdown.latexToText(String.raw`\frac{x_i^2}{\sqrt{n}}`), "(xᵢ²)/(√(n))");
 });
 
+test("renders degree notation without exposing the circ command", () => {
+  for (const latex of [String.raw`90^\circ`, String.raw`120^{\circ}`]) {
+    const script = Markdown.parseLatex(latex).children[0];
+    assert.equal(script.type, "script");
+    assert.equal(script.superscript.type, "operator");
+    assert.equal(script.superscript.text, "°");
+    assert.equal(Markdown.latexToText(latex), `${script.base.text}°`);
+  }
+  assert.equal(Markdown.latexToText(String.raw`f \circ g`), "f ∘ g");
+  assert.equal(Markdown.parseInlines(String.raw`夹角为 \(90^\circ\)`).at(-1).text, "90°");
+});
+
+test("parses common roots, accents, limits, relations, and token sized macro arguments", () => {
+  assert.equal(Markdown.latexToText(String.raw`\sqrt[3]{x}`), "3√(x)");
+  assert.equal(Markdown.parseLatex(String.raw`\sqrt[3]{x}`).children[0].degree.children[0].text, "3");
+  assert.equal(Markdown.parseLatex(String.raw`\vec{x}`).children[0].type, "accent");
+  assert.equal(Markdown.latexToText(String.raw`\frac12`), "(1)/(2)");
+  assert.equal(Markdown.latexToText(String.raw`\binom{n}{k}`), "(n choose k)");
+  assert.equal(Markdown.parseLatex(String.raw`\sum\limits_{i=1}^n`).children[0].base.text, "∑");
+  assert.equal(Markdown.latexToText(String.raw`a\leqslant b`), "a ⩽ b");
+  assert.equal(Markdown.latexToText(String.raw`\unknown{x}`), String.raw`\unknown{x}`);
+  assert.equal(Markdown.latexToText(String.raw`\text{A_BC}+x_NCE`), "A_BC + x₍NCE₎");
+  assert.equal(Markdown.normalizeLatex(String.raw`\operatorname{loss_A_BC}`), String.raw`\operatorname{loss_A_BC}`);
+});
+
+test("keeps complete display formulas and escaped dollar signs", () => {
+  const blocks = Markdown.parseBlocks(String.raw`$$a$$ $$b$$ 后续`);
+  assert.deepEqual(blocks.map((block) => block.type), ["math", "math", "paragraph"]);
+  assert.deepEqual(blocks.map((block) => block.text), ["a", "b", "后续"]);
+  assert.deepEqual(Markdown.parseInlines(String.raw`成本 \$5 与 $x$`).map((token) => token.type), ["text", "math"]);
+  assert.equal(Markdown.parseInlines(String.raw`成本 \$5 与 $x$`)[0].text, "成本 $5 与 ");
+  assert.equal(Markdown.parseInlines(String.raw`$x\$y$`)[0].latex, String.raw`x\$y`);
+  assert.deepEqual(Markdown.parseInlines(String.raw`$$x$$`).map((token) => token.type), ["text"]);
+});
+
+test("renders matrix and aligned environments as structured MathML", () => {
+  const formula = String.raw`\begin{pmatrix}a&b\\c&d\end{pmatrix}`;
+  const environment = Markdown.parseLatex(formula).children[0];
+  assert.equal(environment.type, "environment");
+  assert.deepEqual(environment.rows.map((row) => row.length), [2, 2]);
+  assert.equal(Markdown.latexToText(formula), "(a b; c d)");
+  const aligned = [String.raw`\begin{aligned}`, String.raw`a&=b\\`, "c&=d", String.raw`\end{aligned}`].join("\n");
+  assert.equal(Markdown.parseBlocks(aligned)[0].type, "math");
+
+  const doc = {
+    createElement: (tag) => ({ tag, children: [], append(...nodes) { this.children.push(...nodes); } }),
+    createElementNS: (_namespace, tag) => ({
+      tag, children: [], attributes: {},
+      append(...nodes) { this.children.push(...nodes); },
+      setAttribute(name, value) { this.attributes[name] = value; },
+    }),
+    createTextNode: (value) => ({ tag: "#text", text: value }),
+  };
+  const root = { children: [], append(node) { this.children.push(node); } };
+  Markdown.appendMarkdown(doc, root, String.raw`$$\sqrt[3]{x}+\hat{y}+\begin{pmatrix}a&b\\c&d\end{pmatrix}$$`);
+  const tags = [];
+  const walk = (node) => {
+    tags.push(node.tag);
+    for (const child of node.children || []) walk(child);
+  };
+  walk(root.children[0]);
+  for (const tag of ["math", "mroot", "mover", "mtable", "mtr", "mtd"]) assert.ok(tags.includes(tag), tag);
+});
+
 test("renders bare model-generated LaTeX and repairs common missing braces", () => {
   const blocks = Markdown.parseBlocks(String.raw`论文提出的损失是：
 
@@ -97,4 +161,6 @@ I(v_1;v_2) ≥ \log K-\mathcalL_NCE`);
 test("does not mistake ordinary backslash text for display math", () => {
   const blocks = Markdown.parseBlocks(String.raw`Use C:\Users\name and \path for this file.`);
   assert.deepEqual(blocks.map((block) => block.type), ["paragraph"]);
+  assert.equal(Markdown.parseBlocks(String.raw`结果是 \alpha + \beta`)[0].type, "paragraph");
+  assert.equal(Markdown.parseBlocks(String.raw`\alpha + \beta`)[0].type, "math");
 });
