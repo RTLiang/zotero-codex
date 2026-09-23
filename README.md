@@ -43,15 +43,13 @@ npm run check
 npm run build
 ```
 
-随后在 Zotero 中打开“工具 → 插件”，点击齿轮按钮，选择“Install Plugin From File…”，安装 `dist/zotero-codex-sidebar-2026.265.1.xpi`。选中文献或打开 PDF 后，点击右侧边栏中的 Codex 图标。
+随后在 Zotero 中打开“工具 → 插件”，点击齿轮按钮，选择“Install Plugin From File…”，安装 `dist/` 中当前版本的 XPI。选中文献或打开 PDF 后，点击右侧边栏中的 Codex 图标。
 
-版本号使用 `年份.当年第几天.当天小版本号`，例如 2026 年第 257 天的第一个版本为 `2026.257.1`。
+版本号使用 `年份.当年第几天.当天小版本号`。Release 工作流会按 UTC 日期自动递增版本号。
 
 ## CI/CD
 
-推送到 `main` 或创建 Pull Request 时，GitHub Actions 会自动执行静态检查、测试、XPI 构建和压缩包完整性检查，并保留 14 天的 CI 构建产物。
-
-发布时只需让 `manifest.json` 与 `package.json` 使用同一版本并推送对应的 `v<版本号>` 标签。Release 工作流会自动构建 XPI、创建 GitHub Release、计算 SHA-256，并在 Release 可下载后更新 `updates.json`，供 Zotero 自动更新使用。
+推送到 `main` 或创建 Pull Request 时，GitHub Actions 会自动执行静态检查、测试、XPI 构建和压缩包完整性检查，并保留 14 天的 CI 构建产物。每次推送到 `main` 后，Release 工作流会在这些检查通过后自动生成下一个 `年份.当年第几天.当天小版本号` 版本、构建 XPI、创建带版本 tag 的 GitHub Release、计算 SHA-256，并更新 `updates.json` 和两个版本字段，供 Zotero 自动更新使用。无需手动改版本号或推送 tag。
 
 ## 隐私与权限
 
