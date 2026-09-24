@@ -1,6 +1,6 @@
 {
   "name": "zotero-codex-sidebar",
-  "version": "2026.266.2",
+  "version": "2026.267.1",
   "private": true,
   "description": "A Zotero 10 sidebar for the local Codex App Server",
   "scripts": {
