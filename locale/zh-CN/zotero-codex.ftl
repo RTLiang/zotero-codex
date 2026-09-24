@@ -12,6 +12,11 @@ zotero-codex-recent-tasks =
 zotero-codex-search-tasks =
     .placeholder = 搜索最近任务
     .aria-label = 搜索最近任务
+zotero-codex-paper-only-chats = 只看本篇文献的对话
+zotero-codex-no-paper-chats = 本篇文献还没有对话
+zotero-codex-archive-task = 归档任务
+zotero-codex-delete-task = 删除任务
+zotero-codex-confirm-delete-task = 永久删除“{ $title }”及其派生任务？此操作无法撤销。
 zotero-codex-refresh-tasks = 刷新共享任务
 zotero-codex-settings = 设置
 zotero-codex-settings-view =
@@ -127,8 +132,6 @@ zotero-codex-remove-context =
 
 zotero-codex-no-matching-tasks = 没有匹配的任务
 zotero-codex-no-tasks = 还没有 Codex 任务
-zotero-codex-more-matching-tasks = 还有 { $count } 个匹配任务
-zotero-codex-search-older-tasks = 搜索可查找更早的任务
 zotero-codex-section-summary = 本机共享任务
 
 zotero-codex-processed-steps =

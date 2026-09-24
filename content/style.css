@@ -165,6 +165,20 @@
   padding: 7px;
 }
 
+.zcs-thread-context-menu {
+  z-index: 30;
+  width: min(176px, calc(100% - 8px));
+  padding: 5px;
+}
+
+.zcs-shell .zcs-danger-row {
+  color: #b42318;
+}
+
+.zcs-shell .zcs-danger-row:hover {
+  background: #fee4e2;
+}
+
 .zcs-search-box {
   display: flex;
   height: 36px;
@@ -257,6 +271,22 @@
   font-weight: 640;
 }
 
+.zcs-paper-only-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  color: var(--zcs-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.zcs-paper-only-filter input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+}
+
 .zcs-thread-list {
   max-height: 346px;
   overflow-y: auto;
@@ -284,12 +314,6 @@
 .zcs-thread-row .zcs-row-meta {
   flex: 0 0 auto;
   margin-top: 0;
-  font-size: 10px;
-}
-
-.zcs-thread-more {
-  padding: 8px 9px 5px 38px;
-  color: var(--zcs-muted);
   font-size: 10px;
 }
 

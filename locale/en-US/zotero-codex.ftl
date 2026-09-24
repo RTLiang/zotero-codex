@@ -12,6 +12,11 @@ zotero-codex-recent-tasks =
 zotero-codex-search-tasks =
     .placeholder = Search recent tasks
     .aria-label = Search recent tasks
+zotero-codex-paper-only-chats = Only chats for this paper
+zotero-codex-no-paper-chats = No chats for this paper yet
+zotero-codex-archive-task = Archive task
+zotero-codex-delete-task = Delete task
+zotero-codex-confirm-delete-task = Permanently delete “{ $title }” and any spawned tasks? This cannot be undone.
 zotero-codex-refresh-tasks = Refresh shared tasks
 zotero-codex-settings = Settings
 zotero-codex-settings-view =
@@ -127,12 +132,6 @@ zotero-codex-remove-context =
 
 zotero-codex-no-matching-tasks = No matching tasks
 zotero-codex-no-tasks = No Codex tasks yet
-zotero-codex-more-matching-tasks =
-    { $count ->
-        [one] 1 more matching task
-       *[other] { $count } more matching tasks
-    }
-zotero-codex-search-older-tasks = Search to find older tasks
 zotero-codex-section-summary = Shared local tasks
 
 zotero-codex-processed-steps =

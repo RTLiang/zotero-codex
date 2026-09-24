@@ -33,6 +33,102 @@ test("does not let a closed stale popup clear a newer live selection", () => {
   assert.equal(manager.getLiveSelection(7), null);
 });
 
+test("removing a task clears every paper binding and updates open views", () => {
+  const manager = createManager();
+  manager.setPaperThread("paper-a", "removed-task");
+  manager.setPaperThread("paper-b", "removed-task");
+  manager.setPaperThread("paper-c", "kept-task");
+  manager.setPreference("lastThreadId", "removed-task");
+  manager.client.loadedThreads = new Set(["removed-task", "kept-task"]);
+  const removed = [];
+  manager.views.set("first", { onThreadRemoved: (id) => removed.push(["first", id]) });
+  manager.views.set("second", { onThreadRemoved: (id) => removed.push(["second", id]) });
+
+  manager.handleThreadRemoved("removed-task");
+
+  assert.equal(manager.getPaperThread("paper-a"), "");
+  assert.equal(manager.getPaperThread("paper-b"), "");
+  assert.equal(manager.getPaperThread("paper-c"), "kept-task");
+  assert.equal(manager.getPreference("lastThreadId"), "");
+  assert.equal(manager.client.loadedThreads.has("removed-task"), false);
+  assert.deepEqual(removed, [["first", "removed-task"], ["second", "removed-task"]]);
+});
+
+test("cancelled deletion leaves the task untouched", async () => {
+  let deleted = 0;
+  let removed = 0;
+  const view = {
+    contextMenuThreadID: "task-1",
+    destroyed: false,
+    running: false,
+    creatingTask: false,
+    contextTransitioning: false,
+    managingThreadID: "",
+    threads: [{ id: "task-1", name: "My task" }],
+    thread: null,
+    doc: {
+      l10n: { formatValue: async () => "Confirm delete" },
+      defaultView: { confirm: () => false },
+    },
+    client: { deleteThread: async () => deleted++ },
+    manager: { handleThreadRemoved: () => removed++ },
+    closePopovers() { this.contextMenuThreadID = ""; },
+  };
+
+  await SidebarView.prototype.manageThread.call(view, "delete");
+  assert.equal(deleted, 0);
+  assert.equal(removed, 0);
+});
+
+test("archiving a selected task removes it only after the server succeeds", async () => {
+  const calls = [];
+  const view = {
+    contextMenuThreadID: "task-1",
+    destroyed: false,
+    running: false,
+    creatingTask: false,
+    contextTransitioning: false,
+    managingThreadID: "",
+    threads: [{ id: "task-1", name: "My task" }],
+    thread: null,
+    client: { archiveThread: async (id) => calls.push(["archive", id]) },
+    manager: { handleThreadRemoved: (id) => calls.push(["remove", id]) },
+    closePopovers() { this.contextMenuThreadID = ""; },
+  };
+
+  await SidebarView.prototype.manageThread.call(view, "archive");
+  assert.deepEqual(calls, [["archive", "task-1"], ["remove", "task-1"]]);
+  assert.equal(view.managingThreadID, "");
+});
+
+test("the task picker loads further batches when scrolled near the bottom", () => {
+  let renders = 0;
+  const list = { scrollTop: 0, clientHeight: 346, scrollHeight: 1520 };
+  const view = {
+    elements: { threadList: list },
+    threadListLimit: 40,
+    threadListMatchCount: 95,
+    renderThreadPicker: () => renders++,
+  };
+
+  SidebarView.prototype.loadMoreThreads.call(view);
+  assert.equal(view.threadListLimit, 40);
+  assert.equal(renders, 0);
+
+  list.scrollTop = 1120;
+  SidebarView.prototype.loadMoreThreads.call(view);
+  assert.equal(view.threadListLimit, 80);
+  assert.equal(renders, 1);
+
+  SidebarView.prototype.loadMoreThreads.call(view);
+  assert.equal(view.threadListLimit, 120);
+  assert.equal(renders, 2);
+
+  SidebarView.prototype.loadMoreThreads.call(view);
+  assert.equal(view.threadListLimit, 120);
+  assert.equal(renders, 2);
+});
+
 test("consumes only selections included in the completed send", () => {
   const manager = createManager();
   manager.addSelection(9, { text: "Sent pinned text", pageNumber: 3 });

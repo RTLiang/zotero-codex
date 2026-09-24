@@ -248,3 +248,22 @@ test("keeps a separate Codex task binding for each Zotero paper", () => {
     "1:PAPER-B": "thread-b",
   });
 });
+
+test("uses a paper's working directory, or its bindings when no PDF exists", () => {
+  const threads = [
+    { id: "same-directory", cwd: "/papers/a" },
+    { id: "bound-elsewhere", cwd: "/other" },
+    { id: "other-paper", cwd: "/papers/b" },
+    { id: "unrelated-home", cwd: "/home" },
+  ];
+  assert.deepEqual(
+    Protocol.filterThreadsForPaper(threads, "/papers/a", "bound-elsewhere")
+      .map((thread) => thread.id),
+    ["same-directory"],
+  );
+  assert.deepEqual(
+    Protocol.filterThreadsForPaper(threads, "", "bound-elsewhere")
+      .map((thread) => thread.id),
+    ["bound-elsewhere"],
+  );
+});

@@ -19,6 +19,7 @@
   const MAX_IMAGE_COUNT = 10;
   const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
   const MAX_SELECTION_ATTACHMENTS = 50;
+  const THREAD_LIST_BATCH_SIZE = 40;
   const MIN_SHELL_HEIGHT = 360;
   const MAX_SHELL_HEIGHT = 1200;
   const SHELL_HEIGHT_STEP = 24;
@@ -330,7 +331,12 @@
       this.contextEpoch = 0;
       this.contextTransitioning = false;
       this.threadRefreshSerial = 0;
+      this.threadListLimit = THREAD_LIST_BATCH_SIZE;
+      this.threadListMatchCount = 0;
       this.statusRevision = 0;
+      this.pendingAutoTitle = null;
+      this.managingThreadID = "";
+      this.contextMenuThreadID = "";
       this.cleanupClient = this.client.subscribe((event) => this._handleClientEvent(event));
       this.mount();
     }
@@ -383,9 +389,31 @@
         create(doc, "span", "zcs-row-icon", "+"),
         createL10n(doc, "span", "zcs-row-copy", "zotero-codex-new-task", "New task"),
       );
+      const paperOnlyFilter = create(doc, "label", "zcs-paper-only-filter");
+      const paperOnlyCheckbox = create(doc, "input");
+      paperOnlyCheckbox.type = "checkbox";
+      paperOnlyFilter.append(
+        paperOnlyCheckbox,
+        createL10n(doc, "span", "", "zotero-codex-paper-only-chats", "Only chats for this paper"),
+      );
       const threadList = create(doc, "div", "zcs-thread-list");
       threadList.setAttribute("role", "list");
-      threadPopover.append(threadSearchBox, newThreadButton, threadList);
+      threadPopover.append(threadSearchBox, newThreadButton, paperOnlyFilter, threadList);
+
+      const threadContextMenu = create(doc, "div", "zcs-popover zcs-thread-context-menu");
+      threadContextMenu.hidden = true;
+      threadContextMenu.setAttribute("role", "menu");
+      const archiveThreadButton = createL10n(
+        doc, "button", "zcs-menu-row", "zotero-codex-archive-task", "Archive task",
+      );
+      archiveThreadButton.type = "button";
+      archiveThreadButton.setAttribute("role", "menuitem");
+      const deleteThreadButton = createL10n(
+        doc, "button", "zcs-menu-row zcs-danger-row", "zotero-codex-delete-task", "Delete task",
+      );
+      deleteThreadButton.type = "button";
+      deleteThreadButton.setAttribute("role", "menuitem");
+      threadContextMenu.append(archiveThreadButton, deleteThreadButton);
 
       const settingsPopover = create(doc, "div", "zcs-popover zcs-settings-popover");
       settingsPopover.hidden = true;
@@ -722,6 +750,7 @@
       root.append(
         topbar,
         threadPopover,
+        threadContextMenu,
         settingsPopover,
         settingsView,
         transcript,
@@ -739,8 +768,13 @@
         threadTitle,
         moreButton,
         threadPopover,
+        threadContextMenu,
+        archiveThreadButton,
+        deleteThreadButton,
         threadSearch,
         newThreadButton,
+        paperOnlyFilter,
+        paperOnlyCheckbox,
         threadList,
         settingsPopover,
         settingsView,
@@ -792,6 +826,11 @@
 
       this.handlers = {
         toggleThreads: () => this.togglePopover("threads"),
+        threadHeaderContextMenu: (event) => {
+          if (!this.threadID) return;
+          event.preventDefault();
+          this.openThreadContextMenu(this.threadID, event.clientX, event.clientY);
+        },
         toggleSettings: () => this.togglePopover("settings"),
         toggleContextMenu: () => this.togglePopover("context"),
         toggleModelMenu: () => this.togglePopover("model"),
@@ -799,6 +838,13 @@
         toggleEffortOptions: () => this.toggleModelOptions("effort"),
         cancelEdit: () => this.cancelEdit(),
         newTask: () => void this.newTask(),
+        togglePaperOnly: () => {
+          this.manager.setPreference("paperOnlyChats", paperOnlyCheckbox.checked);
+          this.threadListLimit = THREAD_LIST_BATCH_SIZE;
+          threadList.scrollTop = 0;
+          this.renderThreadPicker();
+          void this.refreshThreads();
+        },
         refresh: () => {
           this.closePopovers();
           void this.refreshThreads({ reloadCurrent: true });
@@ -809,7 +855,14 @@
           pathInput.value = "";
           pathInput.focus();
         },
-        searchThreads: () => this.renderThreadPicker(),
+        searchThreads: () => {
+          this.threadListLimit = THREAD_LIST_BATCH_SIZE;
+          threadList.scrollTop = 0;
+          this.renderThreadPicker();
+        },
+        loadMoreThreads: () => this.loadMoreThreads(),
+        archiveThread: () => void this.manageThread("archive"),
+        deleteThread: () => void this.manageThread("delete"),
         toggleContext: () => this.toggleItemContext(),
         chooseImages: () => {
           this.closePopovers();
@@ -888,6 +941,7 @@
         },
       };
       threadButton.addEventListener("click", this.handlers.toggleThreads);
+      threadButton.addEventListener("contextmenu", this.handlers.threadHeaderContextMenu);
       moreButton.addEventListener("click", this.handlers.toggleSettings);
       contextAddButton.addEventListener("click", this.handlers.toggleContextMenu);
       contextModeButton.addEventListener("click", this.handlers.toggleContextMenu);
@@ -896,11 +950,15 @@
       effortChoice.addEventListener("click", this.handlers.toggleEffortOptions);
       cancelEditButton.addEventListener("click", this.handlers.cancelEdit);
       newThreadButton.addEventListener("click", this.handlers.newTask);
+      paperOnlyCheckbox.addEventListener("change", this.handlers.togglePaperOnly);
       refreshButton.addEventListener("click", this.handlers.refresh);
       openSettingsButton.addEventListener("click", this.handlers.openSettings);
       settingsBackButton.addEventListener("click", this.handlers.closeSettings);
       autoPathButton.addEventListener("click", this.handlers.useAutoPath);
       threadSearch.addEventListener("input", this.handlers.searchThreads);
+      threadList.addEventListener("scroll", this.handlers.loadMoreThreads);
+      archiveThreadButton.addEventListener("click", this.handlers.archiveThread);
+      deleteThreadButton.addEventListener("click", this.handlers.deleteThread);
       contextOption.addEventListener("click", this.handlers.toggleContext);
       imageOption.addEventListener("click", this.handlers.chooseImages);
       generateImageOption.addEventListener("click", this.handlers.chooseImageGeneration);
@@ -1019,6 +1077,8 @@
     }
 
     closePopovers(except = "") {
+      this.elements.threadContextMenu.hidden = true;
+      this.contextMenuThreadID = "";
       const pairs = [
         ["threads", this.elements.threadPopover, this.elements.threadButton],
         ["settings", this.elements.settingsPopover, this.elements.moreButton],
@@ -1049,6 +1109,8 @@
       if (name === "context") this.elements.contextModeButton.setAttribute("aria-expanded", String(willOpen));
       if (willOpen && name === "threads") {
         this.elements.threadSearch.value = "";
+        this.threadListLimit = THREAD_LIST_BATCH_SIZE;
+        this.elements.threadList.scrollTop = 0;
         this.renderThreadPicker();
         global.setTimeout(() => this.elements.threadSearch.focus(), 0);
       }
@@ -1062,6 +1124,7 @@
       const target = event.target;
       const eventPath = typeof event.composedPath === "function" ? event.composedPath() : [];
       const containers = [
+        this.elements.threadContextMenu,
         this.elements.threadPopover,
         this.elements.settingsPopover,
         this.elements.contextPopover,
@@ -1713,15 +1776,22 @@
       const previousID = this.threadID;
       this.setStatus("busy", "");
       try {
-        const threads = await this.client.listThreads(100);
+        const paperKey = Protocol.paperContextKey(this.context);
+        const paperCwd = pathDirectory(this.context?.pdfPath);
+        const onlyThisPaper = Boolean(paperKey && this.manager.getPreference("paperOnlyChats"));
+        const [recent, inPaperDirectory] = await Promise.all([
+          this.client.listThreads(500),
+          onlyThisPaper && paperCwd ? this.client.listThreads(500, { cwd: paperCwd }) : [],
+        ]);
         if (
           this.destroyed ||
           refreshSerial !== this.threadRefreshSerial ||
           contextEpoch !== this.contextEpoch
         ) return;
-        this.threads = threads;
+        this.threads = [...new Map([...inPaperDirectory, ...recent]
+          .map((thread) => [thread.id, thread])).values()]
+          .sort((left, right) => right.timestamp - left.timestamp);
         this.renderThreadPicker();
-        const paperKey = Protocol.paperContextKey(this.context);
         this.activePaperKey = paperKey;
         const boundID = paperKey ? this.manager.getPaperThread(paperKey) : "";
         const remembered = paperKey ? "" : String(this.manager.getPreference("lastThreadId") || "");
@@ -1785,18 +1855,35 @@
 
     renderThreadPicker() {
       const list = this.elements.threadList;
+      const scrollTop = list.scrollTop;
       list.replaceChildren();
+      const paperKey = Protocol.paperContextKey(this.context);
+      const onlyThisPaper = Boolean(paperKey && this.manager.getPreference("paperOnlyChats"));
+      this.elements.paperOnlyFilter.hidden = !paperKey;
+      this.elements.paperOnlyCheckbox.checked = onlyThisPaper;
+      const paperCwd = pathDirectory(this.context?.pdfPath);
+      const allThreads = this.thread?.id && !this.threads.some((thread) => thread.id === this.thread.id)
+        ? [this.thread, ...this.threads]
+        : this.threads;
+      const visible = onlyThisPaper
+        ? Protocol.filterThreadsForPaper(allThreads, paperCwd, this.manager.getPaperThread(paperKey))
+        : allThreads;
       const query = this.elements.threadSearch.value.trim();
-      const matches = Protocol.filterThreads(this.threads, query);
-      const limit = query ? 24 : 8;
-      const rows = matches.slice(0, limit);
+      const matches = Protocol.filterThreads(visible, query);
+      this.threadListMatchCount = matches.length;
+      const rows = matches.slice(0, this.threadListLimit);
       if (!matches.length) {
+        const noPaperChats = onlyThisPaper && !visible.length;
         list.append(createL10n(
           this.doc,
           "div",
           "zcs-thread-empty",
-          this.threads.length ? "zotero-codex-no-matching-tasks" : "zotero-codex-no-tasks",
-          this.threads.length ? "No matching tasks" : "No Codex tasks yet",
+          noPaperChats
+            ? "zotero-codex-no-paper-chats"
+            : visible.length ? "zotero-codex-no-matching-tasks" : "zotero-codex-no-tasks",
+          noPaperChats
+            ? "No chats for this paper yet"
+            : visible.length ? "No matching tasks" : "No Codex tasks yet",
         ));
         return;
       }
@@ -1820,19 +1907,29 @@
           this.closePopovers();
           void this.selectThread(thread.id);
         });
+        row.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          this.openThreadContextMenu(thread.id, event.clientX, event.clientY);
+        });
+        row.addEventListener("keydown", (event) => {
+          if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+          event.preventDefault();
+          const rect = row.getBoundingClientRect();
+          this.openThreadContextMenu(thread.id, rect.left + 24, rect.bottom);
+        });
         list.append(row);
       }
-      if (matches.length > rows.length) {
-        const remaining = matches.length - rows.length;
-        list.append(createL10n(
-          this.doc,
-          "div",
-          "zcs-thread-more",
-          query ? "zotero-codex-more-matching-tasks" : "zotero-codex-search-older-tasks",
-          query ? `${remaining} more matching tasks` : "Search to find older tasks",
-          query ? { count: remaining } : null,
-        ));
-      }
+      list.scrollTop = scrollTop;
+    }
+
+    loadMoreThreads() {
+      const list = this.elements.threadList;
+      if (
+        this.threadListLimit >= this.threadListMatchCount ||
+        list.scrollTop + list.clientHeight < list.scrollHeight - 64
+      ) return;
+      this.threadListLimit += THREAD_LIST_BATCH_SIZE;
+      this.renderThreadPicker();
     }
 
     updateThreadHeader() {
@@ -1842,6 +1939,72 @@
       else setLocalizedText(this.elements.threadTitle, "zotero-codex-new-task", "New task");
       this.elements.threadButton.title = label;
       this.renderThreadPicker();
+    }
+
+    openThreadContextMenu(threadID, clientX, clientY) {
+      if (!threadID || this.destroyed) return;
+      this.closePopovers("threads");
+      this.contextMenuThreadID = threadID;
+      const menu = this.elements.threadContextMenu;
+      const root = this.elements.root.getBoundingClientRect();
+      menu.style.left = `${Math.max(0, Math.min(clientX - root.left, root.width - 184))}px`;
+      menu.style.top = `${Math.max(0, Math.min(clientY - root.top, root.height - 88))}px`;
+      const unavailable = this.running || this.creatingTask || this.contextTransitioning || Boolean(this.managingThreadID);
+      this.elements.archiveThreadButton.disabled = unavailable;
+      this.elements.deleteThreadButton.disabled = unavailable;
+      menu.hidden = false;
+      this.elements.archiveThreadButton.focus();
+    }
+
+    async manageThread(action) {
+      const threadID = this.contextMenuThreadID;
+      if (!threadID || this.destroyed || this.running || this.creatingTask || this.contextTransitioning || this.managingThreadID) return;
+      const thread = this.threads.find((candidate) => candidate.id === threadID)
+        || (this.thread?.id === threadID ? this.thread : null);
+      this.closePopovers();
+      if (action === "delete") {
+        const title = Protocol.threadLabel(thread) || threadID;
+        const message = await formatValue(
+          this.doc,
+          "zotero-codex-confirm-delete-task",
+          { title },
+          `Permanently delete “${title}” and any spawned tasks? This cannot be undone.`,
+        );
+        if (!this.doc.defaultView?.confirm?.(message)) return;
+      }
+      this.managingThreadID = threadID;
+      try {
+        if (action === "archive") await this.client.archiveThread(threadID);
+        else if (action === "delete") await this.client.deleteThread(threadID);
+        else return;
+        this.manager.handleThreadRemoved(threadID);
+      }
+      catch (error) {
+        if (!this.destroyed) this.showError(error);
+      }
+      finally {
+        this.managingThreadID = "";
+      }
+    }
+
+    onThreadRemoved(threadID) {
+      if (this.destroyed || !threadID) return;
+      this.threadRefreshSerial++;
+      this.threads = this.threads.filter((thread) => thread.id !== threadID);
+      if (this.pendingAutoTitle?.threadID === threadID) this.pendingAutoTitle = null;
+      if (this.contextMenuThreadID === threadID) {
+        this.elements.threadContextMenu.hidden = true;
+        this.contextMenuThreadID = "";
+      }
+      for (const [requestID, request] of this.pendingRequests) {
+        if (request.contextThreadID === threadID) this.pendingRequests.delete(requestID);
+      }
+      this.renderRequests();
+      if (this.threadID === threadID) {
+        this.setRunning(false);
+        this.resetConversation({ focus: false, force: true });
+      }
+      else this.updateThreadHeader();
     }
 
     async selectThread(threadID, { bind = true, quiet = false, preserveScroll = false } = {}) {
@@ -2307,6 +2470,7 @@
         this.creatingTask ||
         this.contextTransitioning
       ) return;
+      const shouldAutoTitle = !this.threadID && !this.editingMessage;
       const contextEpoch = this.contextEpoch;
       let clearedInput = false;
       try {
@@ -2348,6 +2512,22 @@
         this.showPendingResponse();
         this.setRunning(true);
 
+        if (shouldAutoTitle) {
+          const titleModel = this.models.find((model) =>
+            model.model === this.selectedModel || model.id === this.selectedModel,
+          );
+          const titleEffort = titleModel?.supportedReasoningEfforts?.includes("low")
+            ? "low"
+            : titleModel?.defaultReasoningEffort || this.selectedEffort;
+          this.pendingAutoTitle = {
+            threadID,
+            text: text || images[0]?.name || "Image",
+            initialName: Protocol.firstLine(text || images[0]?.name || "Zotero research", 58),
+            model: this.selectedModel,
+            effort: titleEffort,
+          };
+        }
+
         const turn = await this.client.startTurn({
           threadID,
           text,
@@ -2365,6 +2545,7 @@
         this.nextTurnSelectionPending = false;
       }
       catch (error) {
+        if (this.pendingAutoTitle?.threadID === this.threadID) this.pendingAutoTitle = null;
         if (contextEpoch !== this.contextEpoch || this.destroyed) return;
         this.setRunning(false);
         this.hidePendingResponse();
@@ -2472,6 +2653,23 @@
       }
     }
 
+    async autoNameThread(request) {
+      try {
+        const title = await this.client.generateThreadTitle(request);
+        const current = await this.client.readThread(request.threadID);
+        if (current.name && current.name !== request.initialName) return;
+        await this.client.setThreadName(request.threadID, title);
+        this.threads = this.threads.map((thread) => thread.id === request.threadID
+          ? { ...thread, name: title, label: title }
+          : thread);
+        if (this.thread?.id === request.threadID) this.thread = { ...this.thread, name: title };
+        this.updateThreadHeader();
+      }
+      catch (error) {
+        this.manager.log?.("Automatic task title generation failed", error);
+      }
+    }
+
     _handleClientEvent(event) {
       if (this.destroyed) return;
       if (event.type === "connected") {
@@ -2509,6 +2707,10 @@
       }
       if (event.type !== "notification") return;
       const params = event.params || {};
+      if (event.method === "thread/archived" || event.method === "thread/deleted") {
+        this.manager.handleThreadRemoved(String(params.threadId || ""));
+        return;
+      }
       if (event.method === "serverRequest/resolved") {
         this.pendingRequests.delete(params.requestId);
         this.renderRequests();
@@ -2516,6 +2718,11 @@
       }
       if (event.method === "turn/completed") {
         const completedThreadID = String(params.threadId || this.threadID || "");
+        if (this.pendingAutoTitle?.threadID === completedThreadID) {
+          const titleRequest = this.pendingAutoTitle;
+          this.pendingAutoTitle = null;
+          void this.autoNameThread(titleRequest);
+        }
         for (const [requestID, request] of this.pendingRequests) {
           if (request.contextThreadID === completedThreadID) this.pendingRequests.delete(requestID);
         }
@@ -2718,6 +2925,7 @@
       this.cleanupClient?.();
       const e = this.elements;
       e.threadButton.removeEventListener("click", this.handlers.toggleThreads);
+      e.threadButton.removeEventListener("contextmenu", this.handlers.threadHeaderContextMenu);
       e.moreButton.removeEventListener("click", this.handlers.toggleSettings);
       e.contextAddButton.removeEventListener("click", this.handlers.toggleContextMenu);
       e.contextModeButton.removeEventListener("click", this.handlers.toggleContextMenu);
@@ -2726,11 +2934,15 @@
       e.effortChoice.removeEventListener("click", this.handlers.toggleEffortOptions);
       e.cancelEditButton.removeEventListener("click", this.handlers.cancelEdit);
       e.newThreadButton.removeEventListener("click", this.handlers.newTask);
+      e.paperOnlyCheckbox.removeEventListener("change", this.handlers.togglePaperOnly);
       e.refreshButton.removeEventListener("click", this.handlers.refresh);
       e.openSettingsButton.removeEventListener("click", this.handlers.openSettings);
       e.settingsBackButton.removeEventListener("click", this.handlers.closeSettings);
       e.autoPathButton.removeEventListener("click", this.handlers.useAutoPath);
       e.threadSearch.removeEventListener("input", this.handlers.searchThreads);
+      e.threadList.removeEventListener("scroll", this.handlers.loadMoreThreads);
+      e.archiveThreadButton.removeEventListener("click", this.handlers.archiveThread);
+      e.deleteThreadButton.removeEventListener("click", this.handlers.deleteThread);
       e.contextOption.removeEventListener("click", this.handlers.toggleContext);
       e.imageOption.removeEventListener("click", this.handlers.chooseImages);
       e.generateImageOption.removeEventListener("click", this.handlers.chooseImageGeneration);
@@ -2826,6 +3038,22 @@
         "paperThreads",
         Protocol.updatePaperThreadBindings(this.getPreference("paperThreads"), key, ""),
       );
+    }
+
+    handleThreadRemoved(threadID) {
+      if (!threadID) return;
+      const bindings = Protocol.normalizePaperThreadBindings(this.getPreference("paperThreads"));
+      const remaining = Object.fromEntries(
+        Object.entries(bindings).filter(([, id]) => id !== threadID),
+      );
+      if (Object.keys(remaining).length !== Object.keys(bindings).length) {
+        this.setPreference("paperThreads", JSON.stringify(remaining));
+      }
+      if (this.getPreference("lastThreadId") === threadID) {
+        this.setPreference("lastThreadId", "");
+      }
+      this.client.loadedThreads?.delete(threadID);
+      for (const view of this.views.values()) view.onThreadRemoved(threadID);
     }
 
     ensureLocalization(win) {

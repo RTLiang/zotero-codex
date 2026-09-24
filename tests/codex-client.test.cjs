@@ -78,6 +78,28 @@ test("bounds resumed task bookkeeping and refreshes recent entries", () => {
   assert.equal(client.loadedThreads.has("task-6"), false);
 });
 
+test("archives and deletes tasks through the app server, clearing loaded state only after success", async () => {
+  const client = new CodexAppServerClient();
+  client.connect = async () => client;
+  client.loadedThreads.add("archive-me");
+  client.loadedThreads.add("delete-me");
+  const calls = [];
+  client.request = async (method, params) => {
+    calls.push({ method, params });
+    if (method === "thread/delete") throw new Error("server rejected deletion");
+    return {};
+  };
+
+  await client.archiveThread("archive-me");
+  await assert.rejects(client.deleteThread("delete-me"), /server rejected deletion/);
+  assert.deepEqual(calls, [
+    { method: "thread/archive", params: { threadId: "archive-me" } },
+    { method: "thread/delete", params: { threadId: "delete-me" } },
+  ]);
+  assert.equal(client.loadedThreads.has("archive-me"), false);
+  assert.equal(client.loadedThreads.has("delete-me"), true);
+});
+
 test("passes the imagegen skill item only for explicit image-generation turns", async () => {
   const client = new CodexAppServerClient();
   client.loadedThreads.add("task-imagegen");

@@ -88,6 +88,13 @@
     });
   }
 
+  function filterThreadsForPaper(threads, cwd, threadID = "") {
+    const directory = String(cwd || "");
+    return (Array.isArray(threads) ? threads : []).filter((thread) =>
+      directory ? thread?.cwd === directory : Boolean(threadID && thread?.id === threadID),
+    );
+  }
+
   function relativeThreadTime(timestamp, now = Date.now(), locale = "en-US") {
     let value = Number(timestamp || 0);
     if (!Number.isFinite(value) || value <= 0) return "";
@@ -428,6 +435,7 @@
     normalizeModelList,
     resolveModelSelection,
     filterThreads,
+    filterThreadsForPaper,
     relativeThreadTime,
     userInputText,
     userInputImages,
