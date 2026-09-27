@@ -3,9 +3,9 @@
     "codex-sidebar@zotero.local": {
       "updates": [
         {
-          "version": "2026.270.8",
-          "update_link": "https://github.com/RTLiang/zotero-codex/releases/download/v2026.270.8/zotero-codex-sidebar-2026.270.8.xpi",
-          "update_hash": "sha256:effdca10b10b00be333910d4bb56d4e6726ae032a0d2bde19e1df84d8f4416c2",
+          "version": "2026.270.9",
+          "update_link": "https://github.com/RTLiang/zotero-codex/releases/download/v2026.270.9/zotero-codex-sidebar-2026.270.9.xpi",
+          "update_hash": "sha256:558c7e03ae2b4df85eef33b281c17b0f3429e7595ea38df81795c1f44396e5cf",
           "applications": {
             "zotero": {
               "strict_min_version": "10.0",
