@@ -69,7 +69,7 @@ jobs:
         run: |
           gh release create "$TAG" "$XPI" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Zotero Codex Sidebar ${VERSION}" \
+            --title "${VERSION}" \
             --generate-notes \
             --latest
       - name: Publish Zotero auto-update manifest
