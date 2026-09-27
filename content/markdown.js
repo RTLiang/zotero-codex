@@ -46,11 +46,11 @@
     if (!line || line.includes("`") || !line.includes("\\") || /[\u3400-\u9fff]/u.test(line)) return false;
     const commands = [...line.matchAll(/\\([A-Za-z]+)/gu)].map((match) => match[1]);
     const recognized = commands.some((command) =>
-      /^(?:frac|dfrac|tfrac|binom|sqrt|sum|prod|coprod|int|iint|iiint|oint|log|ln|exp|min|max|argmin|argmax|lim|sup|inf)$/u.test(command)
+      /^(?:frac|dfrac|tfrac|binom|sqrt|sum|prod|coprod|int|iint|iiint|oint|xrightarrow|xleftarrow|xleftrightarrow|xRightarrow|xLeftarrow|log|ln|exp|min|max|argmin|argmax|lim|sup|inf)$/u.test(command)
       || /^(?:mathcal|mathbb|mathrm|mathbf|mathit|mathsf|mathtt)(?:[A-Za-z])?$/u.test(command)
       || LATEX_SYMBOLS.has(command));
     if (!recognized) return false;
-    return /(?:[=<>≤≥≈+*/]|\\(?:frac|dfrac|tfrac|binom|sqrt|sum|prod|coprod|int|iint|iiint|oint)\b|[_^](?:\{|[A-Za-z0-9]))/u.test(line);
+    return /(?:[=<>≤≥≈+*/]|\\(?:frac|dfrac|tfrac|binom|sqrt|sum|prod|coprod|int|iint|iiint|oint|xrightarrow|xleftarrow|xleftrightarrow|xRightarrow|xLeftarrow)\b|[_^](?:\{|[A-Za-z0-9]))/u.test(line);
   }
 
   function splitTableRow(value) {
@@ -369,6 +369,15 @@
       return group;
     };
 
+    const parseOptionalBracketGroup = () => {
+      skipSpaces();
+      if (source[index] !== "[") return null;
+      index++;
+      const group = parseSequence("]");
+      if (source[index] === "]") index++;
+      return group;
+    };
+
     const parseEnvironment = () => {
       const name = parseRawGroup();
       const closing = `\\end{${name}}`;
@@ -415,6 +424,14 @@
         return parseAtom();
       }
       if (name === "begin") return parseEnvironment();
+      const extensibleArrows = {
+        xrightarrow: "→", xleftarrow: "←", xleftrightarrow: "↔",
+        xRightarrow: "⇒", xLeftarrow: "⇐",
+      };
+      if (Object.hasOwn(extensibleArrows, name)) {
+        const below = parseOptionalBracketGroup();
+        return { type: "extensibleArrow", symbol: extensibleArrows[name], below, above: parseGroup() };
+      }
       if (["frac", "dfrac", "tfrac"].includes(name)) {
         return { type: "fraction", numerator: parseGroup(), denominator: parseGroup() };
       }
@@ -534,6 +551,11 @@
       return `${root}(${latexAstToText(node.body)})`;
     }
     if (node.type === "accent") return `${node.mark}(${latexAstToText(node.body)})`;
+    if (node.type === "extensibleArrow") {
+      const below = node.below ? `₍${latexAstToText(node.below)}₎` : "";
+      const above = node.above ? `⁽${latexAstToText(node.above)}⁾` : "";
+      return `${node.symbol}${below}${above}`;
+    }
     if (node.type === "environment") {
       const rows = node.rows.map((row) => row.map(latexAstToText).join(" ")).join("; ");
       const fences = { pmatrix: ["(", ")"], bmatrix: ["[", "]"], Bmatrix: ["{", "}"],
@@ -762,6 +784,18 @@
       accent.setAttribute(node.under ? "accentunder" : "accent", "true");
       accent.append(renderMathNode(doc, node.body), createMathML(doc, "mo", node.mark));
       return accent;
+    }
+    if (node.type === "extensibleArrow") {
+      const arrow = createMathML(doc, "mo", node.symbol);
+      arrow.setAttribute("stretchy", "true");
+      arrow.setAttribute("minsize", "1.5em");
+      if (!node.above && !node.below) return arrow;
+      const tag = node.above && node.below ? "munderover" : node.above ? "mover" : "munder";
+      const annotatedArrow = createMathML(doc, tag);
+      annotatedArrow.append(arrow);
+      if (node.below) annotatedArrow.append(renderMathNode(doc, node.below));
+      if (node.above) annotatedArrow.append(renderMathNode(doc, node.above));
+      return annotatedArrow;
     }
     if (node.type === "environment") {
       const table = createMathML(doc, "mtable");
