@@ -2535,6 +2535,7 @@
           context: additionalContext,
           model: this.selectedModel,
           effort: this.selectedEffort,
+          useOfficialZoteroSkill: true,
         });
         this.manager.consumeSelections?.(paperContext.attachmentID, {
           liveSelectionID: liveSelection?.id || "",

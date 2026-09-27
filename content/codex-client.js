@@ -573,20 +573,38 @@
       return thread;
     }
 
-    async startTurn({ threadID, text, images, context, model, effort }) {
+    async startTurn({
+      threadID,
+      text,
+      images,
+      context,
+      model,
+      effort,
+      useOfficialZoteroSkill = false,
+    }) {
       await this.ensureThreadLoaded(threadID);
       const input = Protocol.buildTurnInput(text, images);
-      if (/(^|\s)\$imagegen\b/u.test(String(text || ""))) {
+      const requestedSkills = [];
+      if (useOfficialZoteroSkill) requestedSkills.push("zotero");
+      if (/(^|\s)\$imagegen\b/u.test(String(text || ""))) requestedSkills.push("imagegen");
+      if (requestedSkills.length) {
         try {
           const cwd = getHomeDirectory();
           const result = await this.request("skills/list", { cwds: [cwd] });
-          const skill = result?.data?.flatMap((entry) => entry.skills || [])
-            .find((entry) => entry.name === "imagegen" && entry.enabled && entry.path);
-          if (skill) input.push({ type: "skill", name: "imagegen", path: skill.path });
+          const skills = result?.data?.flatMap((entry) => entry.skills || []) || [];
+          for (const requestedSkill of requestedSkills) {
+            const skill = skills.find((entry) =>
+              String(entry?.name || "").toLowerCase() === requestedSkill
+              && entry.enabled
+              && entry.path,
+            );
+            if (skill) input.push({ type: "skill", name: skill.name, path: skill.path });
+          }
         }
         catch (error) {
-          // The $imagegen marker still works without a skill input item.
-          this.log("Could not resolve imagegen skill path", error);
+          // Requested skills remain optional so normal Codex turns still work
+          // when a skill is unavailable in the app-server environment.
+          this.log("Could not resolve requested Codex skill paths", error);
         }
       }
       const result = await this.request("turn/start", {

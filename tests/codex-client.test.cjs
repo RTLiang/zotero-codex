@@ -123,3 +123,30 @@ test("passes the imagegen skill item only for explicit image-generation turns", 
   await client.startTurn({ threadID: "task-imagegen", text: "Explain this paper" });
   assert.deepEqual(calls.map(({ method }) => method), ["turn/start"]);
 });
+
+test("loads the official Zotero skill when available to the sidebar", async () => {
+  const client = new CodexAppServerClient();
+  client.loadedThreads.add("task-zotero");
+  const calls = [];
+  client.request = async (method, params) => {
+    calls.push({ method, params });
+    if (method === "skills/list") return {
+      data: [{ skills: [
+        { name: "Zotero", enabled: true, path: "/tmp/openai-zotero/SKILL.md" },
+      ] }],
+    };
+    return { turn: { id: "turn-zotero" } };
+  };
+
+  await client.startTurn({
+    threadID: "task-zotero",
+    text: "Find the saved paper and export its citation",
+    useOfficialZoteroSkill: true,
+  });
+
+  assert.deepEqual(calls.map(({ method }) => method), ["skills/list", "turn/start"]);
+  assert.deepEqual(calls[1].params.input, [
+    { type: "text", text: "Find the saved paper and export its citation" },
+    { type: "skill", name: "Zotero", path: "/tmp/openai-zotero/SKILL.md" },
+  ]);
+});

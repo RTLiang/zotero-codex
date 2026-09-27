@@ -602,7 +602,7 @@
 }
 
 .zcs-primary-button {
-  color: white !important;
+  color: Canvas !important;
   background: CanvasText !important;
   font-weight: 650;
 }
@@ -1596,7 +1596,7 @@
 .zcs-reader-add {
   padding: 5px 9px;
   border-radius: 8px;
-  color: white !important;
+  color: Canvas !important;
   background: CanvasText !important;
 }
 
