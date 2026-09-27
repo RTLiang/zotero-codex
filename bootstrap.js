@@ -1,7 +1,7 @@
 var ZoteroCodexPlugin;
 
 function log(message, error) {
-  Zotero.debug(`Codex Sidebar: ${message}`);
+  Zotero.debug(`Codex for Zotero: ${message}`);
   if (error) Zotero.logError(error);
 }
 

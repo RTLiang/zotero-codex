@@ -35,11 +35,11 @@ var ZoteroCodexPlugin = {
     );
     const modules = globalThis.ZoteroCodexModules;
     if (!modules?.CodexClient || !modules?.Sidebar) {
-      throw new Error("Codex Sidebar modules failed to load");
+      throw new Error("Codex for Zotero modules failed to load");
     }
 
     const pluginLog = (message, error) => {
-      Zotero.debug(`Codex Sidebar: ${message}`);
+      Zotero.debug(`Codex for Zotero: ${message}`);
       if (error) Zotero.logError(error);
     };
     this.client = new modules.CodexClient.CodexAppServerClient({

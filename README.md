@@ -1,4 +1,4 @@
-# Codex Sidebar for Zotero
+# Codex for Zotero
 
 English · [简体中文](README.zh-CN.md)
 
@@ -13,26 +13,26 @@ If Codex is not found automatically, enter its absolute executable path in the s
 
 ## About
 
-A native Zotero 10 plugin that brings Codex chats, message history, and a composer into the right-hand item pane. It connects through the local `codex app-server`.
+Read a paper in Zotero and discuss it with Codex in the same window. Add citation details, the abstract, or selected PDF text when useful, then continue the conversation in Codex Desktop, the command line, or this sidebar.
 
-The plugin uses your installed, signed-in Codex CLI and does not maintain a separate chat database. Chats stored under the same Codex home can be opened from Codex Desktop, the CLI, the Codex Chrome sidebar, and this plugin. Ordinary ChatGPT web conversations are not Codex chats and do not appear here.
+Conversations use your existing Codex sign-in and remain available across Codex apps on this computer. ChatGPT conversations on chatgpt.com are separate and do not appear here.
 
 ## Features
 
 - Works in Zotero's item details pane and PDF reader.
-- Browse, search, open, and continue local Codex chats with live responses and activity updates.
-- A compact interface with a chat picker, settings menu, and bottom composer. Responses omit redundant avatars and assistant labels; text can be selected and copied.
+- Find, search, open, and continue conversations, with live responses and activity updates.
+- Start a conversation from a paper or return to one you already started.
 - Render Markdown headings, blockquotes, lists, task lists, tables, emphasis, strikethrough, links, code blocks, and common LaTeX expressions.
-- Start a blank draft immediately; a persistent chat is created only when you send the first message. A short title is generated after the first response, falling back to the first message if title generation fails.
-- Each paper has its own chat binding. Switching papers restores the corresponding chat; papers without a chat start with an empty draft.
-- By default, the chat picker shows conversations in the current PDF's working directory. Turn off the current-paper filter to browse all chats. Without a local PDF, the filter shows only the bound chat.
-- Manage the CLI path, automatic detection, and reconnection from a dedicated settings page.
-- Optionally show reasoning summaries, tool activity, and processing steps; hidden by default.
-- Attach images through the “+” menu, paste screenshots, or drag images into the composer. Preview or remove them before sending as native Codex image inputs.
+- A new conversation is created when you send the first message. Codex gives it a short title after its first reply.
+- Each paper remembers its conversation. Switching papers returns you to the conversation you used for that paper.
+- Search recent conversations or filter the list to the current paper.
+- Set the Codex app path or reconnect from Settings.
+- Show activity details such as tool use, file changes, and reasoning summaries; off by default.
+- Add images from the “+” menu, paste screenshots, or drag them into the message. Preview or remove images before sending.
 - Choose “Generate image” or type `$imagegen` to request images; generated images appear directly in the conversation.
 - The sidebar, PDF selection button, notifications, and errors follow Zotero's Simplified Chinese or English language setting.
 - Choose from the models available to your Codex account and their supported reasoning efforts. While a response is running, you can choose settings for the next reply.
-- Copy user and assistant messages. Editing the latest user message reverts and resends that turn; editing an earlier message creates a branch before that turn to preserve subsequent history.
+- Copy messages. Editing your latest message updates the conversation; editing an earlier message starts a branch so later replies remain available.
 - Choose whether to include the current paper's title, authors, date, DOI, abstract, and local PDF path.
 - Automatically load the enabled, available official OpenAI Zotero skill to search papers, read indexed text, export BibTeX, insert citation keys, or import references. Normal chat continues when the skill is unavailable.
 - Selected PDF text is attached to the next message. A new selection replaces the current selection; “Add to Codex” pins a selection so you can include several passages.

@@ -358,7 +358,7 @@
         "span",
         "zcs-thread-title",
         "zotero-codex-new-task",
-        "New task",
+        "New chat",
       );
       threadButton.append(threadTitle, create(doc, "span", "zcs-chevron", "⌄"));
       const moreButton = create(doc, "button", "zcs-icon-button zcs-more-button", "•••");
@@ -373,21 +373,21 @@
       const threadPopover = create(doc, "div", "zcs-popover zcs-thread-popover");
       threadPopover.hidden = true;
       threadPopover.setAttribute("role", "dialog");
-      threadPopover.setAttribute("aria-label", "Recent tasks");
+      threadPopover.setAttribute("aria-label", "Recent conversations");
       setL10n(threadPopover, "zotero-codex-recent-tasks");
       const threadSearchBox = create(doc, "div", "zcs-search-box");
       threadSearchBox.append(create(doc, "span", "zcs-search-icon", "⌕"));
       const threadSearch = create(doc, "input", "zcs-thread-search");
       threadSearch.type = "search";
-      threadSearch.placeholder = "Search recent tasks";
-      threadSearch.setAttribute("aria-label", "Search recent tasks");
+      threadSearch.placeholder = "Search conversations";
+      threadSearch.setAttribute("aria-label", "Search conversations");
       setL10n(threadSearch, "zotero-codex-search-tasks");
       threadSearchBox.append(threadSearch);
       const newThreadButton = create(doc, "button", "zcs-menu-row zcs-new-thread-row");
       newThreadButton.type = "button";
       newThreadButton.append(
         create(doc, "span", "zcs-row-icon", "+"),
-        createL10n(doc, "span", "zcs-row-copy", "zotero-codex-new-task", "New task"),
+        createL10n(doc, "span", "zcs-row-copy", "zotero-codex-new-task", "New chat"),
       );
       const paperOnlyFilter = create(doc, "label", "zcs-paper-only-filter");
       const paperOnlyCheckbox = create(doc, "input");
@@ -404,12 +404,12 @@
       threadContextMenu.hidden = true;
       threadContextMenu.setAttribute("role", "menu");
       const archiveThreadButton = createL10n(
-        doc, "button", "zcs-menu-row", "zotero-codex-archive-task", "Archive task",
+        doc, "button", "zcs-menu-row", "zotero-codex-archive-task", "Archive chat",
       );
       archiveThreadButton.type = "button";
       archiveThreadButton.setAttribute("role", "menuitem");
       const deleteThreadButton = createL10n(
-        doc, "button", "zcs-menu-row zcs-danger-row", "zotero-codex-delete-task", "Delete task",
+        doc, "button", "zcs-menu-row zcs-danger-row", "zotero-codex-delete-task", "Delete chat",
       );
       deleteThreadButton.type = "button";
       deleteThreadButton.setAttribute("role", "menuitem");
@@ -454,7 +454,7 @@
         "div",
         "zcs-settings-section-title",
         "zotero-codex-local-codex",
-        "Local Codex",
+        "Codex connection",
       ));
       const connectionCard = create(doc, "div", "zcs-connection-card");
       const connectionTop = create(doc, "div", "zcs-connection-top");
@@ -466,15 +466,15 @@
         "div",
         "zcs-connection-subtitle",
         "zotero-codex-cli-subtitle",
-        "Shares local tasks and sign-in state",
+        "Uses the same sign-in and conversations as other Codex apps on this computer.",
       );
       connectionCopy.append(connectionTitle, connectionSubtitle);
       connectionTop.append(connectionIcon, connectionCopy);
       const pathLabel = create(doc, "label", "zcs-setting-label");
-      pathLabel.append(createL10n(doc, "span", "", "zotero-codex-cli-path", "Codex CLI path"));
+      pathLabel.append(createL10n(doc, "span", "", "zotero-codex-cli-path", "Codex executable path"));
       const pathInput = create(doc, "input", "zcs-path-input");
       pathInput.type = "text";
-      pathInput.placeholder = "Auto-detect";
+      pathInput.placeholder = "Find automatically";
       setL10n(pathInput, "zotero-codex-cli-path-input");
       pathInput.value = String(this.manager.getPreference("codexPath") || "");
       pathLabel.append(pathInput);
@@ -483,7 +483,7 @@
         "div",
         "zcs-path-status",
         "zotero-codex-cli-path-help",
-        "Leave blank to detect common install locations.",
+        "Leave blank and Zotero will look for Codex automatically.",
       );
       const settingsActions = create(doc, "div", "zcs-settings-actions");
       const autoPathButton = createL10n(
@@ -506,13 +506,13 @@
       connectionCard.append(connectionTop, pathLabel, pathStatus, settingsActions);
       const sharingNote = create(doc, "div", "zcs-settings-note");
       sharingNote.append(
-        createL10n(doc, "div", "zcs-settings-note-title", "zotero-codex-task-sharing", "Task sharing"),
+        createL10n(doc, "div", "zcs-settings-note-title", "zotero-codex-task-sharing", "Shared conversations"),
         createL10n(
           doc,
           "div",
           "zcs-settings-note-copy",
           "zotero-codex-task-sharing-copy",
-          "Tasks opened or created here also appear in Codex Desktop, the CLI, and the browser sidebar on this computer.",
+          "Conversations you open or start here are also available in Codex Desktop, the command line, and the browser sidebar on this computer.",
         ),
       );
       const chatSectionTitle = createL10n(
@@ -531,14 +531,14 @@
           "span",
           "zcs-settings-toggle-title",
           "zotero-codex-show-work-process",
-          "Show work process (CoT)",
+          "Show activity details",
         ),
         createL10n(
           doc,
           "span",
           "zcs-settings-toggle-description",
           "zotero-codex-show-work-process-description",
-          "Show reasoning summaries, tool activity, and processed steps when available.",
+          "Show tool use, file changes, and reasoning summaries when available.",
         ),
       );
       const showWorkProcessToggle = create(doc, "input", "zcs-switch-input");
@@ -1162,7 +1162,7 @@
       }
       if (this.creatingTask) {
         send.disabled = true;
-        setButtonLabel(send, "…", "zotero-codex-creating-task", "Creating task");
+        setButtonLabel(send, "…", "zotero-codex-creating-task", "Starting chat");
         send.classList.remove("zcs-send-stop");
         return;
       }
@@ -1883,7 +1883,7 @@
             : visible.length ? "zotero-codex-no-matching-tasks" : "zotero-codex-no-tasks",
           noPaperChats
             ? "No chats for this paper yet"
-            : visible.length ? "No matching tasks" : "No Codex tasks yet",
+            : visible.length ? "No matching conversations" : "No conversations yet",
         ));
         return;
       }
@@ -1936,7 +1936,7 @@
       const thread = this.threads.find((candidate) => candidate.id === this.threadID) || this.thread;
       const label = thread ? Protocol.threadLabel(thread) : "";
       if (label) setPlainText(this.elements.threadTitle, label);
-      else setLocalizedText(this.elements.threadTitle, "zotero-codex-new-task", "New task");
+      else setLocalizedText(this.elements.threadTitle, "zotero-codex-new-task", "New chat");
       this.elements.threadButton.title = label;
       this.renderThreadPicker();
     }
@@ -2691,7 +2691,7 @@
         this.showError(event.error || ClientTools.clientError(
           "zotero-codex-error-disconnected",
           null,
-          "Codex App Server disconnected",
+          "The connection to Codex was lost.",
         ));
         return;
       }

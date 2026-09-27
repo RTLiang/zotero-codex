@@ -21,6 +21,22 @@ if (!manifest.applications?.zotero?.update_url) {
 if (packageJSON.version !== manifest.version) {
   throw new Error("package.json and manifest.json versions must match");
 }
+if (manifest.default_locale !== "en_US") {
+  throw new Error("The manifest must use en_US as its default locale");
+}
+for (const [field, message] of Object.entries({
+  name: "__MSG_extensionName__",
+  description: "__MSG_extensionDescription__",
+})) {
+  if (manifest[field] !== message) throw new Error(`manifest.${field} must use ${message}`);
+}
+
+for (const locale of ["en_US", "zh_CN"]) {
+  const messages = JSON.parse(readFileSync(resolve(projectRoot, `_locales/${locale}/messages.json`), "utf8"));
+  for (const key of ["extensionName", "extensionDescription"]) {
+    if (!messages[key]?.message?.trim()) throw new Error(`_locales/${locale}/messages.json is missing ${key}`);
+  }
+}
 
 for (const file of [
   "bootstrap.js",

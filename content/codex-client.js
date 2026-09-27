@@ -256,7 +256,7 @@
         await this.request("initialize", {
           clientInfo: {
             name: "zotero-codex-sidebar",
-            title: "Codex Sidebar for Zotero",
+            title: "Codex for Zotero",
             version: "2026.265.1",
           },
           capabilities: { experimentalApi: true },

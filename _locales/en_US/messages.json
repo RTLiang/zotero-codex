@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "Codex for Zotero",
+    "description": "The add-on name shown in Zotero."
+  },
+  "extensionDescription": {
+    "message": "Discuss papers with Codex in Zotero and continue your conversations across Codex apps.",
+    "description": "A short description of the add-on."
+  }
+}

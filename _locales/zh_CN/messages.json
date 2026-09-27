@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "Zotero Codex",
+    "description": "Zotero 插件名称。"
+  },
+  "extensionDescription": {
+    "message": "在 Zotero 中与 Codex 讨论文献，并在其他 Codex 应用中继续已有对话。",
+    "description": "Zotero 插件简介。"
+  }
+}

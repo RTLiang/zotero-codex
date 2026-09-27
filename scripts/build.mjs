@@ -18,6 +18,7 @@ const zip = spawnSync(
     "-r",
     "-X",
     output,
+    "_locales",
     "manifest.json",
     "bootstrap.js",
     "prefs.js",
