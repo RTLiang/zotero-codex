@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const Markdown = require("../content/markdown.js");
 const KaTeX = require("../content/vendor/katex/katex.min.js");
 
@@ -171,6 +173,21 @@ test("renders the reported bare SASRec arrow formula with KaTeX", () => {
     if (previousKaTeX === undefined) delete global.katex;
     else global.katex = previousKaTeX;
   }
+});
+
+test("ships KaTeX with only its referenced WOFF2 font files", () => {
+  const fontDirectory = path.join(__dirname, "../content/vendor/katex/fonts");
+  const stylesheet = fs.readFileSync(
+    path.join(__dirname, "../content/vendor/katex/katex.min.css"),
+    "utf8",
+  );
+  const references = [...stylesheet.matchAll(/url\((?:["']?)(fonts\/[^)'"]+)(?:["']?)\)/gu)]
+    .map((match) => match[1].replace(/^fonts\//u, ""));
+
+  assert.ok(references.length > 0);
+  assert.ok(references.every((font) => font.endsWith(".woff2")));
+  assert.equal(new Set(references).size, 20);
+  for (const font of references) assert.ok(fs.existsSync(path.join(fontDirectory, font)), font);
 });
 
 test("renders bare model-generated LaTeX and repairs common missing braces", () => {
