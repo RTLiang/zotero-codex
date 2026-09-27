@@ -951,13 +951,13 @@
   text-align: center;
 }
 
-.zcs-inline-math math,
-.zcs-display-math math {
+.zcs-inline-math > math,
+.zcs-display-math > math {
   font-family: inherit;
   font-size: 1em;
 }
 
-.zcs-display-math math {
+.zcs-display-math > math {
   min-width: max-content;
   margin-inline: auto;
 }

@@ -24,8 +24,14 @@ var ZoteroCodexPlugin = {
     this.version = version;
     this.rootURI = rootURI;
 
-    const stylesheetText = await Zotero.File.getResourceAsync(
-      rootURI + "content/style.css",
+    const [stylesheetText, katexStylesheet] = await Promise.all([
+      Zotero.File.getResourceAsync(rootURI + "content/style.css"),
+      Zotero.File.getResourceAsync(rootURI + "content/vendor/katex/katex.min.css"),
+    ]);
+    const katexFontRoot = `${rootURI}content/vendor/katex/`;
+    const resolvedKatexStylesheet = katexStylesheet.replace(
+      /url\((['"]?)(fonts\/[^)'"]+)\1\)/gu,
+      (_match, _quote, path) => `url("${katexFontRoot}${path}")`,
     );
     const modules = globalThis.ZoteroCodexModules;
     if (!modules?.CodexClient || !modules?.Sidebar) {
@@ -42,7 +48,7 @@ var ZoteroCodexPlugin = {
     });
     this.sidebar = new modules.Sidebar.SidebarManager({
       client: this.client,
-      stylesheetText,
+      stylesheetText: `${stylesheetText}\n${resolvedKatexStylesheet}`,
       rootURI,
       getPreference: (name) => this.getPreference(name),
       setPreference: (name, value) => this.setPreference(name, value),

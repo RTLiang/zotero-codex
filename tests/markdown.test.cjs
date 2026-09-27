@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Markdown = require("../content/markdown.js");
+const KaTeX = require("../content/vendor/katex/katex.min.js");
 
 test("parses the Markdown structures used in Codex paper explanations", () => {
   const blocks = Markdown.parseBlocks(`
@@ -133,6 +134,43 @@ test("renders matrix and aligned environments as structured MathML", () => {
   };
   walk(root.children[0]);
   for (const tag of ["math", "mroot", "mover", "mtable", "mtr", "mtd"]) assert.ok(tags.includes(tag), tag);
+});
+
+test("renders the reported bare SASRec arrow formula with KaTeX", () => {
+  const source = [
+    "对于 [A,B,C] → D，输入为：",
+    String.raw`[E_A,E_B,E_C]\xrightarrow{\mathrm{SASRec}}h.`,
+  ].join("\n");
+  const blocks = Markdown.parseBlocks(source);
+  assert.deepEqual(blocks.map((block) => block.type), ["paragraph", "math"]);
+
+  const previousKaTeX = global.katex;
+  global.katex = KaTeX;
+  try {
+    const doc = {
+      createElement: (tag) => ({
+        tag, className: "", children: [], append(...nodes) { this.children.push(...nodes); },
+      }),
+      createElementNS: (_namespace, tag) => ({
+        tag, children: [], attributes: {},
+        append(...nodes) { this.children.push(...nodes); },
+        setAttribute(name, value) { this.attributes[name] = value; },
+      }),
+      createTextNode: (text) => ({ tag: "#text", text }),
+    };
+    const root = { children: [], append(node) { this.children.push(node); } };
+    Markdown.appendMarkdown(doc, root, "$$" + blocks[1].text + "$$");
+
+    const rendered = root.children[0].innerHTML;
+    assert.match(rendered, /class="katex"/u);
+    assert.match(rendered, /<mover/u);
+    assert.match(rendered, /SASRec/u);
+    assert.doesNotMatch(rendered, /katex-error/u);
+  }
+  finally {
+    if (previousKaTeX === undefined) delete global.katex;
+    else global.katex = previousKaTeX;
+  }
 });
 
 test("renders bare model-generated LaTeX and repairs common missing braces", () => {

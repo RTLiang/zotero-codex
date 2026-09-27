@@ -832,6 +832,23 @@
 
   function createRenderedMath(doc, latex, display = false) {
     const wrapper = create(doc, display ? "div" : "span", display ? "zcs-display-math" : "zcs-inline-math");
+    if (typeof global.katex?.renderToString === "function") {
+      try {
+        wrapper.innerHTML = global.katex.renderToString(String(latex), {
+          displayMode: display,
+          output: "htmlAndMathml",
+          throwOnError: false,
+          strict: "ignore",
+          trust: false,
+          maxSize: 20,
+          maxExpand: 1000,
+        });
+        return wrapper;
+      }
+      catch (_error) {
+        // Keep the existing MathML subset as a resilient fallback for unusual input.
+      }
+    }
     const math = createMathML(doc, "math");
     math.setAttribute("display", display ? "block" : "inline");
     math.setAttribute("aria-label", latexToText(latex));
