@@ -1419,7 +1419,28 @@
   right: 8px;
   bottom: 92px;
   left: 8px;
-  padding: 7px;
+  padding: 10px;
+}
+
+.zcs-context-popover .zcs-menu-row {
+  min-height: 42px;
+  padding: 11px 12px;
+  gap: 11px;
+  line-height: 1.45;
+}
+
+.zcs-context-popover .zcs-menu-row + .zcs-menu-row {
+  margin-top: 3px;
+}
+
+.zcs-context-popover .zcs-context-option {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.zcs-context-option .zcs-row-meta {
+  margin-top: 5px;
+  line-height: 1.4;
 }
 
 .zcs-model-popover {

@@ -422,7 +422,7 @@
       refreshButton.type = "button";
       refreshButton.append(
         create(doc, "span", "zcs-row-icon", "↻"),
-        createL10n(doc, "span", "zcs-row-copy", "zotero-codex-refresh-tasks", "Refresh shared tasks"),
+        createL10n(doc, "span", "zcs-row-copy", "zotero-codex-refresh-tasks", "Refresh chats"),
       );
       const openSettingsButton = create(doc, "button", "zcs-menu-row zcs-settings-action");
       openSettingsButton.type = "button";
