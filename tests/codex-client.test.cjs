@@ -7,6 +7,35 @@ require("../content/codex-client.js");
 
 const { CodexAppServerClient } = global.ZoteroCodexModules.CodexClient;
 
+test("resolves Windows npm shims to native binaries and preserves semicolon PATH", async () => {
+  const previous = { Zotero: global.Zotero, Services: global.Services, IOUtils: global.IOUtils };
+  const prefix = "C:\\Users\\Research User\\AppData\\Roaming\\npm";
+  const packageRoot = `${prefix}\\node_modules\\@openai`;
+  const binary = `${packageRoot}\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\codex\\codex.exe`;
+  const tree = {
+    [packageRoot]: [`${packageRoot}\\codex-win32-x64`],
+    [`${packageRoot}\\codex-win32-x64`]: [`${packageRoot}\\codex-win32-x64\\vendor`],
+    [`${packageRoot}\\codex-win32-x64\\vendor`]: [`${packageRoot}\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc`],
+    [`${packageRoot}\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc`]: [binary.slice(0, binary.lastIndexOf("\\"))],
+    [binary.slice(0, binary.lastIndexOf("\\"))]: [binary],
+  };
+  try {
+    global.Zotero = { isWin: true };
+    global.Services = { env: { get: (name) => name === "PATH" ? `${prefix};C:\\Windows\\System32` : "" } };
+    global.IOUtils = {
+      exists: async (path) => path === binary || path === `${prefix}\\codex.cmd`,
+      getChildren: async (path) => tree[path] || [],
+    };
+    const { resolveCodexPath, processPath } = global.ZoteroCodexModules.CodexClient;
+    assert.equal(await resolveCodexPath(`"${prefix}\\codex.cmd"`), binary);
+    assert.equal(await resolveCodexPath(), binary);
+    assert.equal(processPath(binary), `${binary.slice(0, binary.lastIndexOf("\\"))};${prefix};C:\\Windows\\System32`);
+    assert.equal(await resolveCodexPath(binary), binary);
+    await assert.rejects(resolveCodexPath("C:\\Missing\\codex.exe"), /Could not find Codex/);
+  }
+  finally { Object.assign(global, previous); }
+});
+
 test("forks before the edited turn without changing the source task", async () => {
   const client = new CodexAppServerClient();
   client.connect = async () => client;

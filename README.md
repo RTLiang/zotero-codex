@@ -34,7 +34,12 @@
 
 - Zotero 10.0.x（本机版本为 10.0.2；manifest 明确限定为 `10.0.*`）
 - 已安装 Codex CLI，并完成 `codex login`
+- [OpenAI 官方 CLI 文档](https://learn.chatgpt.com/docs/codex/cli)推荐独立安装器，并提供 npm/Homebrew 安装选项。安装路径由安装方式和前缀决定，并非统一固定目录。
+- 官方独立安装器：macOS/Linux 默认 `~/.local/bin/codex`；Windows 默认 `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe`。自动检测也支持 `CODEX_INSTALL_DIR` 自定义目录。
+- macOS/Linux 会搜索继承的 PATH、`NPM_CONFIG_PREFIX` / `npm_config_prefix` 下的 `bin/codex`，以及常见 Homebrew、Linuxbrew 和用户安装目录。nvm/fnm 等安装若已加入 Zotero 继承的 PATH，也可被发现；否则在设置中填写绝对路径。
 - macOS 会自动探测 `/opt/homebrew/bin/codex`、`/usr/local/bin/codex` 等常见位置；也可在侧栏的“连接设置”里填绝对路径
+- Windows 会检测 PATH、`%APPDATA%\npm`、用户目录下的 `.cargo\bin` 和 `.local\bin`。npm 安装产生的 `codex.cmd` 会解析为包内的原生 `codex.exe`；也可在连接设置中填写 `codex.exe` 或 `codex.cmd` 的绝对路径。安装或登录 Codex 后重启 Zotero，使它继承最新环境变量。
+- Windows 启动分支已通过模拟路径测试，实际 Windows Zotero 环境尚未验证。官方 Zotero skill 仍需在 Codex 中安装，使用时需要可用的 Python 环境。
 
 ## 安装
 

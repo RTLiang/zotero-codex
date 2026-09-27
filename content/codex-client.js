@@ -16,6 +16,46 @@
     return [...new Set(values.filter(Boolean))];
   }
 
+  function environmentValue(name) {
+    return global.Services?.env?.get(name) || "";
+  }
+
+  function processPath(binaryPath) {
+    const windows = Boolean(global.Zotero?.isWin);
+    const separator = windows ? ";" : ":";
+    return unique([
+      dirname(binaryPath),
+      ...(windows ? [] : ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"]),
+      ...environmentValue("PATH").split(separator),
+    ]).join(separator);
+  }
+
+  async function resolveWindowsExecutable(path) {
+    if (/\.exe$/iu.test(path)) return await pathExists(path) ? path : "";
+    // npm shims are scripts, not executables accepted by Gecko Subprocess.
+    // Find the native binary shipped by the package instead of using cmd.exe.
+    const root = dirname(path);
+    const direct = `${root}\\codex.exe`;
+    if (await pathExists(direct)) return direct;
+    const packageRoot = `${root}\\node_modules\\@openai`;
+    async function findBinary(directory, depth) {
+      if (depth > 5 || !global.IOUtils?.getChildren) return "";
+      let children;
+      try { children = await global.IOUtils.getChildren(directory); }
+      catch (_error) { return ""; }
+      for (const child of children) {
+        if (/(?:^|[\\/])codex\.exe$/iu.test(child)) return child;
+      }
+      for (const child of children) {
+        if (depth === 0 && !/(?:^|[\\/])codex(?:-|$)/iu.test(child)) continue;
+        const found = await findBinary(child, depth + 1);
+        if (found) return found;
+      }
+      return "";
+    }
+    return findBinary(packageRoot, 0);
+  }
+
   function getHomeDirectory() {
     try {
       return global.Services.dirsvc.get("Home", global.Ci.nsIFile).path;
@@ -51,12 +91,17 @@
   async function resolveCodexPath(configuredPath = "") {
     const normalized = String(configuredPath || "").trim().replace(/^(['"])(.*)\1$/u, "$2");
     if (normalized) {
+      if (global.Zotero?.isWin) {
+        const executable = await resolveWindowsExecutable(normalized);
+        if (executable) return executable;
+      }
       if (!(await pathExists(normalized))) throw clientError(
         "zotero-codex-error-cli-not-found-path",
         { path: normalized },
         `Could not find Codex CLI: ${normalized}`,
       );
-      return normalized;
+      if (!global.Zotero?.isWin) return normalized;
+      throw new Error("Select the native codex.exe executable; the npm shim could not be resolved.");
     }
 
     const home = getHomeDirectory();
@@ -73,10 +118,40 @@
             "/usr/bin/codex",
             home && `${home}/.local/bin/codex`,
             home && `${home}/.cargo/bin/codex`,
+            "/home/linuxbrew/.linuxbrew/bin/codex",
+            home && `${home}/.linuxbrew/bin/codex`,
           ]
-        : [];
+        : global.Zotero?.isWin
+          ? unique([
+              environmentValue("CODEX_INSTALL_DIR") && `${environmentValue("CODEX_INSTALL_DIR")}\\codex.exe`,
+              environmentValue("LOCALAPPDATA") && `${environmentValue("LOCALAPPDATA")}\\Programs\\OpenAI\\Codex\\bin\\codex.exe`,
+              environmentValue("NPM_CONFIG_PREFIX") && `${environmentValue("NPM_CONFIG_PREFIX")}\\codex.cmd`,
+              environmentValue("APPDATA") && `${environmentValue("APPDATA")}\\npm\\codex.cmd`,
+              home && `${home}\\.cargo\\bin\\codex.exe`,
+              home && `${home}\\.local\\bin\\codex.exe`,
+              ...environmentValue("PATH").split(";").filter(Boolean).flatMap((directory) => {
+                const root = directory.replace(/^"|"$/gu, "");
+                return [`${root}\\codex.exe`, `${root}\\codex.cmd`];
+              }),
+            ])
+          : [];
+
+    if (!global.Zotero?.isWin) {
+      candidates.unshift(...unique([
+        environmentValue("CODEX_INSTALL_DIR") && `${environmentValue("CODEX_INSTALL_DIR")}/codex`,
+        environmentValue("NPM_CONFIG_PREFIX") && `${environmentValue("NPM_CONFIG_PREFIX")}/bin/codex`,
+        environmentValue("npm_config_prefix") && `${environmentValue("npm_config_prefix")}/bin/codex`,
+        ...environmentValue("PATH").split(":").filter((directory) => directory.startsWith("/"))
+          .map((directory) => `${directory}/codex`),
+      ]));
+    }
 
     for (const candidate of candidates) {
+      if (global.Zotero?.isWin) {
+        const executable = await resolveWindowsExecutable(candidate);
+        if (executable) return executable;
+        continue;
+      }
       if (await pathExists(candidate)) return candidate;
     }
     throw clientError(
@@ -154,15 +229,7 @@
       const configuredPath = this.getPreference("codexPath");
       this.binaryPath = await resolveCodexPath(configuredPath);
       const Subprocess = await this.loadSubprocessModule();
-      const inheritedPath = global.Services.env.get("PATH") || "";
-      const path = unique([
-        dirname(this.binaryPath),
-        "/opt/homebrew/bin",
-        "/usr/local/bin",
-        "/usr/bin",
-        "/bin",
-        ...inheritedPath.split(":"),
-      ]).join(":");
+      const path = processPath(this.binaryPath);
 
       try {
         this.process = await Subprocess.call({
@@ -670,5 +737,6 @@
     clientError,
     publicError,
     getHomeDirectory,
+    processPath,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);
