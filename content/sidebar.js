@@ -2083,6 +2083,7 @@
 
     renderTranscript(entries) {
       const transcript = this.elements.transcript;
+      this.clearResponseScrollSpace();
       transcript.replaceChildren();
       const messages = Protocol.groupTranscriptEntries(entries);
       if (!messages.length) {
@@ -2193,7 +2194,7 @@
         const preview = create(this.doc, "img", "zcs-message-image");
         preview.src = source;
         preview.alt = String(image.name || "");
-        preview.loading = "lazy";
+        preview.loading = "eager";
         gallery.append(preview);
       }
       parent.append(gallery);
