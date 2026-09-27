@@ -1,6 +1,6 @@
 {
   "name": "zotero-codex-sidebar",
-  "version": "2026.270.11",
+  "version": "2026.270.12",
   "private": true,
   "description": "Chat with Codex about your papers in Zotero and continue existing Codex tasks.",
   "scripts": {
