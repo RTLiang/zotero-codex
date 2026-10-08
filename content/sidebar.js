@@ -461,12 +461,13 @@
       const connectionIcon = create(doc, "span", "zcs-connection-icon", "C");
       const connectionCopy = create(doc, "div", "zcs-connection-copy");
       const connectionTitle = create(doc, "div", "zcs-connection-title", "Codex CLI");
+      const isolatedStorage = Boolean(this.manager.getPreference("codexHome"));
       const connectionSubtitle = createL10n(
         doc,
         "div",
         "zcs-connection-subtitle",
-        "zotero-codex-cli-subtitle",
-        "Uses the same sign-in and conversations as other Codex apps on this computer.",
+        isolatedStorage ? "zotero-codex-cli-subtitle-isolated" : "zotero-codex-cli-subtitle",
+        isolatedStorage ? "Uses a dedicated Codex storage directory." : "Uses the same sign-in and conversations as other Codex apps on this computer.",
       );
       connectionCopy.append(connectionTitle, connectionSubtitle);
       connectionTop.append(connectionIcon, connectionCopy);
@@ -503,16 +504,21 @@
       );
       reconnectButton.type = "button";
       settingsActions.append(autoPathButton, reconnectButton);
-      connectionCard.append(connectionTop, pathLabel, pathStatus, settingsActions);
+      const runtimeSettingsButton = createL10n(doc, "button", "zcs-secondary-button",
+        "zotero-codex-runtime-settings", "Proxy and storage settings…");
+      runtimeSettingsButton.type = "button";
+      connectionCard.append(connectionTop, pathLabel, pathStatus, settingsActions, runtimeSettingsButton);
       const sharingNote = create(doc, "div", "zcs-settings-note");
       sharingNote.append(
-        createL10n(doc, "div", "zcs-settings-note-title", "zotero-codex-task-sharing", "Shared conversations"),
+        createL10n(doc, "div", "zcs-settings-note-title",
+          isolatedStorage ? "zotero-codex-task-isolation" : "zotero-codex-task-sharing",
+          isolatedStorage ? "Dedicated conversations" : "Shared conversations"),
         createL10n(
           doc,
           "div",
           "zcs-settings-note-copy",
-          "zotero-codex-task-sharing-copy",
-          "Conversations you open or start here are also available in Codex Desktop, the command line, and the browser sidebar on this computer.",
+          isolatedStorage ? "zotero-codex-task-isolation-copy" : "zotero-codex-task-sharing-copy",
+          isolatedStorage ? "These conversations live in the selected Codex storage directory. Other Codex apps must use that directory to see them." : "Conversations you open or start here are also available in Codex Desktop, the command line, and the browser sidebar on this computer.",
         ),
       );
       const chatSectionTitle = createL10n(
@@ -780,6 +786,7 @@
         settingsView,
         openSettingsButton,
         settingsBackButton,
+        runtimeSettingsButton,
         refreshButton,
         status,
         statusText,
@@ -825,6 +832,7 @@
       };
 
       this.handlers = {
+        openRuntimeSettings: () => global.Zotero.getMainWindow().ZoteroPane.openPreferences("zotero-codex-settings"),
         toggleThreads: () => this.togglePopover("threads"),
         threadHeaderContextMenu: (event) => {
           if (!this.threadID) return;
@@ -952,6 +960,7 @@
       newThreadButton.addEventListener("click", this.handlers.newTask);
       paperOnlyCheckbox.addEventListener("change", this.handlers.togglePaperOnly);
       refreshButton.addEventListener("click", this.handlers.refresh);
+      runtimeSettingsButton.addEventListener("click", this.handlers.openRuntimeSettings);
       openSettingsButton.addEventListener("click", this.handlers.openSettings);
       settingsBackButton.addEventListener("click", this.handlers.closeSettings);
       autoPathButton.addEventListener("click", this.handlers.useAutoPath);
@@ -1777,7 +1786,7 @@
       this.setStatus("busy", "");
       try {
         const paperKey = Protocol.paperContextKey(this.context);
-        const paperCwd = pathDirectory(this.context?.pdfPath);
+        const paperCwd = this.manager.paperDirectory(this.context);
         const onlyThisPaper = Boolean(paperKey && this.manager.getPreference("paperOnlyChats"));
         const [recent, inPaperDirectory] = await Promise.all([
           this.client.listThreads(500),
@@ -1861,7 +1870,7 @@
       const onlyThisPaper = Boolean(paperKey && this.manager.getPreference("paperOnlyChats"));
       this.elements.paperOnlyFilter.hidden = !paperKey;
       this.elements.paperOnlyCheckbox.checked = onlyThisPaper;
-      const paperCwd = pathDirectory(this.context?.pdfPath);
+      const paperCwd = this.manager.paperDirectory(this.context);
       const allThreads = this.thread?.id && !this.threads.some((thread) => thread.id === this.thread.id)
         ? [this.thread, ...this.threads]
         : this.threads;
@@ -2437,7 +2446,7 @@
         this.setStatus("busy", "");
         const title = Protocol.firstLine(text, 58) || "Zotero research";
         const thread = await this.client.startThread({
-          cwd: pathDirectory(context.pdfPath) || ClientTools.getHomeDirectory(),
+          cwd: this.manager.paperDirectory(context) || ClientTools.getHomeDirectory(),
           title,
           model: this.selectedModel,
         });
@@ -2938,6 +2947,7 @@
       e.newThreadButton.removeEventListener("click", this.handlers.newTask);
       e.paperOnlyCheckbox.removeEventListener("change", this.handlers.togglePaperOnly);
       e.refreshButton.removeEventListener("click", this.handlers.refresh);
+      e.runtimeSettingsButton.removeEventListener("click", this.handlers.openRuntimeSettings);
       e.openSettingsButton.removeEventListener("click", this.handlers.openSettings);
       e.settingsBackButton.removeEventListener("click", this.handlers.closeSettings);
       e.autoPathButton.removeEventListener("click", this.handlers.useAutoPath);
@@ -2988,6 +2998,41 @@
       this.liveSelectionSequence = 0;
       this.selectionPopupCleanups = new Set();
       this.readerSelectionHandler = (event) => this.handleReaderSelection(event);
+    }
+
+    detachRuntimeViews() {
+      this.reconfiguring = true;
+      const snapshots = [...this.views.values()].map(view => ({
+        props: { doc: view.doc, body: view.body, item: view.item, tabType: view.tabType },
+        draft: view.elements.input.value,
+        images: [...view.images],
+      }));
+      for (const [body, view] of this.views) this.destroyView(body, view);
+      return snapshots;
+    }
+
+    restoreRuntimeViews(snapshots) {
+      this.reconfiguring = false;
+      for (const { props, draft, images } of snapshots) {
+        if (!props.body.isConnected) continue;
+        const view = new SidebarView(this, props);
+        this.views.set(props.body, view);
+        void view.initialize().then(() => {
+          if (view.destroyed) return;
+          if (!view.elements.input.value) view.elements.input.value = draft;
+          if (!view.images.length) view.images = images;
+          view.resizeComposer();
+          view.renderContextAttachment();
+          view.updateComposerState();
+        }).catch(error => view.showError(error));
+      }
+    }
+
+    paperDirectory(context) {
+      const base = this.getPreference("workingDirectory");
+      if (!base) return pathDirectory(context?.pdfPath);
+      const key = Protocol.paperContextKey(context);
+      return key ? global.PathUtils.join(base, "papers", encodeURIComponent(key)) : base;
     }
 
     isWorkProcessVisible() {
@@ -3102,13 +3147,14 @@
           if (!item) setSectionSummary("");
           else void formatValue(
             body.ownerDocument,
-            "zotero-codex-section-summary",
+            this.getPreference("codexHome") ? "zotero-codex-section-summary-isolated" : "zotero-codex-section-summary",
             null,
-            "Shared local tasks",
+            this.getPreference("codexHome") ? "Dedicated Zotero conversations" : "Shared local tasks",
           ).then(setSectionSummary);
           this.views.get(body)?.setItem(item, tabType);
         },
         onRender: (props) => {
+          if (this.reconfiguring) return;
           let view = this.views.get(props.body);
           if (!view) {
             view = new SidebarView(this, props);

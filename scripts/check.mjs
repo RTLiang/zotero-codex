@@ -42,6 +42,8 @@ for (const file of [
   "bootstrap.js",
   "content/protocol.js",
   "content/codex-client.js",
+  "content/runtime-settings.js",
+  "content/preferences.js",
   "content/markdown.js",
   "content/sidebar.js",
   "content/main.js",

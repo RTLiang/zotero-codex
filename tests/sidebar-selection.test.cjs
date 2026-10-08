@@ -297,3 +297,17 @@ test("removes every persistent sidebar event handler during view destruction", (
   assert.ok(mounted.length > 0);
   assert.deepEqual(mounted.filter((handler) => !removed.has(handler)), []);
 });
+
+test("custom working directories keep each paper's chat filter separate", () => {
+  const previous = global.PathUtils;
+  global.PathUtils = path.posix;
+  try {
+    const manager = createManager();
+    const first = { libraryID: 1, itemKey: "FIRST", pdfPath: "/pdf/first.pdf" };
+    const second = { libraryID: 1, itemKey: "SECOND", pdfPath: "/pdf/second.pdf" };
+    assert.equal(manager.paperDirectory(first), "/pdf");
+    manager.setPreference("workingDirectory", "/zotero/workspace");
+    assert.notEqual(manager.paperDirectory(first), manager.paperDirectory(second));
+    assert.ok(manager.paperDirectory(first).startsWith("/zotero/workspace/papers/"));
+  } finally { global.PathUtils = previous; }
+});

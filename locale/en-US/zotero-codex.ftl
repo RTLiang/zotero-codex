@@ -190,3 +190,9 @@ zotero-codex-error-turn-id-missing = Codex did not return the reply information.
 zotero-codex-error-disconnected = The connection to Codex was lost.
 zotero-codex-error-server = Codex returned an error.
 zotero-codex-error-register-sidebar = Could not register the Zotero Codex sidebar.
+
+zotero-codex-cli-subtitle-isolated = Uses a dedicated Codex storage directory.
+zotero-codex-runtime-settings = Proxy and storage settings…
+zotero-codex-task-isolation = Dedicated conversations
+zotero-codex-task-isolation-copy = These conversations live in the selected Codex storage directory. Other Codex apps must use that directory to see them.
+zotero-codex-section-summary-isolated = Dedicated Zotero conversations

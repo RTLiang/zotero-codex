@@ -7,3 +7,9 @@ pref("extensions.zotero.codexSidebar.model", "");
 pref("extensions.zotero.codexSidebar.reasoningEffort", "");
 pref("extensions.zotero.codexSidebar.showWorkProcess", false);
 pref("extensions.zotero.codexSidebar.sidebarHeight", 0);
+
+pref("extensions.zotero.codexSidebar.proxyMode", "inherit");
+pref("extensions.zotero.codexSidebar.proxyURL", "http://127.0.0.1:7890");
+pref("extensions.zotero.codexSidebar.proxyBypass", "localhost,127.0.0.1,::1");
+pref("extensions.zotero.codexSidebar.codexHome", "");
+pref("extensions.zotero.codexSidebar.workingDirectory", "");

@@ -230,13 +230,16 @@
       this.binaryPath = await resolveCodexPath(configuredPath);
       const Subprocess = await this.loadSubprocessModule();
       const path = processPath(this.binaryPath);
+      const settings = modules.RuntimeSettings?.read(this.getPreference);
+      if (settings) await modules.RuntimeSettings.prepare(settings);
 
       try {
         this.process = await Subprocess.call({
           command: this.binaryPath,
-          arguments: ["app-server"],
+          arguments: ["app-server", ...(settings?.codexHome ? ["-c", `sqlite_home=${JSON.stringify(settings.codexHome)}`] : [])],
           stderr: "pipe",
-          environment: { PATH: path },
+          environment: { PATH: path, ...(settings ? modules.RuntimeSettings.environment(settings) : {}) },
+          ...(settings?.workingDirectory ? { workdir: settings.workingDirectory } : {}),
           environmentAppend: true,
         });
       }
@@ -476,8 +479,11 @@
 
     async startThread({ cwd, title, model } = {}) {
       await this.connect();
+      if (cwd && this.getPreference("workingDirectory")) {
+        await global.IOUtils.makeDirectory(cwd, { createAncestors: true, permissions: 0o700 });
+      }
       const result = await this.request("thread/start", {
-        cwd: cwd || getHomeDirectory(),
+        cwd: cwd || this.getPreference("workingDirectory") || getHomeDirectory(),
         ephemeral: false,
         approvalPolicy: "on-request",
         approvalsReviewer: "user",
@@ -513,7 +519,7 @@
     async generateThreadTitle({ text, model, effort } = {}) {
       await this.connect();
       const started = await this.request("thread/start", {
-        cwd: getHomeDirectory(),
+        cwd: this.getPreference("workingDirectory") || getHomeDirectory(),
         ephemeral: true,
         approvalPolicy: "never",
         sandbox: "read-only",
@@ -656,7 +662,7 @@
       if (/(^|\s)\$imagegen\b/u.test(String(text || ""))) requestedSkills.push("imagegen");
       if (requestedSkills.length) {
         try {
-          const cwd = getHomeDirectory();
+          const cwd = this.getPreference("workingDirectory") || getHomeDirectory();
           const result = await this.request("skills/list", { cwds: [cwd] });
           const skills = result?.data?.flatMap((entry) => entry.skills || []) || [];
           for (const requestedSkill of requestedSkills) {

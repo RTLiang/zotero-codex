@@ -1,0 +1,15 @@
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      xmlns:html="http://www.w3.org/1999/xhtml"
+      id="codex-runtime-preferences"
+      onload="Zotero.CodexSidebar.settings.mount(this)">
+  <html:style>
+    #codex-runtime-preferences { max-width: 780px; user-select: text; }
+    #codex-runtime-preferences label { display: block; margin: 16px 0 5px; font-weight: 600; }
+    #codex-runtime-preferences input:not([type=checkbox]), #codex-runtime-preferences select { width: 100%; box-sizing: border-box; padding: 8px; color: FieldText; background: Field; border: 1px solid GrayText; border-radius: 5px; }
+    #codex-runtime-preferences p { line-height: 1.5; }
+    #codex-runtime-preferences small { display: block; margin-top: 5px; opacity: .8; line-height: 1.5; }
+    #codex-runtime-preferences button { margin: 12px 8px 0 0; padding: 7px 12px; }
+    #codex-runtime-preferences output { display: block; margin-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  </html:style>
+  <html:div id="codex-runtime-fields" />
+</vbox>

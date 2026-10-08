@@ -190,3 +190,9 @@ zotero-codex-error-turn-id-missing = Codex 没有返回回复信息。
 zotero-codex-error-disconnected = 与 Codex 的连接已中断。
 zotero-codex-error-server = Codex 返回错误。
 zotero-codex-error-register-sidebar = 无法注册 Zotero Codex 侧栏。
+
+zotero-codex-cli-subtitle-isolated = 使用独立的 Codex 存储目录。
+zotero-codex-runtime-settings = 代理与存储设置…
+zotero-codex-task-isolation = 独立存储的对话
+zotero-codex-task-isolation-copy = 这些对话保存在所选 Codex 目录中。其他 Codex 应用需要使用同一个目录才能查看它们。
+zotero-codex-section-summary-isolated = Zotero 独立对话
