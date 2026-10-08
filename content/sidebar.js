@@ -3274,9 +3274,23 @@
         cleanup();
         this.clearLiveSelection(attachmentID, liveSelectionID);
       });
-      observer.observe(doc.documentElement, { childList: true, subtree: true });
-      this.selectionPopupCleanups.add(cleanup);
-      win?.addEventListener?.("unload", cleanup, { once: true });
+      try {
+        // Reader event documents belong to the content compartment. Its DOM
+        // observer cannot read a privileged options dictionary through an Xray
+        // wrapper; clone it into the observer's window before crossing realms.
+        const options = { childList: true, subtree: true };
+        const utils = global.Cu || global.Components?.utils;
+        observer.observe(doc.documentElement, utils?.cloneInto ? utils.cloneInto(options, win) : options);
+        this.selectionPopupCleanups.add(cleanup);
+        win?.addEventListener?.("unload", cleanup, { once: true });
+      }
+      catch (error) {
+        cleanup();
+        this.clearLiveSelection(attachmentID, liveSelectionID);
+        // Zotero dispatches plugin handlers sequentially without a per-handler
+        // catch. Optional popup tracking must not prevent other plugins running.
+        this.log("Could not track the PDF selection popup", error);
+      }
     }
 
     setBoundedSelectionEntry(map, attachmentID, value) {
@@ -3299,7 +3313,8 @@
           (candidate) => candidate.dataset?.pane === this.paneID,
         );
         if (paneButton && typeof win.MouseEvent === "function") {
-          paneButton.dispatchEvent(new win.MouseEvent("click", { bubbles: true, button: 0 }));
+          // Zotero's sidenav only scrolls for a single click (detail === 1).
+          paneButton.dispatchEvent(new win.MouseEvent("click", { bubbles: true, button: 0, detail: 1 }));
           return true;
         }
         if (typeof details.scrollToPane === "function") {

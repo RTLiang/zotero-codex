@@ -21,7 +21,10 @@ Progress:
 - Real sidebar paper-summary response: first visible text 11.476 seconds, completion 12.557 seconds (single run, not a benchmark).
 - Shared → dedicated → shared → dedicated switching restored the appropriate conversations; an unsent text draft survived proxy changes.
 - Final packaged-build restart restored the existing conversation; a follow-up completed in 18.986 seconds and both user turns remained in one session file.
-- Upstream contribution is ready; no account data, local screenshots or user-specific configuration is included.
+- Upstream PR #2 submitted; no account data, local screenshots or user-specific configuration is included.
+- Fixed cross-compartment MutationObserver options in PDF selection popups. An exception previously aborted Zotero’s sequential reader event dispatch before Translate for Zotero could run. Popup tracking failures now clean up and report the cause without blocking other plugins.
+- Set single-click event detail when revealing the Codex pane from a PDF selection.
+- 63 tests, static checks and packaging passed. With Translate for Zotero 2.4.8, a real PDF selection popup displayed DeepL Free translation alongside Add to Codex; the selected text was successfully attached to the Codex conversation.
 - Windows/macOS native runtime and keyring-only login import are not verified; keyring-only users must sign in separately.
 
 Verification: environment/path/scoping regression tests, existing suite, real Zotero preference page, actual sidebar response and session location.
