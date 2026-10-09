@@ -1472,6 +1472,7 @@ display: flex;
   overflow-y: auto;
   border: 0;
   outline: 0;
+  box-shadow: none;
   background: transparent;
   line-height: 1.45;
 }
@@ -1911,7 +1912,7 @@ display: flex;
 .zcs-suggestion:hover {
   background: var(--zcs-soft);
 }
-.zcs-shell :is(button, input, textarea, select):focus-visible {
+.zcs-shell :is(button, input, textarea, select):where(:not(.zcs-input)):focus-visible {
   outline: 2px solid var(--zcs-accent);
   outline-offset: 2px;
 }
