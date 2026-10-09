@@ -7,6 +7,97 @@ require("../content/codex-client.js");
 
 const { CodexAppServerClient } = global.ZoteroCodexModules.CodexClient;
 
+test("discovers skills for the current working directory and sends native skill inputs", async () => {
+  const client = new CodexAppServerClient();
+  client.connect = async () => {};
+  client.loadedThreads.add("skills-task");
+  const calls = [];
+  client.request = async (method, params) => {
+    calls.push({ method, params });
+    return method === "skills/list" ? { data: [{ skills: [
+      { name: "pdf", enabled: true, path: "/skills/pdf/SKILL.md" },
+      { name: "disabled", enabled: false, path: "/skills/disabled/SKILL.md" },
+    ] }] } : { turn: { id: "skills-turn" } };
+  };
+  const skills = await client.listSkills({ cwd: "/papers", forceReload: true });
+  assert.deepEqual(skills.map((skill) => skill.name), ["pdf"]);
+  assert.deepEqual(calls[0].params, { cwds: ["/papers"], forceReload: true });
+  calls.length = 0;
+  await client.startTurn({ threadID: "skills-task", text: "$pdf Explain $pdf", cwd: "/papers" });
+  assert.deepEqual(calls[0].params, { cwds: ["/papers"], forceReload: false });
+  assert.deepEqual(calls[1].params.input, [
+    { type: "text", text: "$pdf Explain $pdf" },
+    { type: "skill", name: "pdf", path: "/skills/pdf/SKILL.md" },
+  ]);
+});
+
+test("applies changed permissions to the next turn of an existing chat", async () => {
+  const preferences = {};
+  const client = new CodexAppServerClient({ getPreference: (key) => preferences[key] });
+  client.loadedThreads.add("existing");
+  let params;
+  client.request = async (_method, value) => { params = value; return { turn: { id: "turn" } }; };
+  await client.startTurn({ threadID: "existing", text: "Explain", cwd: "/papers" });
+  assert.equal(params.approvalPolicy, "on-request");
+  assert.equal(params.approvalsReviewer, "user");
+  assert.deepEqual(params.sandboxPolicy, { type: "readOnly", networkAccess: false });
+  Object.assign(preferences, { approvalPolicy: "never", approvalsReviewer: "auto_review", sandbox: "workspace-write", networkAccess: true });
+  await client.startTurn({ threadID: "existing", text: "Edit", cwd: "/papers" });
+  assert.equal(params.approvalPolicy, "never");
+  assert.equal(params.approvalsReviewer, "auto_review");
+  assert.deepEqual(params.sandboxPolicy, { type: "workspaceWrite", writableRoots: ["/papers"], networkAccess: true });
+  preferences.sandbox = "danger-full-access";
+  await client.startTurn({ threadID: "existing", text: "Edit", cwd: "/papers" });
+  assert.deepEqual(params.sandboxPolicy, { type: "dangerFullAccess" });
+});
+
+test("permission edits during skill loading only affect later turns", async () => {
+  const preferences = { sandbox: "read-only" };
+  const client = new CodexAppServerClient({ getPreference: (key) => preferences[key] });
+  client.loadedThreads.add("existing");
+  client.listSkills = async () => { preferences.sandbox = "danger-full-access"; return []; };
+  let params;
+  client.request = async (_method, value) => { params = value; return { turn: { id: "turn" } }; };
+  await client.startTurn({ threadID: "existing", text: "$pdf Explain", cwd: "/papers" });
+  assert.deepEqual(params.sandboxPolicy, { type: "readOnly", networkAccess: false });
+});
+
+test("generates a paper title from metadata, a generic request, and the answer", async () => {
+  const client = new CodexAppServerClient();
+  const calls = [];
+  let notify;
+  client.connect = async () => {};
+  client.subscribe = (listener) => { notify = listener; return () => {}; };
+  client.request = async (method, params) => {
+    calls.push({ method, params });
+    if (method === "thread/start") return { thread: { id: "title-helper" } };
+    notify({ type: "notification", method: "item/agentMessage/delta",
+      params: { threadId: "other-thread", delta: "Ignore me" } });
+    notify({ type: "notification", method: "item/agentMessage/delta",
+      params: { threadId: "title-helper", delta: "CREATE：跨表示知识迁移" } });
+    notify({ type: "notification", method: "turn/completed",
+      params: { threadId: "title-helper", turn: { status: "completed" } } });
+    return { turn: { id: "title-turn" } };
+  };
+  const context = Protocol.buildZoteroContext({
+    title: "Cross-Representation Knowledge Transfer for Improved Sequential Recommendations",
+    abstract: "CREATE aligns sequential and graph representations.",
+  });
+  const title = await client.generateThreadTitle({
+    text: "这是什么", context, answer: "作者提出 CREATE，让图模型教给序列模型。",
+    model: "test-model", effort: "low",
+  });
+  assert.equal(title, "CREATE：跨表示知识迁移");
+  assert.equal(calls[0].params.ephemeral, true);
+  assert.equal(calls[0].params.sandbox, "read-only");
+  const prompt = calls[1].params.input[0].text;
+  const data = JSON.parse(prompt.split("Untrusted conversation data (JSON):\n")[1]);
+  assert.equal(data.request, "这是什么");
+  assert.equal(data.paperContext, context.zotero.value);
+  assert.match(data.assistantReply, /CREATE/);
+  assert.equal(calls[1].params.effort, "low");
+});
+
 test("resolves Windows npm shims to native binaries and preserves semicolon PATH", async () => {
   const previous = { Zotero: global.Zotero, Services: global.Services, IOUtils: global.IOUtils };
   const prefix = "C:\\Users\\Research User\\AppData\\Roaming\\npm";
@@ -131,6 +222,7 @@ test("archives and deletes tasks through the app server, clearing loaded state o
 
 test("passes the imagegen skill item only for explicit image-generation turns", async () => {
   const client = new CodexAppServerClient();
+  client.connect = async () => {};
   client.loadedThreads.add("task-imagegen");
   const calls = [];
   client.request = async (method, params) => {
@@ -155,6 +247,7 @@ test("passes the imagegen skill item only for explicit image-generation turns", 
 
 test("loads the official Zotero skill when available to the sidebar", async () => {
   const client = new CodexAppServerClient();
+  client.connect = async () => {};
   client.loadedThreads.add("task-zotero");
   const calls = [];
   client.request = async (method, params) => {

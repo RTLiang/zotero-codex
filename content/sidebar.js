@@ -20,6 +20,12 @@
   const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
   const MAX_SELECTION_ATTACHMENTS = 50;
   const THREAD_LIST_BATCH_SIZE = 40;
+  const SLASH_COMMANDS = [
+    { name: "skills", descriptionID: "zotero-codex-command-skills", description: "Choose a skill" },
+    { name: "approvals", descriptionID: "zotero-codex-command-approvals", description: "Adjust approvals and access" },
+    { name: "model", descriptionID: "zotero-codex-command-model", description: "Choose model and reasoning" },
+    { name: "new", descriptionID: "zotero-codex-command-new", description: "Start a new chat" },
+  ];
   const MIN_SHELL_HEIGHT = 360;
   const MAX_SHELL_HEIGHT = 1200;
   const SHELL_HEIGHT_STEP = 24;
@@ -41,6 +47,28 @@
     if (className) element.className = className;
     if (text != null) element.textContent = text;
     return element;
+  }
+
+  function createUIIcon(doc, name) {
+    const paths = {
+      codex: "M8 4 3 9l5 5m8-10 5 5-5 5M13.5 2l-3 14",
+      plus: "M9 3v12M3 9h12",
+      search: "M12 12l4 4M13 7.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0",
+      refresh: "M15 7a6 6 0 1 0-1 6M15 2v5h-5",
+      chevron: "m6 7 3 3 3-3",
+      back: "M15 9H3m5-5L3 9l5 5",
+      skill: "m9 1 2.2 5.8L17 9l-5.8 2.2L9 17l-2.2-5.8L1 9l5.8-2.2Z",
+      shield: "M9 1.5 15 4v5c0 3.2-3 5.8-6 7.5C6 14.8 3 12.2 3 9V4Zm-3 7 2 2 4-4",
+      chat: "M3 2.5h12a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H7L2 17V3.5a1 1 0 0 1 1-1Z",
+    };
+    const icon = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("class", "zcs-ui-icon");
+    icon.setAttribute("viewBox", name === "codex" ? "0 0 24 18" : "0 0 18 18");
+    icon.setAttribute("aria-hidden", "true");
+    const path = doc.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", paths[name]);
+    icon.append(path);
+    return icon;
   }
 
   function createDocumentIcon(doc) {
@@ -308,6 +336,12 @@
       this.thread = null;
       this.threads = [];
       this.models = [];
+      this.skills = [];
+      this.skillsCwd = "";
+      this.skillsLoadSerial = 0;
+      this.commandMatches = [];
+      this.commandIndex = 0;
+      this.activePage = "chat";
       this.selectedModel = "";
       this.selectedEffort = "";
       this.nextTurnSelectionPending = false;
@@ -334,7 +368,6 @@
       this.threadListLimit = THREAD_LIST_BATCH_SIZE;
       this.threadListMatchCount = 0;
       this.statusRevision = 0;
-      this.pendingAutoTitle = null;
       this.managingThreadID = "";
       this.contextMenuThreadID = "";
       this.cleanupClient = this.client.subscribe((event) => this._handleClientEvent(event));
@@ -347,8 +380,18 @@
       const root = create(doc, "section", "zcs-shell");
       root.setAttribute("aria-label", "Codex");
 
-      const topbar = create(doc, "div", "zcs-topbar");
-      topbar.append(create(doc, "span", "zcs-topbar-spacer"));
+      const topbar = create(doc, "header", "zcs-topbar");
+      const connectionState = createL10n(doc, "span", "zcs-connection-state", "zotero-codex-offline", "Not connected");
+      connectionState.setAttribute("role", "status");
+      const headerNewButton = createL10n(doc, "button", "zcs-icon-button", "zotero-codex-new-chat-button", null);
+      headerNewButton.type = "button";
+      headerNewButton.setAttribute("aria-label", "New chat");
+      headerNewButton.title = "New chat";
+      headerNewButton.append(createUIIcon(doc, "plus"));
+      const pagePrefix = `zcs-page-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const workspace = create(doc, "div", "zcs-workspace");
+      const chatView = create(doc, "section", "zcs-chat-view");
+      chatView.id = `${pagePrefix}-chat`;
       const threadButton = create(doc, "button", "zcs-thread-trigger");
       threadButton.type = "button";
       threadButton.setAttribute("aria-haspopup", "dialog");
@@ -360,23 +403,24 @@
         "zotero-codex-new-task",
         "New chat",
       );
-      threadButton.append(threadTitle, create(doc, "span", "zcs-chevron", "⌄"));
+      threadButton.append(threadTitle, createUIIcon(doc, "chevron"));
       const moreButton = create(doc, "button", "zcs-icon-button zcs-more-button", "•••");
       moreButton.type = "button";
-      moreButton.setAttribute("aria-haspopup", "menu");
+      moreButton.setAttribute("aria-haspopup", "dialog");
       moreButton.setAttribute("aria-expanded", "false");
-      moreButton.title = "More actions";
-      moreButton.setAttribute("aria-label", "More actions");
-      setL10n(moreButton, "zotero-codex-more-actions");
-      topbar.append(threadButton, moreButton);
+      moreButton.title = "Settings";
+      moreButton.setAttribute("aria-label", "Settings");
+      setL10n(moreButton, "zotero-codex-settings-button");
+      topbar.append(headerNewButton, threadButton, moreButton);
 
-      const threadPopover = create(doc, "div", "zcs-popover zcs-thread-popover");
+      const threadPopover = create(doc, "section", "zcs-popover zcs-thread-popover");
+      threadPopover.id = `${pagePrefix}-threads`;
       threadPopover.hidden = true;
       threadPopover.setAttribute("role", "dialog");
       threadPopover.setAttribute("aria-label", "Recent conversations");
       setL10n(threadPopover, "zotero-codex-recent-tasks");
       const threadSearchBox = create(doc, "div", "zcs-search-box");
-      threadSearchBox.append(create(doc, "span", "zcs-search-icon", "⌕"));
+      threadSearchBox.append(createUIIcon(doc, "search"));
       const threadSearch = create(doc, "input", "zcs-thread-search");
       threadSearch.type = "search";
       threadSearch.placeholder = "Search conversations";
@@ -398,7 +442,9 @@
       );
       const threadList = create(doc, "div", "zcs-thread-list");
       threadList.setAttribute("role", "list");
-      threadPopover.append(threadSearchBox, newThreadButton, paperOnlyFilter, threadList);
+      const threadPageHeader = create(doc, "header", "zcs-page-header");
+      threadPageHeader.append(createL10n(doc, "h2", "zcs-page-title", "zotero-codex-nav-chats", "Chats"));
+      threadPopover.append(threadPageHeader, threadSearchBox, newThreadButton, paperOnlyFilter, threadList);
 
       const threadContextMenu = create(doc, "div", "zcs-popover zcs-thread-context-menu");
       threadContextMenu.hidden = true;
@@ -415,31 +461,22 @@
       deleteThreadButton.setAttribute("role", "menuitem");
       threadContextMenu.append(archiveThreadButton, deleteThreadButton);
 
-      const settingsPopover = create(doc, "div", "zcs-popover zcs-settings-popover");
-      settingsPopover.hidden = true;
-      settingsPopover.setAttribute("role", "menu");
-      const refreshButton = create(doc, "button", "zcs-menu-row zcs-settings-action");
+      const refreshButton = createL10n(doc, "button", "zcs-icon-button", "zotero-codex-refresh-chats-button", null);
       refreshButton.type = "button";
-      refreshButton.append(
-        create(doc, "span", "zcs-row-icon", "↻"),
-        createL10n(doc, "span", "zcs-row-copy", "zotero-codex-refresh-tasks", "Refresh chats"),
-      );
-      const openSettingsButton = create(doc, "button", "zcs-menu-row zcs-settings-action");
-      openSettingsButton.type = "button";
-      openSettingsButton.append(
-        create(doc, "span", "zcs-row-icon", "⚙"),
-        createL10n(doc, "span", "zcs-row-copy", "zotero-codex-settings", "Settings"),
-      );
-      settingsPopover.append(refreshButton, openSettingsButton);
+      refreshButton.setAttribute("aria-label", "Refresh chats");
+      refreshButton.append(createUIIcon(doc, "refresh"));
+      threadPageHeader.append(refreshButton);
 
-      const settingsView = create(doc, "section", "zcs-settings-view");
+      const settingsView = create(doc, "section", "zcs-page zcs-settings-view");
+      settingsView.id = `${pagePrefix}-settings`;
       settingsView.hidden = true;
       settingsView.tabIndex = -1;
       settingsView.setAttribute("aria-label", "Codex settings");
       setL10n(settingsView, "zotero-codex-settings-view");
       const settingsHeader = create(doc, "header", "zcs-settings-header");
-      const settingsBackButton = create(doc, "button", "zcs-settings-back", "‹");
+      const settingsBackButton = create(doc, "button", "zcs-settings-back");
       settingsBackButton.type = "button";
+      settingsBackButton.append(createUIIcon(doc, "back"));
       settingsBackButton.title = "Back to chat";
       settingsBackButton.setAttribute("aria-label", "Back to chat");
       setL10n(settingsBackButton, "zotero-codex-back-to-chat");
@@ -469,7 +506,7 @@
         "Uses the same sign-in and conversations as other Codex apps on this computer.",
       );
       connectionCopy.append(connectionTitle, connectionSubtitle);
-      connectionTop.append(connectionIcon, connectionCopy);
+      connectionTop.append(connectionIcon, connectionCopy, connectionState);
       const pathLabel = create(doc, "label", "zcs-setting-label");
       pathLabel.append(createL10n(doc, "span", "", "zotero-codex-cli-path", "Codex executable path"));
       const pathInput = create(doc, "input", "zcs-path-input");
@@ -549,6 +586,48 @@
       workProcessSwitch.setAttribute("aria-hidden", "true");
       workProcessLabel.append(workProcessCopy, showWorkProcessToggle, workProcessSwitch);
       chatSettingsCard.append(workProcessLabel);
+      const permissionsCard = create(doc, "section", "zcs-popover zcs-permissions-card");
+      permissionsCard.hidden = true;
+      permissionsCard.setAttribute("role", "dialog");
+      setL10n(permissionsCard, "zotero-codex-permissions-dialog");
+      permissionsCard.append(createL10n(doc, "div", "zcs-page-title", "zotero-codex-permissions", "Permissions"));
+      const permissionInputs = {};
+      for (const [key, labelID, label, options] of [
+        ["approvalPolicy", "zotero-codex-approval-policy", "Approval policy", [
+          ["untrusted", "zotero-codex-approval-untrusted", "Ask for untrusted commands"],
+          ["on-request", "zotero-codex-approval-on-request", "Ask when needed"],
+          ["never", "zotero-codex-approval-never", "Never ask"],
+        ]],
+        ["approvalsReviewer", "zotero-codex-approval-reviewer", "Approval reviewer", [
+          ["user", "zotero-codex-reviewer-user", "Ask me"],
+          ["auto_review", "zotero-codex-reviewer-auto", "Automatic review"],
+        ]],
+        ["sandbox", "zotero-codex-access-level", "File access", [
+          ["read-only", "zotero-codex-access-read-only", "Read only"],
+          ["workspace-write", "zotero-codex-access-workspace", "Write in the working folder"],
+          ["danger-full-access", "zotero-codex-access-full", "Full access"],
+        ]],
+      ]) {
+        const field = create(doc, "label", "zcs-permission-field");
+        const select = create(doc, "select", "zcs-permission-select");
+        for (const [value, id, fallback] of options) {
+          const option = createL10n(doc, "option", "", id, fallback);
+          option.value = value;
+          select.append(option);
+        }
+        permissionInputs[key] = select;
+        field.append(createL10n(doc, "span", "", labelID, label), select);
+        permissionsCard.append(field);
+      }
+      const networkLabel = create(doc, "label", "zcs-permission-network");
+      const networkAccess = create(doc, "input");
+      networkAccess.type = "checkbox";
+      permissionInputs.networkAccess = networkAccess;
+      networkLabel.append(networkAccess, createL10n(doc, "span", "", "zotero-codex-network-access", "Allow network access"));
+      permissionsCard.append(networkLabel, createL10n(
+        doc, "p", "zcs-permission-hint", "zotero-codex-permissions-hint",
+        "Applies to the next reply. Full access allows file changes and network access. Never ask blocks actions requiring approval.",
+      ));
       settingsContent.append(
         connectionCard,
         sharingNote,
@@ -590,6 +669,15 @@
       input.rows = 1;
       input.placeholder = "Ask anything";
       setL10n(input, "zotero-codex-composer-input");
+      const commandMenu = create(doc, "div", "zcs-command-menu");
+      commandMenu.hidden = true;
+      commandMenu.id = `zcs-commands-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      commandMenu.setAttribute("role", "listbox");
+      commandMenu.setAttribute("aria-label", "Commands and skills");
+      setL10n(commandMenu, "zotero-codex-command-menu");
+      input.setAttribute("aria-controls", commandMenu.id);
+      input.setAttribute("aria-autocomplete", "list");
+      input.setAttribute("aria-expanded", "false");
       const imageInput = create(doc, "input", "zcs-image-input");
       imageInput.type = "file";
       imageInput.accept = "image/png,image/jpeg,image/webp,image/gif";
@@ -630,8 +718,16 @@
       sendButton.title = "Send";
       sendButton.setAttribute("aria-label", "Send");
       setL10n(sendButton, "zotero-codex-send");
-      composerFooter.append(composerTools, modelTrigger, sendButton);
-      composer.append(editBanner, attachments, input, imageInput, composerFooter);
+      const permissionsButton = createL10n(doc, "button", "zcs-permissions-trigger", "zotero-codex-access-settings", null);
+      permissionsButton.type = "button";
+      permissionsButton.setAttribute("aria-haspopup", "dialog");
+      permissionsButton.setAttribute("aria-expanded", "false");
+      const permissionLabel = create(doc, "span", "zcs-permissions-label", "Read only");
+      permissionsButton.append(createUIIcon(doc, "shield"), permissionLabel);
+      const quickControls = create(doc, "div", "zcs-quick-controls");
+      quickControls.append(modelTrigger, permissionsButton);
+      composerFooter.append(composerTools, sendButton);
+      composer.append(commandMenu, editBanner, attachments, input, imageInput, composerFooter);
 
       const contextPopover = create(doc, "div", "zcs-popover zcs-context-popover");
       contextPopover.hidden = true;
@@ -675,7 +771,7 @@
       const selections = create(doc, "div", "zcs-context-selections");
       contextPopover.append(imageOption, generateImageOption, contextOption, selections);
 
-      const modelPopover = create(doc, "div", "zcs-popover zcs-model-popover");
+      const modelPopover = create(doc, "section", "zcs-popover zcs-model-popover");
       modelPopover.hidden = true;
       modelPopover.setAttribute("role", "dialog");
       modelPopover.setAttribute("aria-label", "Model and reasoning");
@@ -747,23 +843,29 @@
       resizeHandle.title = "Drag to resize chat height";
       setL10n(resizeHandle, "zotero-codex-resize-height");
 
+      chatView.append(transcript, requestArea, composer, quickControls);
+      workspace.append(chatView, settingsView);
       root.append(
         topbar,
+        workspace,
         threadPopover,
         threadContextMenu,
-        settingsPopover,
-        settingsView,
-        transcript,
-        requestArea,
-        composer,
         contextPopover,
         modelPopover,
+        permissionsCard,
         status,
         resizeHandle,
       );
       this.body.append(root);
       this.elements = {
         root,
+        topbar,
+        chatView,
+        connectionState,
+        headerNewButton,
+        permissionsButton,
+        permissionLabel,
+        permissionsCard,
         threadButton,
         threadTitle,
         moreButton,
@@ -776,9 +878,7 @@
         paperOnlyFilter,
         paperOnlyCheckbox,
         threadList,
-        settingsPopover,
         settingsView,
-        openSettingsButton,
         settingsBackButton,
         refreshButton,
         status,
@@ -822,16 +922,21 @@
         connectionSubtitle,
         reconnectButton,
         showWorkProcessToggle,
+        permissionInputs,
+        commandMenu,
       };
 
       this.handlers = {
+        permissionSettings: () => {
+          this.togglePopover("permissions");
+        },
         toggleThreads: () => this.togglePopover("threads"),
         threadHeaderContextMenu: (event) => {
           if (!this.threadID) return;
           event.preventDefault();
           this.openThreadContextMenu(this.threadID, event.clientX, event.clientY);
         },
-        toggleSettings: () => this.togglePopover("settings"),
+        toggleSettings: () => this.openSettings(),
         toggleContextMenu: () => this.togglePopover("context"),
         toggleModelMenu: () => this.togglePopover("model"),
         toggleModelOptions: () => this.toggleModelOptions("model"),
@@ -849,7 +954,6 @@
           this.closePopovers();
           void this.refreshThreads({ reloadCurrent: true });
         },
-        openSettings: () => this.openSettings(),
         closeSettings: () => this.closeSettings(),
         useAutoPath: () => {
           pathInput.value = "";
@@ -924,16 +1028,21 @@
         resizeEnd: (event) => this.finishShellResize(event),
         resizeKeydown: (event) => this.resizeShellWithKeyboard(event),
         input: () => {
+          this.closePopovers();
+          this.commandIndex = 0;
           this.resizeComposer();
           this.updateComposerState();
+          this.updateCommandMenu();
         },
         keydown: (event) => {
-          if (!this.running && event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+          if (this.handleCommandKey(event)) return;
+          if ((!this.running || input.value.startsWith("/")) && event.key === "Enter" && !event.shiftKey && !event.isComposing) {
             event.preventDefault();
             void this.send();
           }
         },
         documentClick: (event) => this.handleDocumentClick(event),
+        permissionChange: () => this.savePermissions(),
         documentKeydown: (event) => {
           if (event.key !== "Escape") return;
           if (!this.elements.settingsView.hidden) this.closeSettings();
@@ -941,6 +1050,8 @@
         },
       };
       threadButton.addEventListener("click", this.handlers.toggleThreads);
+      headerNewButton.addEventListener("click", this.handlers.newTask);
+      permissionsButton.addEventListener("click", this.handlers.permissionSettings);
       threadButton.addEventListener("contextmenu", this.handlers.threadHeaderContextMenu);
       moreButton.addEventListener("click", this.handlers.toggleSettings);
       contextAddButton.addEventListener("click", this.handlers.toggleContextMenu);
@@ -952,7 +1063,6 @@
       newThreadButton.addEventListener("click", this.handlers.newTask);
       paperOnlyCheckbox.addEventListener("change", this.handlers.togglePaperOnly);
       refreshButton.addEventListener("click", this.handlers.refresh);
-      openSettingsButton.addEventListener("click", this.handlers.openSettings);
       settingsBackButton.addEventListener("click", this.handlers.closeSettings);
       autoPathButton.addEventListener("click", this.handlers.useAutoPath);
       threadSearch.addEventListener("input", this.handlers.searchThreads);
@@ -965,6 +1075,7 @@
       sendButton.addEventListener("click", this.handlers.sendOrStop);
       reconnectButton.addEventListener("click", this.handlers.reconnect);
       showWorkProcessToggle.addEventListener("change", this.handlers.toggleWorkProcess);
+      for (const control of Object.values(permissionInputs)) control.addEventListener("change", this.handlers.permissionChange);
       resizeHandle.addEventListener("pointerdown", this.handlers.resizeStart);
       resizeHandle.addEventListener("pointermove", this.handlers.resizeMove);
       resizeHandle.addEventListener("pointerup", this.handlers.resizeEnd);
@@ -983,6 +1094,7 @@
       this.applyWorkProcessPreference();
       this.renderContextAttachment();
       this.updateComposerState();
+      this.applyPermissions();
       this.lockInitialShellHeight();
     }
 
@@ -1056,9 +1168,20 @@
       this.persistShellHeight(current + direction * SHELL_HEIGHT_STEP);
     }
 
-    openSettings() {
+    showPage(page, { focus = true } = {}) {
+      if (!this.elements.chatView || !this.elements.settingsView) return;
       this.closePopovers();
-      this.elements.settingsView.hidden = false;
+      this.activePage = page === "chat" ? "chat" : "settings";
+      this.elements.root.dataset.page = this.activePage;
+      this.elements.chatView.hidden = this.activePage !== "chat";
+      this.elements.settingsView.hidden = this.activePage !== "settings";
+      this.elements.topbar.hidden = this.activePage !== "chat";
+      this.elements.moreButton.setAttribute("aria-expanded", String(this.activePage === "settings"));
+      if (this.activePage === "chat" && focus) this.elements.input.focus();
+    }
+
+    openSettings() {
+      this.showPage("settings", { focus: false });
       this.elements.pathInput.value = String(this.manager.getPreference("codexPath") || "");
       this.applyWorkProcessPreference();
       this.elements.settingsView.focus({ preventScroll: true });
@@ -1072,18 +1195,18 @@
     }
 
     closeSettings() {
-      this.elements.settingsView.hidden = true;
-      this.elements.moreButton.focus();
+      this.showPage("chat");
     }
 
     closePopovers(except = "") {
+      this.hideCommandMenu();
       this.elements.threadContextMenu.hidden = true;
       this.contextMenuThreadID = "";
       const pairs = [
         ["threads", this.elements.threadPopover, this.elements.threadButton],
-        ["settings", this.elements.settingsPopover, this.elements.moreButton],
         ["context", this.elements.contextPopover, this.elements.contextAddButton],
         ["model", this.elements.modelPopover, this.elements.modelTrigger],
+        ["permissions", this.elements.permissionsCard, this.elements.permissionsButton],
       ];
       for (const [name, popover, trigger] of pairs) {
         if (name === except) continue;
@@ -1097,26 +1220,34 @@
     togglePopover(name) {
       const map = {
         threads: [this.elements.threadPopover, this.elements.threadButton],
-        settings: [this.elements.settingsPopover, this.elements.moreButton],
         context: [this.elements.contextPopover, this.elements.contextAddButton],
         model: [this.elements.modelPopover, this.elements.modelTrigger],
+        permissions: [this.elements.permissionsCard, this.elements.permissionsButton],
       };
       const [popover, trigger] = map[name];
       const willOpen = popover.hidden;
       this.closePopovers(name);
       popover.hidden = !willOpen;
       trigger.setAttribute("aria-expanded", String(willOpen));
-      if (name === "context") this.elements.contextModeButton.setAttribute("aria-expanded", String(willOpen));
-      if (willOpen && name === "threads") {
-        this.elements.threadSearch.value = "";
-        this.threadListLimit = THREAD_LIST_BATCH_SIZE;
-        this.elements.threadList.scrollTop = 0;
-        this.renderThreadPicker();
-        global.setTimeout(() => this.elements.threadSearch.focus(), 0);
+      if (willOpen && ["context", "model", "permissions"].includes(name)) {
+        const root = this.elements.root.getBoundingClientRect();
+        const anchor = trigger.getBoundingClientRect();
+        popover.style.bottom = `${Math.max(8, root.bottom - anchor.top + 8)}px`;
+        popover.style.maxHeight = `${Math.max(80, anchor.top - root.top - 12)}px`;
       }
+      if (name === "context") this.elements.contextModeButton.setAttribute("aria-expanded", String(willOpen));
       if (willOpen && name === "model") {
         this.renderModelControls();
-        global.setTimeout(() => this.elements.modelChoice.focus(), 0);
+        this.elements.modelChoice.focus();
+      }
+      if (willOpen && name === "permissions") {
+        this.applyPermissions();
+        this.elements.permissionInputs.approvalPolicy.focus();
+      }
+      if (willOpen && name === "threads") {
+        this.threadListLimit = THREAD_LIST_BATCH_SIZE;
+        this.renderThreadPicker();
+        global.setTimeout(() => this.elements.threadSearch.focus(), 0);
       }
     }
 
@@ -1126,14 +1257,17 @@
       const containers = [
         this.elements.threadContextMenu,
         this.elements.threadPopover,
-        this.elements.settingsPopover,
         this.elements.contextPopover,
         this.elements.modelPopover,
+        this.elements.permissionsCard,
+        this.elements.permissionsButton,
         this.elements.threadButton,
         this.elements.moreButton,
         this.elements.contextAddButton,
         this.elements.contextModeButton,
         this.elements.modelTrigger,
+        this.elements.commandMenu,
+        this.elements.input,
       ];
       if (containers.some((element) => element?.contains?.(target) || eventPath.includes(element))) return;
       this.closePopovers();
@@ -1143,8 +1277,9 @@
       const send = this.elements.sendButton;
       const unavailable = this.creatingTask || this.contextTransitioning;
       this.elements.input.disabled = this.contextTransitioning;
-      this.elements.newThreadButton.disabled = this.running || unavailable;
-      this.elements.threadButton.disabled = this.running || this.contextTransitioning;
+      this.elements.newThreadButton.disabled = unavailable;
+      if (this.elements.headerNewButton) this.elements.headerNewButton.disabled = unavailable;
+      this.elements.threadButton.disabled = unavailable;
       this.elements.contextAddButton.disabled = this.running || this.contextTransitioning;
       this.elements.contextModeButton.disabled = this.running || this.contextTransitioning;
       this.elements.imageOption.disabled = this.running || this.contextTransitioning;
@@ -1182,6 +1317,196 @@
       const input = this.elements.input;
       input.style.height = "auto";
       input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
+    }
+
+    applyPermissions() {
+      const controls = this.elements.permissionInputs;
+      const settings = Protocol.normalizePermissions(Object.fromEntries(
+        Object.keys(controls).map((key) => [key, this.manager.getPreference(key)]),
+      ));
+      for (const [key, control] of Object.entries(controls)) {
+        if (key === "networkAccess") {
+          control.checked = settings.networkAccess;
+          control.disabled = settings.sandbox === "danger-full-access";
+        }
+        else control.value = settings[key];
+      }
+      const trigger = this.elements.permissionsButton;
+      if (trigger) {
+        trigger.dataset.access = settings.sandbox;
+        trigger.setAttribute("aria-label", controls.sandbox.selectedOptions?.[0]?.textContent || "File access settings");
+        trigger.title = controls.sandbox.selectedOptions?.[0]?.textContent || "File access settings";
+        if (this.elements.permissionLabel) {
+          const [id, fallback] = settings.sandbox === "danger-full-access"
+            ? ["zotero-codex-quick-full", "Full access"]
+            : settings.sandbox === "workspace-write"
+              ? ["zotero-codex-quick-workspace", "Workspace"]
+              : ["zotero-codex-access-read-only", "Read only"];
+          setLocalizedText(this.elements.permissionLabel, id, fallback);
+        }
+      }
+    }
+
+    savePermissions() {
+      const settings = Protocol.normalizePermissions(Object.fromEntries(
+        Object.entries(this.elements.permissionInputs).map(([key, control]) =>
+          [key, key === "networkAccess" ? control.checked : control.value]),
+      ));
+      for (const [key, value] of Object.entries(settings)) this.manager.setPreference(key, value);
+      for (const view of this.manager.views.values()) view.applyPermissions();
+    }
+
+    skillDirectory() {
+      return this.thread?.cwd || pathDirectory(this.context?.pdfPath) || ClientTools.getHomeDirectory();
+    }
+
+    async refreshSkills({ forceReload = false } = {}) {
+      const cwd = this.skillDirectory();
+      if (this.skillsCwd === cwd && !forceReload) {
+        if (this.skillsLoading) return this.skillLoadPromise;
+        if (this.skillsLoaded) return this.skills;
+      }
+      const serial = ++this.skillsLoadSerial;
+      this.skillsCwd = cwd;
+      this.skillsLoaded = false;
+      this.skillsLoading = true;
+      this.skills = [];
+      this.updateCommandMenu();
+      this.skillLoadPromise = this.client.listSkills({ cwd, forceReload }).then((skills) => {
+        if (serial !== this.skillsLoadSerial || this.destroyed || cwd !== this.skillDirectory()) return [];
+        this.skills = skills;
+        return skills;
+      }).catch((error) => {
+        if (!this.destroyed && serial === this.skillsLoadSerial && cwd === this.skillDirectory()) {
+          this.showError(error);
+        }
+        return [];
+      }).finally(() => {
+        if (!this.destroyed && serial === this.skillsLoadSerial) {
+          this.skillsLoading = false;
+          this.skillsLoaded = cwd === this.skillDirectory();
+          this.updateCommandMenu();
+        }
+      });
+      return this.skillLoadPromise;
+    }
+
+    hideCommandMenu() {
+      if (!this.elements?.commandMenu) return;
+      this.elements.commandMenu.hidden = true;
+      this.elements.input.setAttribute("aria-expanded", "false");
+      this.elements.input.removeAttribute("aria-activedescendant");
+    }
+
+    updateCommandMenu() {
+      const menu = this.elements.commandMenu;
+      const text = this.elements.input.value.trimStart();
+      const skillsOnly = text.match(/^\/skills(?:\s+(.*))?$/iu);
+      const rootQuery = text.match(/^\/([^\s/]*)$/u);
+      if (!skillsOnly && !rootQuery) { this.hideCommandMenu(); return; }
+      const query = (skillsOnly ? skillsOnly[1] || "" : rootQuery[1]).toLowerCase();
+      const currentSkills = this.skillsCwd === this.skillDirectory() ? this.skills : [];
+      const entries = [
+        ...(skillsOnly ? [] : SLASH_COMMANDS),
+        ...currentSkills.map((skill) => ({ ...skill, skill: true })),
+      ].filter((entry) => `${entry.name} ${entry.displayName || ""} ${entry.description}`.toLowerCase().includes(query));
+      this.commandMatches = entries;
+      this.commandIndex = Math.min(this.commandIndex, Math.max(0, entries.length - 1));
+      menu.replaceChildren();
+      for (const [index, entry] of entries.entries()) {
+        const row = create(this.doc, "button", "zcs-command-row");
+        row.type = "button";
+        row.id = `${menu.id}-${index}`;
+        row.setAttribute("role", "option");
+        row.setAttribute("aria-selected", String(index === this.commandIndex));
+        const description = create(this.doc, "span", "zcs-command-description", entry.description);
+        if (entry.descriptionID) setL10n(description, entry.descriptionID);
+        row.append(create(this.doc, "span", "zcs-command-name", `/${entry.name}`), description);
+        row.addEventListener("mousedown", (event) => event.preventDefault());
+        row.addEventListener("click", () => this.chooseCommand(entry));
+        menu.append(row);
+      }
+      if (!entries.length || this.skillsLoading) {
+        menu.append(createL10n(this.doc, "div", "zcs-command-empty",
+          this.skillsLoading ? "zotero-codex-skills-loading" : "zotero-codex-no-commands",
+          this.skillsLoading ? "Loading skills…" : "No matching commands or enabled skills"));
+      }
+      menu.hidden = false;
+      this.elements.input.setAttribute("aria-expanded", "true");
+      if (entries.length) this.elements.input.setAttribute("aria-activedescendant", `${menu.id}-${this.commandIndex}`);
+      else this.elements.input.removeAttribute("aria-activedescendant");
+      if (!this.skillsLoading && (this.skillsCwd !== this.skillDirectory() || !this.skillsLoaded)) {
+        void this.refreshSkills();
+      }
+    }
+
+    chooseCommand(entry) {
+      this.hideCommandMenu();
+      this.elements.input.value = entry.skill ? `$${entry.name} ` : `/${entry.name}`;
+      this.elements.input.focus();
+      this.elements.input.setSelectionRange?.(this.elements.input.value.length, this.elements.input.value.length);
+      this.resizeComposer();
+      this.updateComposerState();
+      if (!entry.skill) void this.send();
+    }
+
+    handleCommandKey(event) {
+      if (event.isComposing || this.elements.commandMenu.hidden) return false;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        this.hideCommandMenu();
+        return true;
+      }
+      if (["ArrowDown", "ArrowUp"].includes(event.key) && this.commandMatches.length) {
+        event.preventDefault();
+        const direction = event.key === "ArrowDown" ? 1 : -1;
+        this.commandIndex = (this.commandIndex + direction + this.commandMatches.length) % this.commandMatches.length;
+        this.updateCommandMenu();
+        this.elements.commandMenu.children[this.commandIndex]?.scrollIntoView({ block: "nearest" });
+        return true;
+      }
+      if (this.commandMatches.length && ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab")) {
+        event.preventDefault();
+        const entry = this.commandMatches[this.commandIndex];
+        if (entry) this.chooseCommand(entry);
+        return true;
+      }
+      return false;
+    }
+
+    async resolveSlashInput(text) {
+      if (text === "/") { this.updateCommandMenu(); return null; }
+      const currentSkills = this.skillsCwd === this.skillDirectory() ? this.skills || [] : [];
+      let command = Protocol.parseSlashCommand(text, currentSkills);
+      if (command?.kind === "unknown") {
+        const skills = await this.refreshSkills();
+        command = Protocol.parseSlashCommand(text, skills);
+      }
+      if (!command) return text;
+      if (command.kind === "skill") return command.text;
+      if (command.kind === "unknown") throw ClientTools.clientError(
+        "zotero-codex-unknown-command", null, "Unknown command. Type / to see commands and skills.",
+      );
+      this.hideCommandMenu();
+      if (command.name === "skills") {
+        this.elements.input.value = `/skills ${command.argument}`;
+        await this.refreshSkills({ forceReload: true });
+        this.updateCommandMenu();
+        this.elements.input.focus();
+      }
+      else {
+        this.elements.input.value = "";
+        if (command.name === "new") this.newTask();
+        if (command.name === "model") this.togglePopover("model");
+        if (command.name === "approvals") {
+          if (this.elements.permissionsCard.hidden) this.togglePopover("permissions");
+          this.elements.permissionInputs.approvalPolicy.focus();
+        }
+        this.resizeComposer();
+        this.updateComposerState();
+      }
+      return null;
     }
 
     async refreshModels() {
@@ -1355,6 +1680,8 @@
     }
 
     beginContextTransition() {
+      this.closeImagePreview?.();
+      this.hideCommandMenu?.();
       this.contextEpoch++;
       this.contextTransitioning = true;
       this.loadSerial++;
@@ -1387,6 +1714,11 @@
 
     isCurrentContext(epoch, context = this.context) {
       return !this.destroyed && epoch === this.contextEpoch && context === this.context;
+    }
+
+    isThreadVisible(threadID) {
+      return !this.destroyed && this.threadID === threadID && !this.doc.hidden
+        && !this.elements.chatView?.hidden && this.doc.hasFocus() && Boolean(this.body.getClientRects().length);
     }
 
     async loadCurrentItem(epoch) {
@@ -1633,6 +1965,7 @@
         const preview = create(this.doc, "img", "zcs-image-preview");
         preview.src = image.url;
         preview.alt = "";
+        this.makeImagePreviewable(preview, image.name);
         const copy = create(this.doc, "span", "zcs-attachment-copy");
         copy.append(
           create(this.doc, "span", "zcs-attachment-title", image.name),
@@ -1893,14 +2226,17 @@
         row.dataset.selected = String(thread.id === this.threadID);
         row.title = `${thread.label}\n${thread.cwd || ""}`.trim();
         const copy = create(this.doc, "span", "zcs-row-copy");
-        copy.append(
-          create(this.doc, "span", "zcs-row-title", thread.label),
-          create(
+        const meta = this.manager.runningTurns.has(thread.id)
+          ? createL10n(this.doc, "span", "zcs-row-meta", "zotero-codex-chat-running", "Replying…")
+          : create(
             this.doc,
             "span",
             "zcs-row-meta",
             Protocol.relativeThreadTime(thread.timestamp, Date.now(), this.manager.locale),
-          ),
+          );
+        copy.append(
+          create(this.doc, "span", "zcs-row-title", thread.label),
+          meta,
         );
         row.append(create(this.doc, "span", "zcs-row-icon", thread.id === this.threadID ? "✓" : ""), copy);
         row.addEventListener("click", () => {
@@ -1991,7 +2327,6 @@
       if (this.destroyed || !threadID) return;
       this.threadRefreshSerial++;
       this.threads = this.threads.filter((thread) => thread.id !== threadID);
-      if (this.pendingAutoTitle?.threadID === threadID) this.pendingAutoTitle = null;
       if (this.contextMenuThreadID === threadID) {
         this.elements.threadContextMenu.hidden = true;
         this.contextMenuThreadID = "";
@@ -2008,9 +2343,14 @@
     }
 
     async selectThread(threadID, { bind = true, quiet = false, preserveScroll = false } = {}) {
-      if (!threadID || this.destroyed) return false;
+      if (!quiet) this.showPage?.("chat", { focus: false });
+      if (!threadID || this.destroyed || this.creatingTask) return false;
+      this.hideCommandMenu?.();
       const contextEpoch = this.contextEpoch;
       const context = this.context;
+      const switching = threadID !== this.threadID;
+      if (switching) this.closeImagePreview?.();
+      if (bind) this.threadRefreshSerial++;
       if (!preserveScroll) this.clearResponseScrollSpace();
       const preserveNextTurnSelection = Boolean(
         this.nextTurnSelectionPending && threadID === this.threadID,
@@ -2020,6 +2360,16 @@
       this.cancelEdit({ clearInput: true, focus: false });
       const serial = ++this.loadSerial;
       this.threadID = threadID;
+      this.thread = null;
+      this.streamingText = "";
+      this.streamingNode = null;
+      this.streamingItemID = "";
+      this.streamingPhase = "final";
+      this.hidePendingResponse();
+      if (switching) this.renderEmpty("", "");
+      const active = this.manager.runningTurns.get(threadID);
+      this.activeTurnID = active?.turnID || "";
+      this.setRunning(Boolean(active));
       this.updateThreadHeader();
       this.renderRequests();
       this.manager.setPreference("lastThreadId", threadID);
@@ -2033,6 +2383,16 @@
           !this.isCurrentContext(contextEpoch, context)
         ) return false;
         this.thread = thread;
+        const inProgress = thread.turns?.find((turn) => turn.status === "inProgress"
+          && !this.manager.completedTurnIDs.has(turn.id));
+        const running = this.manager.runningTurns.get(threadID) || (inProgress
+          ? this.manager.trackTurn(threadID, {
+            context: this.context, label: Protocol.threadLabel(thread), doc: this.doc,
+            turnID: inProgress.id,
+          })
+          : null);
+        this.activeTurnID = running?.turnID || "";
+        this.setRunning(Boolean(running));
         if (bind) this.manager.setPaperThread(this.context, threadID);
         if (!preserveNextTurnSelection) {
           this.nextTurnSelectionPending = false;
@@ -2040,6 +2400,7 @@
         }
         const scrollTop = preserveScroll ? this.elements.transcript.scrollTop : null;
         this.renderTranscript(Protocol.flattenTurns(thread.turns));
+        if (running) this.showPendingResponse();
         if (scrollTop !== null) this.elements.transcript.scrollTop = scrollTop;
         this.updateThreadHeader();
         this.setStatus("ready", this.connectionLabel());
@@ -2064,6 +2425,14 @@
       this.elements.status.dataset.state = state;
       this.elements.statusText.textContent = text;
       this.elements.status.hidden = state !== "error";
+      if (this.elements.connectionState) {
+        const connected = Boolean(this.client.process);
+        const busy = connected && this.running;
+        this.elements.connectionState.dataset.state = state === "error" ? "error" : busy ? "busy" : connected ? "ready" : "idle";
+        setLocalizedText(this.elements.connectionState,
+          busy ? "zotero-codex-chat-running" : connected ? "zotero-codex-online" : "zotero-codex-offline",
+          busy ? "Replying…" : connected ? "Connected" : "Not connected");
+      }
       return revision;
     }
 
@@ -2148,6 +2517,31 @@
       if (busy) {
         empty.append(create(this.doc, "span", "zcs-spinner"));
       }
+      else if (!title && !copy) {
+        const mark = create(this.doc, "span", "zcs-empty-mark");
+        mark.append(createUIIcon(this.doc, "codex"));
+        empty.append(mark,
+          createL10n(this.doc, "div", "zcs-empty-title", "zotero-codex-start-reading", "Read with Codex"),
+          createL10n(this.doc, "p", "zcs-empty-copy", "zotero-codex-start-reading-copy", "Ask about this paper, explore a method, or compare ideas."));
+        const suggestions = create(this.doc, "div", "zcs-suggestions");
+        for (const [id, label, promptID, prompt] of [
+          ["zotero-codex-suggest-summary", "Explain this paper", "zotero-codex-prompt-summary", "Explain this paper's motivation, method, and main findings."],
+          ["zotero-codex-suggest-method", "Walk through the method", "zotero-codex-prompt-method", "Walk through this paper's method step by step, with an example."],
+        ]) {
+          const button = createL10n(this.doc, "button", "zcs-suggestion", id, label);
+          button.type = "button";
+          button.addEventListener("click", async () => {
+            const text = await formatValue(this.doc, promptID, null, prompt);
+            if (this.destroyed) return;
+            this.elements.input.value = text;
+            this.elements.input.focus();
+            this.resizeComposer();
+            this.updateComposerState();
+          });
+          suggestions.append(button);
+        }
+        empty.append(suggestions);
+      }
       if (title) empty.append(create(this.doc, "div", "zcs-empty-title", title));
       if (copy) empty.append(create(this.doc, "div", "zcs-empty-copy", copy));
       transcript.append(empty);
@@ -2183,6 +2577,63 @@
       return details;
     }
 
+    makeImagePreviewable(preview, name = preview.alt) {
+      preview.tabIndex = 0;
+      preview.setAttribute("role", "button");
+      preview.setAttribute("aria-haspopup", "dialog");
+      preview.title = "Double-click to enlarge";
+      setL10n(preview, "zotero-codex-image-enlarge");
+      preview.addEventListener("dblclick", (event) => {
+        event.preventDefault();
+        this.openImagePreview(preview, name);
+      });
+      preview.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.openImagePreview(preview, name);
+      });
+    }
+
+    openImagePreview(preview, name = preview.alt) {
+      const source = displayableImageSource({ url: preview.src });
+      if (!source || this.destroyed) return;
+      this.closeImagePreview?.();
+      const doc = this.doc;
+      const dialog = doc.createElementNS("http://www.w3.org/1999/xhtml", "dialog");
+      dialog.className = "zcs-image-dialog";
+      dialog.setAttribute("aria-label", "Image preview");
+      setL10n(dialog, "zotero-codex-image-preview-dialog");
+      const toolbar = create(doc, "div", "zcs-image-dialog-toolbar");
+      const caption = create(doc, "span", "zcs-image-dialog-caption", Protocol.firstLine(name, 120));
+      const close = create(doc, "button", "zcs-image-dialog-close", "×");
+      close.type = "button";
+      close.title = "Close image preview";
+      close.setAttribute("aria-label", close.title);
+      setL10n(close, "zotero-codex-image-preview-close");
+      toolbar.append(caption, close);
+      const stage = create(doc, "div", "zcs-image-dialog-stage");
+      const image = create(doc, "img", "zcs-image-dialog-image");
+      image.src = source;
+      image.alt = String(name || "");
+      stage.append(image);
+      dialog.append(toolbar, stage);
+      const dismiss = () => dialog.close();
+      close.addEventListener("click", dismiss);
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog || event.target === stage) dismiss();
+      });
+      dialog.addEventListener("close", () => {
+        dialog.remove();
+        if (this.closeImagePreview === dismiss) this.closeImagePreview = null;
+        if (!this.closeImagePreview && preview.isConnected && !this.destroyed) preview.focus({ preventScroll: true });
+      }, { once: true });
+      doc.documentElement.append(dialog);
+      dialog.showModal();
+      this.closeImagePreview = dismiss;
+      close.focus();
+    }
+
     appendMessageImages(parent, images) {
       const visible = (Array.isArray(images) ? images : [])
         .map((image) => ({ image, source: displayableImageSource(image) }))
@@ -2195,6 +2646,7 @@
         preview.src = source;
         preview.alt = String(image.name || "");
         preview.loading = "eager";
+        this.makeImagePreviewable(preview);
         gallery.append(preview);
       }
       parent.append(gallery);
@@ -2390,12 +2842,16 @@
     }
 
     resetConversation({ clearBinding = false, focus = true, force = false } = {}) {
-      if (!force && (this.running || this.creatingTask)) return;
-      this.closePopovers();
+      if (!force && this.creatingTask) return;
+      this.showPage?.("chat", { focus: false });
+      this.closeImagePreview?.();
       this.loadSerial++;
+      this.threadRefreshSerial++;
+      this.closePopovers();
       this.threadID = "";
       this.thread = null;
       this.activeTurnID = "";
+      this.running = false;
       this.streamingText = "";
       this.streamingNode = null;
       this.streamingItemID = "";
@@ -2435,7 +2891,10 @@
         if (!context) context = await this.refreshContext();
         if (!context || !this.isCurrentContext(epoch, context)) return null;
         this.setStatus("busy", "");
-        const title = Protocol.firstLine(text, 58) || "Zotero research";
+        const title = Protocol.firstLine(
+          this.manager.getPreference("includeItemContext") ? context.title || text : text,
+          58,
+        ) || "Zotero research";
         const thread = await this.client.startThread({
           cwd: pathDirectory(context.pdfPath) || ClientTools.getHomeDirectory(),
           title,
@@ -2455,14 +2914,23 @@
       }
       finally {
         this.creatingTask = false;
-        this.elements.newThreadButton.disabled = this.running;
-        this.elements.threadButton.disabled = this.running;
+        this.elements.newThreadButton.disabled = this.creatingTask || this.contextTransitioning;
+        this.elements.threadButton.disabled = this.creatingTask || this.contextTransitioning;
         this.updateComposerState();
       }
     }
 
     async send() {
-      const text = this.elements.input.value.trim();
+      let text = this.elements.input.value.trim();
+      if (text.startsWith("/") && !this.creatingTask && !this.contextTransitioning) {
+        const epoch = this.contextEpoch;
+        const threadID = this.threadID;
+        const draft = this.elements.input.value;
+        try { text = await this.resolveSlashInput(text); }
+        catch (error) { this.showError(error); return; }
+        if (text === null || this.destroyed || epoch !== this.contextEpoch || threadID !== this.threadID ||
+          this.elements.input.value !== draft) return;
+      }
       const images = this.images.map((image) => ({ ...image }));
       const prompt = text.replace(/^\$imagegen\b\s*/u, "");
       if (
@@ -2474,6 +2942,8 @@
       const shouldAutoTitle = !this.threadID && !this.editingMessage;
       const contextEpoch = this.contextEpoch;
       let clearedInput = false;
+      let sendingThreadID = "";
+      let runningTurn = null;
       try {
         let paperContext = this.context;
         if (!paperContext) paperContext = await this.refreshContext();
@@ -2491,6 +2961,8 @@
         );
         if (!this.threadID || !this.isCurrentContext(contextEpoch, paperContext)) return;
         const threadID = this.threadID;
+        sendingThreadID = threadID;
+        if (this.manager.runningTurns.has(threadID)) return;
 
         const pinnedSelections = this.manager.getSelections(paperContext.attachmentID);
         const liveSelection = this.manager.getLiveSelection(paperContext.attachmentID);
@@ -2500,6 +2972,7 @@
           ? Protocol.buildZoteroContext(paperContext, selections, { includeItem })
           : null;
         this.elements.input.value = "";
+        this.hideCommandMenu?.();
         this.images = [];
         clearedInput = true;
         this.resizeComposer();
@@ -2513,6 +2986,7 @@
         this.showPendingResponse();
         this.setRunning(true);
 
+        let titleRequest = null;
         if (shouldAutoTitle) {
           const titleModel = this.models.find((model) =>
             model.model === this.selectedModel || model.id === this.selectedModel,
@@ -2520,14 +2994,27 @@
           const titleEffort = titleModel?.supportedReasoningEfforts?.includes("low")
             ? "low"
             : titleModel?.defaultReasoningEffort || this.selectedEffort;
-          this.pendingAutoTitle = {
+          titleRequest = {
             threadID,
             text: text || images[0]?.name || "Image",
-            initialName: Protocol.firstLine(text || images[0]?.name || "Zotero research", 58),
+            context: includeItem || selections.length
+              ? Protocol.buildZoteroContext({
+                title: paperContext.title,
+                creators: paperContext.creators,
+                date: paperContext.date,
+                abstract: paperContext.abstract,
+              }, selections, { includeItem })
+              : null,
+            initialName: this.thread?.name || "",
             model: this.selectedModel,
             effort: titleEffort,
           };
         }
+
+        runningTurn = this.manager.trackTurn(threadID, {
+          context: paperContext, label: Protocol.threadLabel(this.thread),
+          doc: this.doc, titleRequest,
+        });
 
         const turn = await this.client.startTurn({
           threadID,
@@ -2536,19 +3023,24 @@
           context: additionalContext,
           model: this.selectedModel,
           effort: this.selectedEffort,
+          cwd: this.thread?.cwd || pathDirectory(paperContext.pdfPath) || ClientTools.getHomeDirectory(),
           useOfficialZoteroSkill: true,
         });
+        if (this.manager.runningTurns.get(threadID) === runningTurn) runningTurn.turnID = turn.id;
         this.manager.consumeSelections?.(paperContext.attachmentID, {
           liveSelectionID: liveSelection?.id || "",
           selectionIDs: pinnedSelections.map((selection) => selection.id),
         });
         if (!this.isCurrentContext(contextEpoch, paperContext) || this.threadID !== threadID) return;
-        this.activeTurnID = turn.id;
+        this.activeTurnID = this.manager.runningTurns.get(threadID)?.turnID || "";
         this.nextTurnSelectionPending = false;
       }
       catch (error) {
-        if (this.pendingAutoTitle?.threadID === this.threadID) this.pendingAutoTitle = null;
-        if (contextEpoch !== this.contextEpoch || this.destroyed) return;
+        if (runningTurn && this.manager.runningTurns.get(sendingThreadID) === runningTurn) {
+          this.manager.finishTurn(runningTurn, "failed");
+        }
+        if (contextEpoch !== this.contextEpoch || this.destroyed ||
+          (sendingThreadID && this.threadID !== sendingThreadID)) return;
         this.setRunning(false);
         this.hidePendingResponse();
         this.showError(error);
@@ -2607,14 +3099,14 @@
 
     setRunning(running, statusText = "") {
       this.running = running;
-      this.elements.newThreadButton.disabled = running || this.creatingTask || this.contextTransitioning;
-      this.elements.threadButton.disabled = running || this.contextTransitioning;
+      this.elements.newThreadButton.disabled = this.creatingTask || this.contextTransitioning;
+      this.elements.threadButton.disabled = this.creatingTask || this.contextTransitioning;
       this.elements.contextAddButton.disabled = running || this.contextTransitioning;
       this.elements.contextModeButton.disabled = running || this.contextTransitioning;
       this.elements.imageOption.disabled = running || this.contextTransitioning;
       this.elements.generateImageOption.disabled = running || this.contextTransitioning;
       this.elements.imageInput.disabled = running || this.contextTransitioning;
-      this.elements.reconnectButton.disabled = running;
+      this.elements.reconnectButton.disabled = this.manager.runningTurns.size > 0;
       this.updateComposerState();
       if (running) this.setStatus("busy", statusText);
       else this.setStatus("ready", this.connectionLabel());
@@ -2635,7 +3127,7 @@
     }
 
     async reconnect() {
-      if (this.running) return;
+      if (this.manager.runningTurns.size) return;
       const path = this.elements.pathInput.value.trim();
       this.manager.setPreference("codexPath", path);
       this.setStatus("busy", "");
@@ -2655,26 +3147,10 @@
       }
     }
 
-    async autoNameThread(request) {
-      try {
-        const title = await this.client.generateThreadTitle(request);
-        const current = await this.client.readThread(request.threadID);
-        if (current.name && current.name !== request.initialName) return;
-        await this.client.setThreadName(request.threadID, title);
-        this.threads = this.threads.map((thread) => thread.id === request.threadID
-          ? { ...thread, name: title, label: title }
-          : thread);
-        if (this.thread?.id === request.threadID) this.thread = { ...this.thread, name: title };
-        this.updateThreadHeader();
-      }
-      catch (error) {
-        this.manager.log?.("Automatic task title generation failed", error);
-      }
-    }
-
     _handleClientEvent(event) {
       if (this.destroyed) return;
       if (event.type === "connected") {
+        this.setStatus("ready", "");
         if (event.binaryPath) setPlainText(this.elements.pathStatus, event.binaryPath);
         else setLocalizedText(
           this.elements.pathStatus,
@@ -2709,6 +3185,11 @@
       }
       if (event.type !== "notification") return;
       const params = event.params || {};
+      if (event.method === "skills/changed") {
+        this.skillsLoaded = false;
+        if (!this.elements.commandMenu.hidden) void this.refreshSkills({ forceReload: true });
+        return;
+      }
       if (event.method === "thread/archived" || event.method === "thread/deleted") {
         this.manager.handleThreadRemoved(String(params.threadId || ""));
         return;
@@ -2720,16 +3201,12 @@
       }
       if (event.method === "turn/completed") {
         const completedThreadID = String(params.threadId || this.threadID || "");
-        if (this.pendingAutoTitle?.threadID === completedThreadID) {
-          const titleRequest = this.pendingAutoTitle;
-          this.pendingAutoTitle = null;
-          void this.autoNameThread(titleRequest);
-        }
         for (const [requestID, request] of this.pendingRequests) {
           if (request.contextThreadID === completedThreadID) this.pendingRequests.delete(requestID);
         }
         this.renderRequests();
         if (params.threadId && params.threadId !== this.threadID) return;
+        if (params.turn?.id && this.activeTurnID && params.turn.id !== this.activeTurnID) return;
         this.activeTurnID = "";
         this.setRunning(false);
         this.hidePendingResponse();
@@ -2737,8 +3214,10 @@
         this.streamingNode = null;
         this.streamingItemID = "";
         this.streamingPhase = "final";
-        void this.selectThread(this.threadID, { preserveScroll: true })
-          .then((selected) => selected && this.refreshThreads())
+        const epoch = this.contextEpoch;
+        void this.selectThread(completedThreadID, { preserveScroll: true })
+          .then((selected) => selected && this.threadID === completedThreadID &&
+            epoch === this.contextEpoch && this.refreshThreads())
           .catch((error) => this.showError(error));
         return;
       }
@@ -2919,6 +3398,7 @@
     destroy() {
       if (this.destroyed) return;
       this.destroyed = true;
+      this.closeImagePreview?.();
       this.loadSerial++;
       this.threadRefreshSerial++;
       this.pendingRequests.clear();
@@ -2927,6 +3407,8 @@
       this.cleanupClient?.();
       const e = this.elements;
       e.threadButton.removeEventListener("click", this.handlers.toggleThreads);
+      e.headerNewButton.removeEventListener("click", this.handlers.newTask);
+      e.permissionsButton.removeEventListener("click", this.handlers.permissionSettings);
       e.threadButton.removeEventListener("contextmenu", this.handlers.threadHeaderContextMenu);
       e.moreButton.removeEventListener("click", this.handlers.toggleSettings);
       e.contextAddButton.removeEventListener("click", this.handlers.toggleContextMenu);
@@ -2938,7 +3420,6 @@
       e.newThreadButton.removeEventListener("click", this.handlers.newTask);
       e.paperOnlyCheckbox.removeEventListener("change", this.handlers.togglePaperOnly);
       e.refreshButton.removeEventListener("click", this.handlers.refresh);
-      e.openSettingsButton.removeEventListener("click", this.handlers.openSettings);
       e.settingsBackButton.removeEventListener("click", this.handlers.closeSettings);
       e.autoPathButton.removeEventListener("click", this.handlers.useAutoPath);
       e.threadSearch.removeEventListener("input", this.handlers.searchThreads);
@@ -2951,6 +3432,7 @@
       e.sendButton.removeEventListener("click", this.handlers.sendOrStop);
       e.reconnectButton.removeEventListener("click", this.handlers.reconnect);
       e.showWorkProcessToggle.removeEventListener("change", this.handlers.toggleWorkProcess);
+      for (const control of Object.values(e.permissionInputs)) control.removeEventListener("change", this.handlers.permissionChange);
       e.resizeHandle.removeEventListener("pointerdown", this.handlers.resizeStart);
       e.resizeHandle.removeEventListener("pointermove", this.handlers.resizeMove);
       e.resizeHandle.removeEventListener("pointerup", this.handlers.resizeEnd);
@@ -2981,6 +3463,10 @@
       this.pluginID = "";
       this.paneID = "";
       this.views = new Map();
+      this.runningTurns = new Map();
+      this.completedTurnIDs = new Set();
+      this.shuttingDown = false;
+      this.cleanupClient = this.client?.subscribe?.((event) => this.handleTurnEvent(event));
       this.windowCleanups = new Map();
       this.styles = new Set();
       this.selections = new Map();
@@ -2988,6 +3474,139 @@
       this.liveSelectionSequence = 0;
       this.selectionPopupCleanups = new Set();
       this.readerSelectionHandler = (event) => this.handleReaderSelection(event);
+    }
+
+    trackTurn(threadID, { turnID = "", label, context, doc, titleRequest = null } = {}) {
+      const run = { threadID, turnID, label, context: { ...context }, doc, titleRequest };
+      this.runningTurns.set(threadID, run);
+      for (const view of this.views.values()) {
+        if (view.threadID === threadID) {
+          view.activeTurnID = turnID;
+          view.setRunning(true);
+        }
+        view.elements.reconnectButton.disabled = true;
+        view.renderThreadPicker();
+      }
+      return run;
+    }
+
+    handleTurnEvent(event) {
+      if (this.shuttingDown) return;
+      if (event.type === "disconnected") {
+        this.runningTurns.clear();
+        return;
+      }
+      if (event.type !== "notification") return;
+      const params = event.params || {};
+      const threadID = String(params.threadId || "");
+      const run = this.runningTurns.get(threadID);
+      if (!run) return;
+      if (event.method === "turn/started") {
+        run.turnID = params.turn?.id || run.turnID;
+        return;
+      }
+      if (event.method !== "turn/completed") return;
+      if (run.turnID && params.turn?.id && run.turnID !== params.turn.id) return;
+      if (params.turn?.id) run.turnID = params.turn.id;
+      const status = params.turn?.status || "completed";
+      this.finishTurn(run, status);
+    }
+
+    finishTurn(run, status) {
+      if (this.runningTurns.get(run.threadID) !== run) return;
+      this.runningTurns.delete(run.threadID);
+      if (run.turnID) {
+        this.completedTurnIDs.add(run.turnID);
+        if (this.completedTurnIDs.size > 500) this.completedTurnIDs.delete(this.completedTurnIDs.values().next().value);
+      }
+      if (status === "completed" && run.titleRequest) void this.autoNameThread(run.titleRequest);
+      const visible = [...this.views.values()].some((view) => view.isThreadVisible(run.threadID));
+      if (!visible && status !== "interrupted") {
+        void this.notifyTurnCompleted(run, status).catch((error) => this.log("Chat notification failed", error));
+      }
+      for (const view of this.views.values()) {
+        if (view.threadID === run.threadID) {
+          view.activeTurnID = "";
+          view.setRunning(false);
+        }
+        view.elements.reconnectButton.disabled = this.runningTurns.size > 0;
+        view.renderThreadPicker();
+      }
+    }
+
+    async autoNameThread(request) {
+      try {
+        const history = await this.client.readThread(request.threadID);
+        if (history.name && history.name !== request.initialName) return;
+        const answer = Protocol.flattenTurns(history.turns?.slice(0, 1))
+          .filter((message) => message.role === "assistant" && message.phase !== "commentary")
+          .map((message) => message.text)
+          .join("\n\n");
+        const title = await this.client.generateThreadTitle({ ...request, answer });
+        const current = await this.client.readThread(request.threadID);
+        if (this.shuttingDown || (current.name && current.name !== request.initialName)) return;
+        await this.client.setThreadName(request.threadID, title);
+        for (const view of this.views.values()) {
+          view.threads = view.threads.map((thread) => thread.id === request.threadID
+            ? { ...thread, name: title, label: title }
+            : thread);
+          if (view.thread?.id === request.threadID) view.thread = { ...view.thread, name: title };
+          view.updateThreadHeader();
+          view.renderThreadPicker();
+        }
+      }
+      catch (error) {
+        this.log("Automatic chat title generation failed", error);
+      }
+    }
+
+    async notifyTurnCompleted(run, status) {
+      const failed = status === "failed";
+      const headline = await formatValue(
+        run.doc, failed ? "zotero-codex-chat-failed" : "zotero-codex-chat-completed",
+        null, failed ? "Codex reply failed" : "Codex reply ready",
+      );
+      if (this.shuttingDown) return;
+      try {
+        const alerts = global.Cc["@mozilla.org/alerts-service;1"].getService(global.Ci.nsIAlertsService);
+        alerts.showAlertNotification(
+          this.rootURI + "content/icon.svg", headline, run.label || run.context.title || "Codex", true,
+          run.threadID,
+          { observe: (_subject, topic) => {
+            if (topic === "alertclickcallback" && !this.shuttingDown) {
+              void this.openTurnNotification(run).catch((error) => this.log("Could not open chat", error));
+            }
+          } },
+          `zotero-codex-${run.threadID}`,
+        );
+      }
+      catch (_error) {
+        const popup = new global.Zotero.ProgressWindow();
+        popup.changeHeadline(headline);
+        popup.addLines(run.label || run.context.title || "Codex", "item");
+        popup.show();
+        popup.startCloseTimer(8_000);
+      }
+    }
+
+    async openTurnNotification(run) {
+      this.setPaperThread(run.context, run.threadID);
+      if (run.context.attachmentID) {
+        const reader = await global.Zotero.Reader.open(run.context.attachmentID);
+        if (reader) await this.revealReaderPane(reader);
+      }
+      else if (run.context.itemID) {
+        const win = global.Zotero.getMainWindow();
+        win.focus();
+        await win.ZoteroPane.selectItem(run.context.itemID);
+      }
+      const key = Protocol.paperContextKey(run.context);
+      for (const view of this.views.values()) {
+        if (Protocol.paperContextKey(view.context) !== key) continue;
+        await view.selectThread(run.threadID, { bind: false });
+        view.body.closest("item-details")?.scrollToPane?.(this.paneID, "smooth");
+        break;
+      }
     }
 
     isWorkProcessVisible() {
@@ -3044,6 +3663,7 @@
 
     handleThreadRemoved(threadID) {
       if (!threadID) return;
+      this.runningTurns.delete(threadID);
       const bindings = Protocol.normalizePaperThreadBindings(this.getPreference("paperThreads"));
       const remaining = Object.fromEntries(
         Object.entries(bindings).filter(([, id]) => id !== threadID),
@@ -3357,6 +3977,10 @@
     }
 
     async shutdown() {
+      this.shuttingDown = true;
+      this.cleanupClient?.();
+      this.runningTurns.clear();
+      this.completedTurnIDs.clear();
       for (const [body, view] of this.views) this.destroyView(body, view);
       if (this.paneID) global.Zotero.ItemPaneManager.unregisterSection(this.paneID);
       this.paneID = "";

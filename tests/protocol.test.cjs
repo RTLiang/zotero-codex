@@ -2,6 +2,39 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Protocol = require("../content/protocol.js");
 
+test("keeps conservative permission defaults and accepts explicit access settings", () => {
+  assert.deepEqual(Protocol.normalizePermissions({ approvalPolicy: "invalid", sandbox: "invalid", networkAccess: "true" }), {
+    approvalPolicy: "on-request", approvalsReviewer: "user", sandbox: "read-only", networkAccess: false,
+  });
+  const selected = { approvalPolicy: "never", approvalsReviewer: "auto_review", sandbox: "workspace-write", networkAccess: true };
+  assert.deepEqual(Protocol.normalizePermissions(selected), selected);
+});
+
+test("lists enabled skills once and uses their public descriptions", () => {
+  const skills = Protocol.normalizeSkillList({ data: [{ skills: [
+    { name: "pdf", path: "/skills/pdf/SKILL.md", enabled: true, interface: { displayName: "Read PDFs", shortDescription: "Inspect papers" } },
+    { name: "PDF", path: "/other/pdf/SKILL.md", enabled: true },
+    { name: "disabled", path: "/skills/disabled/SKILL.md", enabled: false },
+    { name: "missing-path", enabled: true },
+  ] }] });
+  assert.equal(skills.length, 1);
+  assert.equal(skills[0].displayName, "Read PDFs");
+  assert.equal(skills[0].description, "Inspect papers");
+});
+
+test("parses local slash commands and exact skill names without consuming file paths", () => {
+  const skills = [{ name: "pdf" }, { name: "Make Bot UI" }];
+  assert.deepEqual(Protocol.parseSlashCommand(" /SKILLS pdf ", skills), { kind: "command", name: "skills", argument: "pdf" });
+  assert.deepEqual(Protocol.parseSlashCommand("/approvals"), { kind: "command", name: "approvals", argument: "" });
+  assert.deepEqual(Protocol.parseSlashCommand("/PDF Explain this paper", skills), { kind: "skill", text: "$pdf Explain this paper" });
+  assert.deepEqual(Protocol.parseSlashCommand("/Make Bot UI Build this", skills), { kind: "skill", text: "$Make Bot UI Build this" });
+  assert.deepEqual(Protocol.parseSlashCommand("/pdf-extra", skills), { kind: "unknown" });
+  assert.equal(Protocol.parseSlashCommand("/Users/research/paper.pdf", skills), null);
+  assert.equal(Protocol.parseSlashCommand("Explain /pdf", skills), null);
+  assert.deepEqual(Protocol.referencedSkills("Use $pdf and $Make Bot UI today; $pdf-extra is separate", skills), skills);
+  assert.deepEqual(Protocol.referencedSkills("$pdf-extra", skills), []);
+});
+
 test("normalizes and orders shared Codex tasks", () => {
   const rows = Protocol.normalizeThreadList({
     data: [

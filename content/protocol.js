@@ -24,6 +24,50 @@
     return line.length > maxLength ? `${line.slice(0, maxLength - 1)}…` : line;
   }
 
+  function normalizePermissions(value = {}) {
+    const choose = (key, options, fallback) => options.includes(value[key]) ? value[key] : fallback;
+    return {
+      approvalPolicy: choose("approvalPolicy", ["untrusted", "on-request", "never"], "on-request"),
+      approvalsReviewer: choose("approvalsReviewer", ["user", "auto_review"], "user"),
+      sandbox: choose("sandbox", ["read-only", "workspace-write", "danger-full-access"], "read-only"),
+      networkAccess: value.networkAccess === true,
+    };
+  }
+
+  function normalizeSkillList(result) {
+    const skills = (result?.data || []).flatMap((entry) => entry.skills || []);
+    const unique = new Map();
+    for (const skill of skills) {
+      if (!skill.enabled || !skill.name || !skill.path || unique.has(skill.name.toLowerCase())) continue;
+      unique.set(skill.name.toLowerCase(), {
+        ...skill,
+        displayName: skill.interface?.displayName || skill.name,
+        description: skill.interface?.shortDescription || skill.shortDescription || skill.description || "",
+      });
+    }
+    return [...unique.values()];
+  }
+
+  function referencedSkills(text, skills) {
+    return skills.filter((skill) => {
+      const escaped = skill.name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+      return new RegExp(`(?:^|\\s)\\$${escaped}(?=\\s|$)`, "iu").test(text);
+    });
+  }
+
+  function parseSlashCommand(text, skills = []) {
+    const value = String(text || "").trim();
+    const builtIn = value.match(/^\/(skills|approvals|model|new)(?:\s+(.*))?$/isu);
+    if (builtIn) return { kind: "command", name: builtIn[1].toLowerCase(), argument: builtIn[2] || "" };
+    const skill = [...skills].sort((a, b) => b.name.length - a.name.length).find((candidate) => {
+      const prefix = `/${candidate.name}`;
+      return value.slice(0, prefix.length).toLowerCase() === prefix.toLowerCase()
+        && (!value[prefix.length] || /\s/u.test(value[prefix.length]));
+    });
+    if (skill) return { kind: "skill", text: `$${skill.name}${value.slice(skill.name.length + 1)}` };
+    return /^\/[^\s/]+(?:\s|$)/u.test(value) ? { kind: "unknown" } : null;
+  }
+
   function threadLabel(thread, fallback = "Codex") {
     const row = asRecord(thread);
     return firstLine(row.name || row.preview, 80) || fallback;
@@ -430,6 +474,10 @@
     asRecord,
     normalizeText,
     firstLine,
+    normalizePermissions,
+    normalizeSkillList,
+    referencedSkills,
+    parseSlashCommand,
     threadLabel,
     normalizeThreadList,
     normalizeModelList,

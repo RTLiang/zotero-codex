@@ -7,3 +7,7 @@ pref("extensions.zotero.codexSidebar.model", "");
 pref("extensions.zotero.codexSidebar.reasoningEffort", "");
 pref("extensions.zotero.codexSidebar.showWorkProcess", false);
 pref("extensions.zotero.codexSidebar.sidebarHeight", 0);
+pref("extensions.zotero.codexSidebar.approvalPolicy", "on-request");
+pref("extensions.zotero.codexSidebar.approvalsReviewer", "user");
+pref("extensions.zotero.codexSidebar.sandbox", "read-only");
+pref("extensions.zotero.codexSidebar.networkAccess", false);

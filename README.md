@@ -21,14 +21,16 @@ Conversations use your existing Codex sign-in and remain available across Codex 
 
 - Works in Zotero's item details pane and PDF reader.
 - Find, search, open, and continue conversations, with live responses and activity updates.
+- Switch chats or start a new one while a reply runs in the background. Returning to a running chat restores its progress and Stop button. Background replies show a desktop notification when ready; click it to return to the chat.
 - Start a conversation from a paper or return to one you already started.
 - Render Markdown headings, blockquotes, lists, task lists, tables, emphasis, strikethrough, links, code blocks, and common LaTeX expressions.
-- A new conversation is created when you send the first message. Codex gives it a short title after its first reply.
+- A new conversation is created when you send the first message. With item context enabled, its initial title uses the paper title; after the first reply, Codex uses the paper context, request, and answer to generate a short title identifying the paper's method or topic. Manually changed titles are preserved.
 - Each paper remembers its conversation. Switching papers returns you to the conversation you used for that paper.
 - Search recent conversations or filter the list to the current paper.
-- Set the Codex app path or reconnect from Settings.
+- The main view contains the chat, with model, reasoning effort, and permissions below the composer. Open Settings for connection and display options. Skills are invoked through the `/` menu.
 - Show activity details such as tool use, file changes, and reasoning summaries; off by default.
 - Add images from the “+” menu, paste screenshots, or drag them into the message. Preview or remove images before sending.
+- Double-click an attached or generated image to enlarge it. Press Esc, click the empty area, or use the close button to return to the chat.
 - Choose “Generate image” or type `$imagegen` to request images; generated images appear directly in the conversation.
 - The sidebar, PDF selection button, notifications, and errors follow Zotero's Simplified Chinese or English language setting.
 - Choose from the models available to your Codex account and their supported reasoning efforts. While a response is running, you can choose settings for the next reply.
@@ -37,7 +39,8 @@ Conversations use your existing Codex sign-in and remain available across Codex 
 - Automatically load the enabled, available official OpenAI Zotero skill to search papers, read indexed text, export BibTeX, insert citation keys, or import references. Normal chat continues when the skill is unavailable.
 - Selected PDF text is attached to the next message. A new selection replaces the current selection; “Add to Codex” pins a selection so you can include several passages.
 - Stop a running response and handle command, file, and permission approvals in the sidebar.
-- New chats default to a `read-only` sandbox with `on-request` approvals. The plugin itself does not directly modify Zotero items.
+- Type `/` to browse commands and enabled skills. `/skills` searches available skills; selecting one inserts `$skill-name`, and `/skill-name your request` invokes it directly. Use ↑/↓ to choose, Enter or Tab to select, and Escape to close the menu. `/model` opens model settings and `/new` starts a chat while existing replies continue.
+- `/approvals` opens the bottom permission panel for approval policy (`untrusted`, `on-request`, `never`), reviewer (you or automatic review), file access, and network access. Changes apply to the next reply, including in existing chats. Defaults remain `read-only` with `on-request` approvals. `never` denies actions that require approval; full access allows file changes and network access. The plugin itself does not directly modify Zotero items.
 
 ## Requirements and CLI detection
 
@@ -59,6 +62,12 @@ npm run build
 ```
 
 Versions follow `year.day-of-year.daily-revision`. The release workflow increments versions using the UTC date.
+
+## Frontend preview
+
+Run `npm run preview` and open `http://127.0.0.1:4318`. This uses the production sidebar renderer with simulated conversations and responses; it never starts Codex or accesses your Zotero library. Add `?width=320&theme=dark` to inspect a narrow, dark sidebar. Preview files are excluded from the XPI.
+
+The layout follows a conversation-focused Chrome sidebar. Neutral surfaces and grouped settings draw on [Magpie's frontend](https://github.com/yetone/magpie/tree/main/internal/gui/assets), adapted to Zotero's narrow pane.
 
 ## CI and releases
 

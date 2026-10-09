@@ -12,6 +12,85 @@ require("../content/sidebar.js");
 
 const { SidebarManager, SidebarView } = global.ZoteroCodexModules.Sidebar;
 
+function titleSendView(includeItem = true) {
+  const context = {
+    itemID: 1, attachmentID: 2, title: "Cross-Representation Knowledge Transfer",
+    abstract: "CREATE aligns graph and sequential representations.", pdfPath: "/papers/paper.pdf",
+  };
+  const view = {
+    context, contextEpoch: 1, models: [], images: [], threads: [],
+    elements: { input: { value: "这是什么" }, newThreadButton: {}, threadButton: {} },
+    manager: createManager(),
+    client: {
+      startThread: async ({ title }) => ({ id: "paper-thread", name: title }),
+      startTurn: async () => ({ id: "first-turn" }),
+    },
+    isCurrentContext: () => true,
+    updateComposerState() {}, setStatus() {}, updateThreadHeader() {},
+    resizeComposer() {}, renderContextAttachment() {}, appendOptimisticUser() {},
+    showPendingResponse() {}, setRunning() {}, showError(error) { throw error; },
+    createThreadForMessage: SidebarView.prototype.createThreadForMessage,
+  };
+  view.manager.setPreference("includeItemContext", includeItem);
+  return view;
+}
+
+test("new paper chats start with the paper title and capture its context for naming", async () => {
+  const view = titleSendView();
+  await SidebarView.prototype.send.call(view);
+  assert.equal(view.thread.name, view.context.title);
+  const titleRequest = view.manager.runningTurns.get(view.threadID).titleRequest;
+  assert.equal(titleRequest.initialName, view.thread.name);
+  view.context = { title: "A different paper" };
+  assert.match(titleRequest.context.zotero.value, /Cross-Representation/);
+  assert.match(titleRequest.context.zotero.value, /CREATE/);
+  assert.doesNotMatch(titleRequest.context.zotero.value, /different paper|\/papers/);
+});
+
+test("title generation respects disabled item context", async () => {
+  const view = titleSendView(false);
+  await SidebarView.prototype.send.call(view);
+  assert.equal(view.thread.name, "这是什么");
+  assert.equal(view.manager.runningTurns.get(view.threadID).titleRequest.context, null);
+});
+
+test("auto naming uses the first final answer and preserves manual renames during generation", async () => {
+  for (const manuallyRenamed of [false, true]) {
+    const request = { threadID: "paper-thread", text: "这是什么", initialName: "Paper title" };
+    const renamed = [];
+    let reads = 0;
+    const view = {
+      threads: [{ id: "paper-thread", name: "Paper title" }],
+      thread: { id: "paper-thread", name: "Paper title" },
+      updateThreadHeader() {}, renderThreadPicker() {},
+      client: {
+        readThread: async () => ({
+          name: ++reads === 2 && manuallyRenamed ? "My custom title" : "Paper title",
+          turns: [
+            { items: [
+              { type: "agentMessage", phase: "commentary", text: "I will read the paper." },
+              { type: "agentMessage", phase: "final", text: "CREATE transfers graph knowledge." },
+            ] },
+            { items: [{ type: "agentMessage", text: "Later unrelated discussion" }] },
+          ],
+        }),
+        generateThreadTitle: async (input) => {
+          assert.equal(input.answer, "CREATE transfers graph knowledge.");
+          return "CREATE：知识迁移";
+        },
+        setThreadName: async (id, title) => renamed.push([id, title]),
+      },
+    };
+    const manager = createManager();
+    manager.client = view.client;
+    manager.views.set("test", view);
+    manager.log = (message, error) => { throw error; };
+    await manager.autoNameThread(request);
+    assert.deepEqual(renamed, manuallyRenamed ? [] : [["paper-thread", "CREATE：知识迁移"]]);
+    assert.equal(view.thread.name, manuallyRenamed ? "Paper title" : "CREATE：知识迁移");
+  }
+});
+
 function createManager() {
   const preferences = new Map();
   return new SidebarManager({

@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Codex for Zotero · UI preview</title>
+<link rel="stylesheet" href="/content/style.css">
+<link rel="stylesheet" href="/content/vendor/katex/katex.min.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #e9e9ee; color-scheme: light dark; }
+  body { display: grid; place-items: center; font-family: system-ui, sans-serif; }
+  #preview { width: min(100vw, 440px); height: 100vh; --zcs-shell-height: 100vh; }
+  @media (prefers-color-scheme: dark) { html, body { background: #111114; } }
+</style>
+<body>
+<main id="preview"></main>
+<script src="/content/protocol.js"></script>
+<script src="/content/codex-client.js"></script>
+<script src="/content/vendor/katex/katex.min.js"></script>
+<script src="/content/markdown.js"></script>
+<script src="/content/sidebar.js"></script>
+<script src="/dev/preview.js"></script>
+</body>
+</html>
