@@ -44,6 +44,8 @@ Run the complete local permission proof once:
 
 It seeds two disposable journal articles through Zotero's supported Item API, then selects a visible item row and opens the Codex sidenav using pointer actions. Seeding supplies data only. The proof opens each permission choice button and clicks every option, using the same list controls as Model and reasoning. It asserts each saved value, selection checkmark, closed option list and still-open permission panel. It also checks the full-access network checkbox, reopens the panel through `/approvals`, saves screenshots and independently checks persisted preferences and absence of a chat session. It sends no model turn. Network initialization is possible when the sidebar connects; this is not a network-isolation test.
 
+For the PDF-reader entry, launch a separate fresh run and use `prove --run "$verify_run" --entry reader`. This imports a generated one-page PDF fixture, double-clicks its paper row, opens the reader context pane through its toolbar toggle and scopes all sidebar actions to `#zotero-context-pane-inner`. The default library proof uses `#zotero-item-pane`. Do not run both proofs in one profile: each seeds its own fixtures. The reader proof verifies permission controls, not PDF text selection.
+
 For other mapped features, use these commands against the same owned instance:
 
 ```sh
@@ -56,7 +58,7 @@ For other mapped features, use these commands against the same owned instance:
 "$verify_control" snapshot after-action --run "$verify_run"
 ```
 
-`seed` creates the two articles without driving a feature. Use it once per fresh run. `windows` lists native window URLs. `--window preferences` selects the native Zotero settings window after a user action opens it. `check SELECTOR true|false` toggles a checkbox through its click event. `read SCRIPT_FILE` executes a JavaScript body that returns observations from the selected window. Keep those scripts read-only. The bundled proof's preference flush is evidence collection, not a substitute for changing a control.
+`seed` creates the two articles without driving a feature. Use it once per fresh run. `dblclick SELECTOR` uses two pointer down/up pairs, as needed to open a PDF. `windows` lists native window URLs. `--window preferences` selects the native Zotero settings window after a user action opens it. `check SELECTOR true|false` toggles a checkbox through its click event. `read SCRIPT_FILE` executes a JavaScript body that returns observations from the selected window. Keep those scripts read-only. The bundled proof's preference flush is evidence collection, not a substitute for changing a control.
 
 Before using selectors, inspect the current DOM snapshot. Classes and `data-l10n-id` handles survive English/Chinese localization; translated button text may not. Scope selectors to the active item-details pane if library and PDF views coexist. The helper rejects hidden or disabled targets. It does not drive a native file picker, select PDF text, or synthesize clipboard images. Use available native app control for those actions and pair its screenshots/action record with this helper's resulting DOM snapshot. Report such entry points as untested if native control is unavailable.
 
@@ -98,6 +100,6 @@ Cleanup verifies that the recorded PID's command still names this profile, stops
 
 ## Helpers
 
-All invocations above use [scripts/control.mjs](scripts/control.mjs), which is executable and uses only Node built-ins. Its commands are `launch`, `doctor`, `windows`, `seed`, `prove`, `click`, `fill`, `key`, `select`, `check`, `snapshot`, `read`, and `cleanup`; each accepts `--run DIRECTORY`. UI commands also accept `--window preferences`.
+All invocations above use [scripts/control.mjs](scripts/control.mjs), which is executable and uses only Node built-ins. Its commands are `launch`, `doctor`, `windows`, `seed`, `prove`, `click`, `dblclick`, `fill`, `key`, `select`, `check`, `snapshot`, `read`, and `cleanup`; each accepts `--run DIRECTORY`. UI commands also accept `--window preferences`. `seed` and `prove` accept `--entry library|reader`.
 
 After application changes, use `/maintain-verification-skill` to update the feature map and rerun the affected native paths.

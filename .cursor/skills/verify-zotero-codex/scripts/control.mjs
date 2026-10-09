@@ -251,7 +251,7 @@ async function snapshot(client, label) {
     return {title:document.title,url:location.href,
       text:document.documentElement.innerText,
       controls:[...document.querySelectorAll('button,input,textarea,select,toolbarbutton,menuitem,[role]')]
-        .filter(e=>e.getClientRects().length&&!e.closest('[hidden]'))
+        .filter(e=>e.getClientRects().length&&!e.closest('[hidden],[collapsed="true"]')&&e.getBoundingClientRect().width)
         .map(e=>({tag:e.localName,id:e.id,class:e.getAttribute('class'),role:e.getAttribute('role'),
           label:e.getAttribute('aria-label')||e.getAttribute('label')||e.title,
           l10n:e.getAttribute('data-l10n-id'),text:e.textContent?.trim().slice(0,300),

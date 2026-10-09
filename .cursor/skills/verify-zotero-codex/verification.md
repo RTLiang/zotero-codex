@@ -15,3 +15,13 @@ Evidence directory for the final helper: `output/verification/20261009-final/`. 
 This proves the permission button and `/approvals` path in the library item pane, with preference persistence. It does not prove real model responses, actual tool approval handling, PDF-reader selections, OS notifications, image generation, proxy routing or Windows/Linux operation. Those entries remain mapped for later feature-specific runs.
 
 Earlier failed iterations are retained separately with logs and cleanup records. They identified the virtualized tree's `treeitem` role, pointer-action requirements, and escaping in Zotero's generated `data-pane` value. A source change also caused the doctor to reject a stale instance as intended. No failed iteration counts as a successful feature proof.
+
+## Shared permission choice controls
+
+On 2026-10-09, permission fields were replaced with the same button/list implementation as Model and reasoning. The initial proof above assigned a native select value and dispatched change; it did not establish that the native dropdown opened under a mouse click. The updated proof uses pointer clicks to open each list and choose all eight options across policy, reviewer and file access.
+
+Successful evidence is in `output/verification/20261009-permission-choices-reader-4/` for the PDF-reader entry and `output/verification/20261009-permission-choices-library-2/` for the library entry. Both ran in isolated Zotero 10.0.5 profiles, checked stored preferences and selection checkmarks, kept the permission panel open after selection, exercised full-access network behavior and reopened the panel through `/approvals`. Both profiles were cleaned; screenshots, action records and proof JSON survive.
+
+The reader run also used pointer clicks to select the actual CLI-listed `gpt-6-sol` model and `high` effort. `model-effort-changed.png`, its DOM inventory and the read observation in `actions.jsonl` confirm both saved values, matching selected options and footer text, with zero messages. The reader package was 2026.282.3; the final library package was 2026.282.4. Product files under `content/` were identical across those builds; the packaged manifest version changed.
+
+The final test log `output/verification/20261009-permissions-final-tests.log` records 112 passed, zero failed. Native launch checks and packaging passed. Failed reader iterations remain separate: one test instance exited before reconnection, and the others exposed hidden library-pane selection and escaping in the harness. They are not successful permission proofs. These checks cover local controls and persistence, not model responses or actual tool approval requests.
