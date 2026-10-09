@@ -19,6 +19,7 @@ function option(name, fallback = "") {
 }
 const run = path.resolve(option("--run", path.join(root, "output/verification/current")));
 const windowKind = option("--window", "main");
+const entry = option("--entry", "library");
 const scratch = path.join(run, "scratch");
 const statePath = path.join(run, "instance.json");
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -210,12 +211,13 @@ async function launch() {
 const elementScript = `
   const e = document.querySelector(arguments[0]);
   if (!e) throw new Error("Missing selector: " + arguments[0]);
-  if (!e.getClientRects().length || e.closest('[hidden]')) throw new Error("Hidden element: " + arguments[0]);
+  if (!e.getClientRects().length || e.closest('[hidden],[collapsed="true"]') || !e.getBoundingClientRect().width) throw new Error("Hidden element: " + arguments[0]);
   if (e.disabled) throw new Error("Disabled element: " + arguments[0]);
 `;
 async function drive(client, action, selector, value = "") {
   const scripts = {
     click: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
+    dblclick: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
     fill: `${elementScript} e.focus(); e.value = arguments[1]; e.dispatchEvent(new Event('input', {bubbles:true})); return e.value;`,
     select: `${elementScript} if (![...e.options].some(o=>o.value===arguments[1])) throw new Error('Unknown option'); e.value=arguments[1]; e.dispatchEvent(new Event('change',{bubbles:true})); return e.value;`,
     key: `${elementScript} e.focus(); e.dispatchEvent(new KeyboardEvent('keydown',{key:arguments[1],bubbles:true,cancelable:true})); return true;`,
@@ -224,14 +226,16 @@ async function drive(client, action, selector, value = "") {
   assert.ok(scripts[action], `Unknown action ${action}`);
   record("action", { action, selector, value });
   let result = await client.evaluate(scripts[action], [selector, value]);
-  if (action === "click") {
+  if (action === "click" || action === "dblclick") {
     const element = await client.call("WebDriver:FindElement", { using: "css selector", value: selector });
     const id = element.value["element-6066-11e4-a52e-4f735466cecf"];
     assert.ok(id, "Marionette did not return an element reference");
     await client.call("WebDriver:PerformActions", { actions: [{ type: "pointer", id: "verification-mouse",
       parameters: { pointerType: "mouse" }, actions: [
         { type: "pointerMove", origin: element.value, x: 0, y: 0, duration: 0 },
-        { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 },
+        ...Array.from({length:action === "dblclick" ? 2 : 1},()=>[
+          { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 },
+        ]).flat(),
       ] }] });
     await client.call("WebDriver:ReleaseActions");
     result = true;
@@ -261,7 +265,29 @@ async function snapshot(client, label) {
 }
 
 async function seed(client) {
+  const pdf = entry === "reader" ? path.join(scratch, "workspace", "Verification.pdf") : "";
+  if (pdf) {
+    const stream = "BT /F1 18 Tf 72 720 Td (Disposable PDF permission-control fixture) Tj ET\n";
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+      `<< /Length ${stream.length} >>\nstream\n${stream}endstream`,
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ];
+    let body = "%PDF-1.4\n";
+    const offsets = [0];
+    for (const [i, object] of objects.entries()) {
+      offsets.push(Buffer.byteLength(body));
+      body += `${i+1} 0 obj\n${object}\nendobj\n`;
+    }
+    const xref = Buffer.byteLength(body);
+    body += `xref\n0 ${offsets.length}\n0000000000 65535 f \n`;
+    body += offsets.slice(1).map(offset=>`${String(offset).padStart(10,"0")} 00000 n \n`).join("");
+    body += `trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+    fs.writeFileSync(pdf, body);
+  }
   const result = await client.evaluate(`
+    const pdf=arguments[0];
     const done = arguments[arguments.length-1];
     (async()=>{
       await Zotero.uiReadyPromise;
@@ -269,11 +295,13 @@ async function seed(client) {
       for(const title of ['Verification paper A','Verification paper B']) {
         const item=new Zotero.Item('journalArticle');
         item.setField('title',title); item.setField('abstractNote','Disposable verification fixture.');
-        item.setField('date','2026'); await item.saveTx(); items.push({id:item.id,key:item.key,title});
+        item.setField('date','2026'); await item.saveTx();
+        const attachment=pdf&&!items.length ? await Zotero.Attachments.importFromFile({file:pdf,parentItemID:item.id}) : null;
+        items.push({id:item.id,key:item.key,title,attachmentID:attachment?.id});
       }
       return items;
     })().then(done,e=>done({error:e.message}));
-  `, [], true);
+  `, [pdf], true);
   assert.ok(Array.isArray(result), JSON.stringify(result));
   json(path.join(run, "fixtures.json"), result);
   record("seed-data-only", result);
@@ -281,6 +309,9 @@ async function seed(client) {
 }
 
 async function prove(client) {
+  assert.ok(["library", "reader"].includes(entry), "Use --entry library|reader");
+  const prefix = entry === "reader" ? "#zotero-context-pane-inner " : "#zotero-item-pane ";
+  const ui = selector => prefix + selector;
   await doctor(client);
   await seed(client);
   // The virtualized item list uses row indexes, not database IDs. Resolve the
@@ -292,30 +323,96 @@ async function prove(client) {
   }
   assert.ok(row, "Fixture row is missing; inspect the main-window DOM");
   await drive(client, "click", `#${row}`);
-  const pane = await client.evaluate(`return [...document.querySelectorAll('[data-pane]')].find(e=>e.dataset.pane.includes('codex-sidebar'))?.getAttribute('data-pane');`);
+  if (entry === "reader") {
+    await drive(client, "dblclick", `#${row}`);
+    for (let i=0;i<40;i++) {
+      if (await client.evaluate(`return Zotero_Tabs.selectedType === 'reader';`)) break;
+      await delay(250);
+    }
+    assert.equal(await client.evaluate(`return Zotero_Tabs.selectedType;`), "reader");
+    if (await client.evaluate(`return document.querySelector('#zotero-context-pane').collapsed;`)) {
+      let point;
+      for (let i=0;i<40&&!point;i++) {
+        point=await client.evaluate(`const reader=Zotero.Reader.getByTabID(Zotero_Tabs.selectedID);
+          const button=reader?._iframeWindow?.document.querySelector('.context-pane-toggle');
+          if(!button)return null; const a=reader._iframe.getBoundingClientRect(),b=button.getBoundingClientRect();
+          return {x:Math.round(a.left+b.left+b.width/2),y:Math.round(a.top+b.top+b.height/2)};`);
+        if(!point)await delay(250);
+      }
+      assert.ok(point, "Reader context-pane toggle is missing");
+      record("action",{action:"click-reader-context-toggle",point});
+      await client.call("WebDriver:PerformActions",{actions:[{type:"pointer",id:"verification-reader-mouse",parameters:{pointerType:"mouse"},actions:[
+        {type:"pointerMove",origin:"viewport",...point,duration:0},
+        {type:"pointerDown",button:0},{type:"pointerUp",button:0},
+      ]}]});
+      await client.call("WebDriver:ReleaseActions");
+      await delay(500);
+      assert.equal(await client.evaluate(`return document.querySelector('#zotero-context-pane').collapsed;`),false);
+    }
+  }
+  const sidenav = entry === "reader" ? "#zotero-context-pane-sidenav" : "#zotero-view-item-sidenav";
+  const pane = await client.evaluate(`const e=[...document.querySelectorAll(arguments[0]+' [data-pane]')].find(e=>e.dataset.pane.includes('codex-sidebar')); if(!e)return null; return arguments[0]+' [data-pane="'+e.dataset.pane+'"]';`,[sidenav]);
   assert.ok(pane, "Codex sidenav button is missing");
-  await drive(client, "click", `[data-pane=${JSON.stringify(pane)}]`);
+  await drive(client, "click", pane);
   for (let i = 0; i < 60; i++) {
-    if (await client.evaluate(`return !!document.querySelector('.zcs-input') && !document.querySelector('.zcs-input').disabled;`)) break;
+    if (await client.evaluate(`${elementScript} return !e.disabled;`,[ui(".zcs-input")]).catch(()=>false)) break;
     await delay(500);
   }
   await snapshot(client, "permissions-before");
-  await drive(client, "click", ".zcs-permissions-trigger");
-  assert.equal(await client.evaluate(`return document.querySelector('.zcs-permissions-card').hidden;`), false);
+  await drive(client, "click", ui(".zcs-permissions-trigger"));
+  assert.equal(await client.evaluate(`return document.querySelector(arguments[0]).hidden;`,[ui(".zcs-permissions-card")]), false);
   await snapshot(client, "permissions-button-entry");
-  await drive(client, "select", ".zcs-permission-field:nth-of-type(3) select", "workspace-write");
+  const selections = [];
+  for (const [key, values] of [
+    ["approvalPolicy", ["untrusted", "never", "on-request"]],
+    ["approvalsReviewer", ["auto_review", "user"]],
+    ["sandbox", ["danger-full-access", "read-only", "workspace-write"]],
+  ]) {
+    const field = ui(`.zcs-permission-field[data-permission="${key}"]`);
+    for (const value of values) {
+      await drive(client, "click", `${field} > .zcs-model-choice`);
+      const open = await client.evaluate(`${elementScript} return {
+        button:e.querySelector('.zcs-model-choice').getAttribute('aria-expanded'),
+        list:!e.querySelector('.zcs-model-options').hidden,
+        nativeSelects:e.querySelectorAll('select').length};`, [field]);
+      assert.equal(open.button, "true");
+      assert.equal(open.list, true);
+      assert.equal(open.nativeSelects, 0);
+      await snapshot(client, `permissions-${key.toLowerCase()}-${value.replaceAll('_','-')}-options`);
+      await drive(client, "click", `${field} [role="option"][data-value="${value}"]`);
+      const selected = await client.evaluate(`${elementScript} return {
+        stored:Zotero.Prefs.get('extensions.zotero.codexSidebar.'+arguments[1],true),
+        value:e.querySelector('.zcs-model-choice').value,
+        expanded:e.querySelector('.zcs-model-choice').getAttribute('aria-expanded'),
+        selected:e.querySelector('[aria-selected="true"]')?.dataset.value,
+        panelOpen:!e.closest('.zcs-permissions-card').hidden,
+        network:e.closest('.zcs-permissions-card').querySelector('.zcs-permission-network input').checked,
+        networkDisabled:e.closest('.zcs-permissions-card').querySelector('.zcs-permission-network input').disabled};`, [field,key]);
+      assert.equal(selected.stored, value);
+      assert.equal(selected.value, value);
+      assert.equal(selected.selected, value);
+      assert.equal(selected.expanded, "false");
+      assert.equal(selected.panelOpen, true);
+      if (value === "danger-full-access") {
+        assert.equal(selected.network, true);
+        assert.equal(selected.networkDisabled, true);
+      }
+      selections.push({key,value,...selected});
+    }
+  }
   await snapshot(client, "permissions-changed");
-  await drive(client, "key", ".zcs-input", "Escape");
-  await drive(client, "fill", ".zcs-input", "/approvals");
-  await drive(client, "key", ".zcs-input", "Enter");
+  await drive(client, "key", ui(".zcs-input"), "Escape");
+  await drive(client, "fill", ui(".zcs-input"), "/approvals");
+  await drive(client, "key", ui(".zcs-input"), "Enter");
   const result = await client.evaluate(`
+    const root=document.querySelector(arguments[0]);
     const names=['approvalPolicy','approvalsReviewer','sandbox','networkAccess'];
-    return {open:!document.querySelector('.zcs-permissions-card').hidden,
-      access:document.querySelector('.zcs-permissions-trigger').dataset.access,
-      input:document.querySelector('.zcs-input').value,
+    return {open:!root.querySelector('.zcs-permissions-card').hidden,
+      access:root.querySelector('.zcs-permissions-trigger').dataset.access,
+      input:root.querySelector('.zcs-input').value,
       stored:Object.fromEntries(names.map(k=>[k,Zotero.Prefs.get('extensions.zotero.codexSidebar.'+k,true)])),
-      messages:document.querySelectorAll('.zcs-message').length};
-  `);
+      messages:root.querySelectorAll('.zcs-message').length};
+  `,[prefix.trim()]);
   assert.equal(result.open, true);
   assert.equal(result.access, "workspace-write");
   assert.equal(result.stored.sandbox, "workspace-write");
@@ -328,7 +425,7 @@ async function prove(client) {
   assert.ok(disk.includes('user_pref("extensions.zotero.codexSidebar.sandbox", "workspace-write");'));
   const sessions = path.join(scratch, "runtime/sessions");
   assert.ok(!fs.existsSync(sessions) || fs.readdirSync(sessions).length === 0, "Local command created a session");
-  json(path.join(run, "permissions-proof.json"), {feature:"commands-permissions",entries:["bottom permission button","/approvals"],result, persisted:true, sessionDirectoryEmpty:true, scope:"Native UI and preference persistence; no model response or approval request was tested"});
+  json(path.join(run, "permissions-proof.json"), {feature:"commands-permissions",entry,entries:["bottom permission button","/approvals"],selections,result, persisted:true, sessionDirectoryEmpty:true, scope:"Native pointer clicks through all three permission choice lists and preference persistence; no model response or approval request was tested"});
   return result;
 }
 
@@ -375,7 +472,7 @@ async function cleanup() {
 async function main() {
   if (command === "launch") return launch();
   if (command === "cleanup") return cleanup();
-  assert.ok(["doctor","windows","seed","prove","snapshot","read","click","fill","key","select","check"].includes(command), "Use launch|doctor|windows|seed|prove|snapshot LABEL|read SCRIPT_FILE|click SELECTOR|fill SELECTOR VALUE|key SELECTOR KEY|select SELECTOR VALUE|check SELECTOR true|cleanup --run DIRECTORY [--window preferences]");
+  assert.ok(["doctor","windows","seed","prove","snapshot","read","click","dblclick","fill","key","select","check"].includes(command), "Use launch|doctor|windows|seed|prove|snapshot LABEL|read SCRIPT_FILE|click SELECTOR|dblclick SELECTOR|fill SELECTOR VALUE|key SELECTOR KEY|select SELECTOR VALUE|check SELECTOR true|cleanup --run DIRECTORY [--window preferences] [--entry library|reader]");
   const client = await connect();
   try {
     let result;

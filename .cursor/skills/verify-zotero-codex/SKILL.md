@@ -42,14 +42,15 @@ Run the complete local permission proof once:
 "$verify_control" prove --run "$verify_run"
 ```
 
-It seeds two disposable journal articles through Zotero's supported Item API, then selects a visible item row and opens the Codex sidenav using pointer actions. Seeding supplies data only. The actual proof uses the production permission button, file-access select, and `/approvals` composer command. It asserts the panel reopens with `workspace-write`, checks the stored preference independently, saves screenshots, and confirms that no chat session was created. It sends no model turn. Network initialization is possible when the sidebar connects; this is not a network-isolation test.
+It seeds two disposable journal articles through Zotero's supported Item API, then selects a visible item row and opens the Codex sidenav using pointer actions. Seeding supplies data only. The proof opens each permission choice button and clicks every option, using the same list controls as Model and reasoning. It asserts each saved value, selection checkmark, closed option list and still-open permission panel. It also checks the full-access network checkbox, reopens the panel through `/approvals`, saves screenshots and independently checks persisted preferences and absence of a chat session. It sends no model turn. Network initialization is possible when the sidebar connects; this is not a network-isolation test.
 
 For other mapped features, use these commands against the same owned instance:
 
 ```sh
 "$verify_control" snapshot before-action --run "$verify_run"
 "$verify_control" click '.zcs-permissions-trigger' --run "$verify_run"
-"$verify_control" select '.zcs-permission-field:nth-of-type(3) select' workspace-write --run "$verify_run"
+"$verify_control" click '[data-permission="sandbox"] > .zcs-model-choice' --run "$verify_run"
+"$verify_control" click '[data-permission="sandbox"] [data-value="workspace-write"]' --run "$verify_run"
 "$verify_control" fill '.zcs-input' /approvals --run "$verify_run"
 "$verify_control" key '.zcs-input' Enter --run "$verify_run"
 "$verify_control" snapshot after-action --run "$verify_run"

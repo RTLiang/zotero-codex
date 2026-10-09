@@ -49,6 +49,46 @@
     return element;
   }
 
+  function createChoice(doc, labelID, label, controlID = "") {
+    const field = create(doc, "div", "zcs-model-field");
+    const fieldLabel = createL10n(doc, "span", "zcs-model-field-label", labelID, label);
+    fieldLabel.id = `zcs-choice-label-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const button = create(doc, "button", "zcs-model-choice");
+    button.type = "button";
+    button.setAttribute("aria-haspopup", "listbox");
+    button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-labelledby", fieldLabel.id);
+    if (controlID) setL10n(button, controlID);
+    const text = create(doc, "span", "zcs-model-choice-text", "—");
+    button.append(text, create(doc, "span", "zcs-model-choice-chevron", "⌄"));
+    const options = create(doc, "div", "zcs-model-options");
+    options.id = `zcs-options-${fieldLabel.id}`;
+    options.hidden = true;
+    options.setAttribute("role", "listbox");
+    options.setAttribute("aria-labelledby", fieldLabel.id);
+    button.setAttribute("aria-controls", options.id);
+    field.append(fieldLabel, button, options);
+    return { field, button, text, options };
+  }
+
+  function createChoiceOption(doc, { value, label, l10nID, selected, onSelect }) {
+    const option = create(doc, "button", "zcs-model-option");
+    option.type = "button";
+    option.dataset.value = value;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(selected));
+    option.append(
+      l10nID ? createL10n(doc, "span", "zcs-model-option-label", l10nID, label)
+        : create(doc, "span", "zcs-model-option-label", label),
+      create(doc, "span", "zcs-model-option-check", selected ? "✓" : ""),
+    );
+    option.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onSelect(value);
+    });
+    return option;
+  }
+
   function createUIIcon(doc, name) {
     const paths = {
       codex: "M8 4 3 9l5 5m8-10 5 5-5 5M13.5 2l-3 14",
@@ -599,6 +639,7 @@
       setL10n(permissionsCard, "zotero-codex-permissions-dialog");
       permissionsCard.append(createL10n(doc, "div", "zcs-page-title", "zotero-codex-permissions", "Permissions"));
       const permissionInputs = {};
+      const permissionChoices = {};
       for (const [key, labelID, label, options] of [
         ["approvalPolicy", "zotero-codex-approval-policy", "Approval policy", [
           ["untrusted", "zotero-codex-approval-untrusted", "Ask for untrusted commands"],
@@ -615,16 +656,13 @@
           ["danger-full-access", "zotero-codex-access-full", "Full access"],
         ]],
       ]) {
-        const field = create(doc, "label", "zcs-permission-field");
-        const select = create(doc, "select", "zcs-permission-select");
-        for (const [value, id, fallback] of options) {
-          const option = createL10n(doc, "option", "", id, fallback);
-          option.value = value;
-          select.append(option);
-        }
-        permissionInputs[key] = select;
-        field.append(createL10n(doc, "span", "", labelID, label), select);
-        permissionsCard.append(field);
+        const choice = createChoice(doc, labelID, label);
+        choice.field.classList.add("zcs-permission-field");
+        choice.field.dataset.permission = key;
+        choice.items = options;
+        permissionInputs[key] = choice.button;
+        permissionChoices[key] = choice;
+        permissionsCard.append(choice.field);
       }
       const networkLabel = create(doc, "label", "zcs-permission-network");
       const networkAccess = create(doc, "input");
@@ -798,41 +836,14 @@
         "Applies to the next reply",
       );
       modelNextTurnHint.hidden = true;
-      const modelField = create(doc, "div", "zcs-model-field");
-      modelField.append(createL10n(doc, "span", "zcs-model-field-label", "zotero-codex-model", "Model"));
-      const modelChoice = create(doc, "button", "zcs-model-choice");
-      modelChoice.type = "button";
-      modelChoice.setAttribute("aria-haspopup", "listbox");
-      modelChoice.setAttribute("aria-expanded", "false");
-      modelChoice.setAttribute("aria-label", "Model");
-      setL10n(modelChoice, "zotero-codex-model-choice");
-      const modelChoiceText = create(doc, "span", "zcs-model-choice-text", "Codex");
-      modelChoice.append(modelChoiceText, create(doc, "span", "zcs-model-choice-chevron", "⌄"));
-      const modelOptions = create(doc, "div", "zcs-model-options");
-      modelOptions.hidden = true;
-      modelOptions.setAttribute("role", "listbox");
-      modelField.append(modelChoice, modelOptions);
-      const effortField = create(doc, "div", "zcs-model-field");
-      effortField.append(createL10n(
-        doc,
-        "span",
-        "zcs-model-field-label",
-        "zotero-codex-reasoning-effort",
-        "Reasoning effort",
-      ));
-      const effortChoice = create(doc, "button", "zcs-model-choice");
-      effortChoice.type = "button";
-      effortChoice.setAttribute("aria-haspopup", "listbox");
-      effortChoice.setAttribute("aria-expanded", "false");
-      effortChoice.setAttribute("aria-label", "Reasoning effort");
-      setL10n(effortChoice, "zotero-codex-effort-choice");
-      const effortChoiceText = create(doc, "span", "zcs-model-choice-text");
-      effortChoice.append(effortChoiceText, create(doc, "span", "zcs-model-choice-chevron", "⌄"));
-      const effortOptions = create(doc, "div", "zcs-model-options zcs-effort-options");
-      effortOptions.hidden = true;
-      effortOptions.setAttribute("role", "listbox");
-      effortField.append(effortChoice, effortOptions);
-      modelPopover.append(modelPopoverTitle, modelNextTurnHint, modelField, effortField);
+      const modelControl = createChoice(doc, "zotero-codex-model", "Model", "zotero-codex-model-choice");
+      const effortControl = createChoice(doc, "zotero-codex-reasoning-effort", "Reasoning effort", "zotero-codex-effort-choice");
+      const { button: modelChoice, text: modelChoiceText, options: modelOptions } = modelControl;
+      const { button: effortChoice, text: effortChoiceText, options: effortOptions } = effortControl;
+      effortOptions.classList.add("zcs-effort-options");
+      modelPopover.append(modelPopoverTitle, modelNextTurnHint, modelControl.field, effortControl.field);
+      const choices = { model: modelControl, effort: effortControl, ...permissionChoices };
+      for (const [key, choice] of Object.entries(choices)) choice.field.dataset.choice = key;
 
       const status = create(doc, "div", "zcs-toast");
       status.hidden = true;
@@ -931,6 +942,8 @@
         reconnectButton,
         showWorkProcessToggle,
         permissionInputs,
+        permissionChoices,
+        choices,
         commandMenu,
       };
 
@@ -948,8 +961,8 @@
         toggleSettings: () => this.openSettings(),
         toggleContextMenu: () => this.togglePopover("context"),
         toggleModelMenu: () => this.togglePopover("model"),
-        toggleModelOptions: () => this.toggleModelOptions("model"),
-        toggleEffortOptions: () => this.toggleModelOptions("effort"),
+        choiceToggle: (event) => this.toggleChoiceOptions(event.currentTarget.parentNode.dataset.choice),
+        choiceKeydown: (event) => this.handleChoiceKeydown(event),
         cancelEdit: () => this.cancelEdit(),
         newTask: () => void this.newTask(),
         togglePaperOnly: () => {
@@ -1066,8 +1079,10 @@
       contextAddButton.addEventListener("click", this.handlers.toggleContextMenu);
       contextModeButton.addEventListener("click", this.handlers.toggleContextMenu);
       modelTrigger.addEventListener("click", this.handlers.toggleModelMenu);
-      modelChoice.addEventListener("click", this.handlers.toggleModelOptions);
-      effortChoice.addEventListener("click", this.handlers.toggleEffortOptions);
+      for (const choice of Object.values(choices)) {
+        choice.button.addEventListener("click", this.handlers.choiceToggle);
+        choice.field.addEventListener("keydown", this.handlers.choiceKeydown);
+      }
       cancelEditButton.addEventListener("click", this.handlers.cancelEdit);
       newThreadButton.addEventListener("click", this.handlers.newTask);
       paperOnlyCheckbox.addEventListener("change", this.handlers.togglePaperOnly);
@@ -1085,7 +1100,7 @@
       sendButton.addEventListener("click", this.handlers.sendOrStop);
       reconnectButton.addEventListener("click", this.handlers.reconnect);
       showWorkProcessToggle.addEventListener("change", this.handlers.toggleWorkProcess);
-      for (const control of Object.values(permissionInputs)) control.addEventListener("change", this.handlers.permissionChange);
+      networkAccess.addEventListener("change", this.handlers.permissionChange);
       resizeHandle.addEventListener("pointerdown", this.handlers.resizeStart);
       resizeHandle.addEventListener("pointermove", this.handlers.resizeMove);
       resizeHandle.addEventListener("pointerup", this.handlers.resizeEnd);
@@ -1132,6 +1147,7 @@
       this.elements.root.style.setProperty("--zcs-shell-height", `${height}px`);
       this.elements.root.dataset.shellHeightLocked = "true";
       this.elements.resizeHandle.setAttribute("aria-valuenow", String(height));
+      this.resizeCommandMenu();
       return height;
     }
 
@@ -1210,6 +1226,7 @@
 
     closePopovers(except = "") {
       this.hideCommandMenu();
+      this.closeChoiceOptions();
       this.elements.threadContextMenu.hidden = true;
       this.contextMenuThreadID = "";
       const pairs = [
@@ -1223,7 +1240,6 @@
         popover.hidden = true;
         trigger.setAttribute("aria-expanded", "false");
         if (name === "context") this.elements.contextModeButton.setAttribute("aria-expanded", "false");
-        if (name === "model") this.closeModelOptions();
       }
     }
 
@@ -1327,6 +1343,14 @@
       const input = this.elements.input;
       input.style.height = "auto";
       input.style.height = `${Math.min(input.scrollHeight, 140)}px`;
+      this.resizeCommandMenu();
+    }
+
+    resizeCommandMenu() {
+      const { commandMenu, topbar, composer } = this.elements;
+      if (commandMenu.hidden) return;
+      const available = composer.getBoundingClientRect().top - topbar.getBoundingClientRect().bottom - 16;
+      commandMenu.style.maxHeight = `${Math.max(0, Math.min(280, available))}px`;
     }
 
     applyPermissions() {
@@ -1336,16 +1360,25 @@
       ));
       for (const [key, control] of Object.entries(controls)) {
         if (key === "networkAccess") {
-          control.checked = settings.networkAccess;
+          control.checked = settings.sandbox === "danger-full-access" || settings.networkAccess;
           control.disabled = settings.sandbox === "danger-full-access";
         }
         else control.value = settings[key];
       }
+      for (const [key, choice] of Object.entries(this.elements.permissionChoices)) {
+        const selected = choice.items.find(([value]) => value === settings[key]);
+        setLocalizedText(choice.text, selected[1], selected[2]);
+        choice.options.replaceChildren(...choice.items.map(([value, l10nID, label]) =>
+          createChoiceOption(this.doc, { value, label, l10nID, selected: value === settings[key],
+            onSelect: (next) => this.selectPermission(key, next) }),
+        ));
+      }
       const trigger = this.elements.permissionsButton;
       if (trigger) {
         trigger.dataset.access = settings.sandbox;
-        trigger.setAttribute("aria-label", controls.sandbox.selectedOptions?.[0]?.textContent || "File access settings");
-        trigger.title = controls.sandbox.selectedOptions?.[0]?.textContent || "File access settings";
+        const label = this.elements.permissionChoices.sandbox.text.textContent;
+        trigger.setAttribute("aria-label", label);
+        trigger.title = label;
         if (this.elements.permissionLabel) {
           const [id, fallback] = settings.sandbox === "danger-full-access"
             ? ["zotero-codex-quick-full", "Full access"]
@@ -1362,8 +1395,16 @@
         Object.entries(this.elements.permissionInputs).map(([key, control]) =>
           [key, key === "networkAccess" ? control.checked : control.value]),
       ));
+      if (settings.sandbox === "danger-full-access") settings.networkAccess = true;
       for (const [key, value] of Object.entries(settings)) this.manager.setPreference(key, value);
       for (const view of this.manager.views.values()) view.applyPermissions();
+    }
+
+    selectPermission(key, value) {
+      this.elements.permissionInputs[key].value = value;
+      this.savePermissions();
+      this.closeChoiceOptions();
+      this.elements.permissionInputs[key].focus();
     }
 
     skillDirectory() {
@@ -1442,6 +1483,7 @@
           this.skillsLoading ? "Loading skills…" : "No matching commands or enabled skills"));
       }
       menu.hidden = false;
+      this.resizeCommandMenu();
       this.elements.input.setAttribute("aria-expanded", "true");
       if (entries.length) this.elements.input.setAttribute("aria-activedescendant", `${menu.id}-${this.commandIndex}`);
       else this.elements.input.removeAttribute("aria-activedescendant");
@@ -1546,37 +1588,55 @@
       this.updateComposerState();
     }
 
-    closeModelOptions(except = "") {
-      const pairs = [
-        ["model", this.elements.modelOptions, this.elements.modelChoice],
-        ["effort", this.elements.effortOptions, this.elements.effortChoice],
-      ];
-      for (const [name, options, choice] of pairs) {
+    closeChoiceOptions(except = "") {
+      for (const [name, { options, button }] of Object.entries(this.elements.choices)) {
         if (name === except) continue;
         options.hidden = true;
-        choice.setAttribute("aria-expanded", "false");
+        button.setAttribute("aria-expanded", "false");
       }
     }
 
-    toggleModelOptions(name) {
-      if (this.creatingTask) return;
-      const map = {
-        model: [this.elements.modelOptions, this.elements.modelChoice],
-        effort: [this.elements.effortOptions, this.elements.effortChoice],
-      };
-      const [options, choice] = map[name];
+    toggleChoiceOptions(name) {
+      const { options, button } = this.elements.choices[name];
+      if (button.disabled) return;
       const willOpen = options.hidden;
-      this.closeModelOptions(name);
+      this.closeChoiceOptions(name);
       options.hidden = !willOpen;
-      choice.setAttribute("aria-expanded", String(willOpen));
-      if (willOpen) global.setTimeout(() => options.querySelector("button")?.focus(), 0);
+      button.setAttribute("aria-expanded", String(willOpen));
+      if (willOpen) (options.querySelector('[aria-selected="true"]') || options.querySelector("button"))?.focus();
+    }
+
+    handleChoiceKeydown(event) {
+      const name = event.currentTarget.dataset.choice;
+      const { options, button } = this.elements.choices[name];
+      if (event.key === "Escape" && !options.hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closeChoiceOptions();
+        button.focus();
+      }
+      else if (["Enter", " "].includes(event.key) && event.target.localName === "button") {
+        event.preventDefault();
+        event.stopPropagation();
+        event.target.click();
+      }
+      else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (options.hidden) this.toggleChoiceOptions(name);
+        const buttons = Array.from(options.children);
+        const current = buttons.indexOf(this.doc.activeElement);
+        const index = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1
+          : (current + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length;
+        buttons[index]?.focus();
+      }
     }
 
     selectModel(model) {
       if (this.creatingTask) return;
       this.applyModelSelection(model, this.selectedEffort, { persist: true });
       if (this.running) this.nextTurnSelectionPending = true;
-      this.closeModelOptions();
+      this.closeChoiceOptions();
       this.elements.modelChoice.focus();
     }
 
@@ -1589,7 +1649,7 @@
       this.manager.setPreference("reasoningEffort", effort);
       this.renderModelControls();
       this.updateComposerState();
-      this.closeModelOptions();
+      this.closeChoiceOptions();
       this.elements.effortChoice.focus();
     }
 
@@ -1624,19 +1684,10 @@
       }
 
       for (const model of this.models) {
-        const option = create(this.doc, "button", "zcs-model-option");
-        option.type = "button";
-        option.setAttribute("role", "option");
-        option.setAttribute("aria-selected", String(model.model === this.selectedModel));
-        option.append(
-          create(this.doc, "span", "zcs-model-option-label", model.displayName || model.model),
-          create(this.doc, "span", "zcs-model-option-check", model.model === this.selectedModel ? "✓" : ""),
-        );
-        option.addEventListener("click", (event) => {
-          event.stopPropagation();
-          this.selectModel(model.model);
-        });
-        modelOptions.append(option);
+        modelOptions.append(createChoiceOption(this.doc, {
+          value: model.model, label: model.displayName || model.model, selected: model.model === this.selectedModel,
+          onSelect: (value) => this.selectModel(value),
+        }));
       }
       const selected = this.models.find((model) => model.model === this.selectedModel);
       for (const effort of selected?.supportedReasoningEfforts || []) {
@@ -1644,22 +1695,10 @@
         const fallback = effort === "xhigh"
           ? "Extra high"
           : effort.charAt(0).toUpperCase() + effort.slice(1);
-        const option = create(this.doc, "button", "zcs-model-option");
-        option.type = "button";
-        option.setAttribute("role", "option");
-        option.setAttribute("aria-selected", String(effort === this.selectedEffort));
-        const label = l10nID
-          ? createL10n(this.doc, "span", "zcs-model-option-label", l10nID, fallback)
-          : create(this.doc, "span", "zcs-model-option-label", fallback);
-        option.append(
-          label,
-          create(this.doc, "span", "zcs-model-option-check", effort === this.selectedEffort ? "✓" : ""),
-        );
-        option.addEventListener("click", (event) => {
-          event.stopPropagation();
-          this.selectEffort(effort);
-        });
-        effortOptions.append(option);
+        effortOptions.append(createChoiceOption(this.doc, {
+          value: effort, label: fallback, l10nID, selected: effort === this.selectedEffort,
+          onSelect: (value) => this.selectEffort(value),
+        }));
       }
       const modelName = selected?.displayName || this.selectedModel || "Codex";
       setPlainText(modelChoiceText, modelName);
@@ -3433,8 +3472,10 @@
       e.contextAddButton.removeEventListener("click", this.handlers.toggleContextMenu);
       e.contextModeButton.removeEventListener("click", this.handlers.toggleContextMenu);
       e.modelTrigger.removeEventListener("click", this.handlers.toggleModelMenu);
-      e.modelChoice.removeEventListener("click", this.handlers.toggleModelOptions);
-      e.effortChoice.removeEventListener("click", this.handlers.toggleEffortOptions);
+      for (const choice of Object.values(e.choices)) {
+        choice.button.removeEventListener("click", this.handlers.choiceToggle);
+        choice.field.removeEventListener("keydown", this.handlers.choiceKeydown);
+      }
       e.cancelEditButton.removeEventListener("click", this.handlers.cancelEdit);
       e.newThreadButton.removeEventListener("click", this.handlers.newTask);
       e.paperOnlyCheckbox.removeEventListener("change", this.handlers.togglePaperOnly);
@@ -3452,7 +3493,7 @@
       e.sendButton.removeEventListener("click", this.handlers.sendOrStop);
       e.reconnectButton.removeEventListener("click", this.handlers.reconnect);
       e.showWorkProcessToggle.removeEventListener("change", this.handlers.toggleWorkProcess);
-      for (const control of Object.values(e.permissionInputs)) control.removeEventListener("change", this.handlers.permissionChange);
+      e.permissionInputs.networkAccess.removeEventListener("change", this.handlers.permissionChange);
       e.resizeHandle.removeEventListener("pointerdown", this.handlers.resizeStart);
       e.resizeHandle.removeEventListener("pointermove", this.handlers.resizeMove);
       e.resizeHandle.removeEventListener("pointerup", this.handlers.resizeEnd);

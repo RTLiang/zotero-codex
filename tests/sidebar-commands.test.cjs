@@ -10,7 +10,7 @@ const { SidebarView, SidebarManager } = global.ZoteroCodexModules.Sidebar;
 
 function element() {
   return {
-    value: "", hidden: false, children: [], attributes: {},
+    value: "", hidden: false, children: [], attributes: {}, style: {},
     setAttribute(key, value) { this.attributes[key] = value; },
     removeAttribute(key) { delete this.attributes[key]; },
     addEventListener() {}, append(...nodes) { this.children.push(...nodes); },
@@ -25,7 +25,12 @@ function viewFor() {
     context: { pdfPath: "/papers/paper.pdf" }, skills: [], skillsCwd: "/papers",
     skillsLoaded: true, skillsLoading: false, skillsLoadSerial: 0, commandIndex: 0,
     doc: { createElement: () => element(), createElementNS: () => element(), l10n: { setAttributes() {} } },
-    elements: { input: element(), commandMenu: { ...element(), id: "commands", hidden: true } },
+    elements: {
+      input: element(), commandMenu: { ...element(), id: "commands", hidden: true },
+      topbar: { getBoundingClientRect: () => ({ bottom: 48 }) },
+      composer: { getBoundingClientRect: () => ({ top: 600 }) },
+      permissionChoices: {}, choices: {},
+    },
     resizeComposer() {}, updateComposerState() {}, showError(error) { throw error; },
   });
   return view;
@@ -50,6 +55,16 @@ test("slash menu filters skills and supports keyboard selection and dismissal", 
   assert.equal(key("Escape"), true);
   assert.equal(view.elements.input.attributes["aria-expanded"], "false");
   assert.equal(prevented, 3);
+});
+
+test("slash menu stays below the header and fits the space above the composer", () => {
+  const view = viewFor();
+  view.elements.input.value = "/";
+  view.updateCommandMenu();
+  assert.equal(view.elements.commandMenu.style.maxHeight, "280px");
+  view.elements.composer.getBoundingClientRect = () => ({ top: 250 });
+  view.updateCommandMenu();
+  assert.equal(view.elements.commandMenu.style.maxHeight, "186px");
 });
 
 test("local approval command opens the permission panel during a reply without sending a turn", async () => {
