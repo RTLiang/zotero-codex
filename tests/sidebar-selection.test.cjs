@@ -376,3 +376,91 @@ test("removes every persistent sidebar event handler during view destruction", (
   assert.ok(mounted.length > 0);
   assert.deepEqual(mounted.filter((handler) => !removed.has(handler)), []);
 });
+
+test("custom working directories keep each paper's chat filter separate", () => {
+  const previous = global.PathUtils;
+  global.PathUtils = path.posix;
+  try {
+    const manager = createManager();
+    const first = { libraryID: 1, itemKey: "FIRST", pdfPath: "/pdf/first.pdf" };
+    const second = { libraryID: 1, itemKey: "SECOND", pdfPath: "/pdf/second.pdf" };
+    assert.equal(manager.paperDirectory(first), "/pdf");
+    manager.setPreference("workingDirectory", "/zotero/workspace");
+    assert.notEqual(manager.paperDirectory(first), manager.paperDirectory(second));
+    assert.ok(manager.paperDirectory(first).startsWith("/zotero/workspace/papers/"));
+  } finally { global.PathUtils = previous; }
+});
+
+test("reader popup observer options are cloned into the reader compartment", () => {
+  const previous = global.Cu;
+  const manager = createManager();
+  const options = { childList: true, subtree: true };
+  const documentElement = {};
+  let observed;
+  const win = {
+    MutationObserver: class {
+      observe(target, init) { observed = [target, init]; }
+      disconnect() {}
+    },
+    addEventListener() {}, removeEventListener() {},
+  };
+  global.Cu = { cloneInto(value, target) {
+    assert.equal(target, win);
+    assert.deepEqual(value, options);
+    return options;
+  } };
+  try {
+    manager.watchReaderSelectionPopup({ defaultView: win, documentElement }, { isConnected: true }, 7, "selection");
+    assert.equal(observed[0], documentElement);
+    assert.equal(observed[1], options);
+    assert.equal(manager.selectionPopupCleanups.size, 1);
+    for (const cleanup of manager.selectionPopupCleanups) cleanup();
+  } finally { global.Cu = previous; }
+});
+
+test("popup tracking failures are reported without aborting subsequent plugin listeners", () => {
+  const manager = createManager();
+  const selection = manager.setLiveSelection(7, { text: "selected text" });
+  const failure = new Error("reader compartment rejected observer options");
+  const logged = [];
+  let disconnected = false;
+  manager.log = (message, error) => logged.push(error);
+  const doc = { documentElement: {}, defaultView: {
+    MutationObserver: class {
+      observe() { throw failure; }
+      disconnect() { disconnected = true; }
+    },
+    removeEventListener() {},
+  } };
+  let translationListenerRan = false;
+  const listeners = [
+    () => manager.watchReaderSelectionPopup(doc, { isConnected: true }, 7, selection.id),
+    () => { translationListenerRan = true; },
+  ];
+  for (const listener of listeners) listener();
+  assert.equal(translationListenerRan, true);
+  assert.deepEqual(logged, [failure]);
+  assert.equal(disconnected, true);
+  assert.equal(manager.selectionPopupCleanups.size, 0);
+  assert.equal(manager.getLiveSelection(7), null);
+});
+
+test("adding a PDF selection sends a single-click event that opens the Codex sidenav", async () => {
+  const previous = global.Zotero;
+  const manager = createManager();
+  manager.paneID = "codex-pane";
+  let scrolled = false;
+  const button = {
+    dataset: { pane: manager.paneID },
+    dispatchEvent(event) { if (event.button === 0 && event.detail === 1) scrolled = true; },
+  };
+  const details = { tabID: "reader", sidenav: { querySelectorAll: () => [button] } };
+  global.Zotero = { getMainWindows: () => [{
+    document: { querySelectorAll: () => [details] },
+    MouseEvent: class { constructor(type, options) { Object.assign(this, options); this.type = type; } },
+  }] };
+  try {
+    assert.equal(await manager.revealReaderPane({ tabID: "reader" }), true);
+    assert.equal(scrolled, true);
+  } finally { global.Zotero = previous; }
+});

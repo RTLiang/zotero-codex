@@ -1,0 +1,46 @@
+<vbox xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+      xmlns:html="http://www.w3.org/1999/xhtml"
+      id="codex-runtime-preferences"
+      onload="Zotero.CodexSidebar.settings.mount(this)">
+  <html:style>
+    #codex-runtime-preferences { max-width: 600px; user-select: text; color: CanvasText; }
+    #codex-runtime-fields { font: 13px/1.45 system-ui, sans-serif; padding: 0 0 24px; }
+    #codex-runtime-fields * { box-sizing: border-box; }
+    #codex-runtime-fields [hidden] { display: none !important; }
+    #codex-runtime-fields .pref-intro { margin: 0 0 22px; color: var(--fill-secondary, GrayText); }
+    #codex-runtime-fields .pref-card { padding: 0 0 16px; margin: 0; border: 0; background: transparent; }
+    #codex-runtime-fields h3 { font-size: 13px; font-weight: 600; margin: 0 0 14px; }
+    #codex-runtime-fields details.pref-card { padding: 0; border-top: 1px solid color-mix(in srgb, CanvasText 13%, transparent); }
+    #codex-runtime-fields summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 46px; padding: 12px 2px; list-style: none; font-weight: 500; cursor: pointer; }
+    #codex-runtime-fields summary::-webkit-details-marker { display: none; }
+    #codex-runtime-fields summary::after { content: ""; width: 7px; height: 7px; flex: 0 0 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin: -3px 4px 0; opacity: .55; }
+    #codex-runtime-fields details[open] > summary::after { transform: rotate(225deg); margin-top: 4px; }
+    #codex-runtime-fields details[open] { padding-bottom: 18px; }
+    #codex-runtime-fields p { margin: 4px 0 12px; color: var(--fill-secondary, GrayText); font-size: 12px; }
+    #codex-runtime-fields .pref-field { display: grid; grid-template-columns: 124px minmax(0, 1fr); align-items: center; gap: 6px 14px; margin-top: 12px; }
+    #codex-runtime-fields label { margin: 0; font-weight: 400; }
+    #codex-runtime-fields .pref-control { position: relative; min-width: 0; }
+    #codex-runtime-fields input:not([type=checkbox]), #codex-runtime-fields select { appearance: none; display: block; width: 100%; height: 32px; min-height: 32px; max-height: none; margin: 0; padding: 5px 9px; color: FieldText; background: Field; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 6px; font: inherit; line-height: 20px; box-shadow: none; }
+    #codex-runtime-fields select { padding-right: 30px; cursor: pointer; }
+    #codex-runtime-fields .pref-select::after { content: ""; position: absolute; right: 12px; top: 11px; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); pointer-events: none; opacity: .6; }
+    #codex-runtime-fields input:focus-visible, #codex-runtime-fields select:focus-visible, #codex-runtime-fields button:focus-visible, #codex-runtime-fields summary:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+    #codex-runtime-fields small { display: block; margin: 0; color: var(--fill-secondary, GrayText); font-size: 11px; line-height: 1.45; }
+    #codex-runtime-fields .pref-field small { grid-column: 2; }
+    #codex-runtime-fields .pref-hint { margin: 8px 0 0 138px; font-size: 11px; }
+    #codex-runtime-fields button { appearance: none; display: inline-flex; align-items: center; justify-content: center; height: 32px; min-height: 32px; max-height: none; margin: 14px 0 0; padding: 0 12px; border: 1px solid color-mix(in srgb, CanvasText 20%, transparent); border-radius: 6px; background: Field; color: FieldText; font: inherit; line-height: 1; box-shadow: none; cursor: pointer; }
+    #codex-runtime-fields button:hover { background: color-mix(in srgb, Field 95%, CanvasText 5%); }
+    #codex-runtime-fields .pref-checkbox { display: flex; gap: 7px; align-items: center; margin: 16px 0 5px; }
+    #codex-runtime-fields .pref-checkbox input { margin: 0; }
+    #codex-runtime-fields .pref-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; padding-top: 18px; border-top: 1px solid color-mix(in srgb, CanvasText 13%, transparent); }
+    #codex-runtime-fields #codex-settings-save { margin: 0; font-weight: 500; }
+    #codex-runtime-fields .pref-footer small { flex: 1; min-width: 180px; }
+    #codex-runtime-fields button:disabled { opacity: .45; cursor: default; }
+    #codex-runtime-fields output { display: block; margin-top: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    @media (max-width: 520px) {
+      #codex-runtime-fields .pref-field { grid-template-columns: minmax(0, 1fr); }
+      #codex-runtime-fields .pref-field small { grid-column: 1; }
+      #codex-runtime-fields .pref-hint { margin-left: 0; }
+    }
+  </html:style>
+  <html:div id="codex-runtime-fields" />
+</vbox>

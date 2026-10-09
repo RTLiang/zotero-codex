@@ -14,7 +14,9 @@ async function startup({ id, version, rootURI }) {
 
   for (const script of [
     "content/protocol.js",
+    "content/runtime-settings.js",
     "content/codex-client.js",
+    "content/preferences.js",
     "content/vendor/katex/katex.min.js",
     "content/markdown.js",
     "content/sidebar.js",

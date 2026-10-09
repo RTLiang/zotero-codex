@@ -6,7 +6,7 @@ global.ZoteroCodexModules = {
   CodexClient: { getHomeDirectory: () => "/home", clientError: (_id, _args, fallback) => new Error(fallback) },
 };
 require("../content/sidebar.js");
-const { SidebarView } = global.ZoteroCodexModules.Sidebar;
+const { SidebarView, SidebarManager } = global.ZoteroCodexModules.Sidebar;
 
 function element() {
   return {
@@ -21,6 +21,7 @@ function element() {
 function viewFor() {
   const view = Object.create(SidebarView.prototype);
   Object.assign(view, {
+    manager: new SidebarManager({ getPreference: () => "" }),
     context: { pdfPath: "/papers/paper.pdf" }, skills: [], skillsCwd: "/papers",
     skillsLoaded: true, skillsLoading: false, skillsLoadSerial: 0, commandIndex: 0,
     doc: { createElement: () => element(), createElementNS: () => element(), l10n: { setAttributes() {} } },

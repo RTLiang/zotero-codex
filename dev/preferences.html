@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Codex settings preview</title>
+<style>body{margin:32px auto;padding:0 20px;max-width:680px;background:Canvas;color:CanvasText;font:13px system-ui}h1{font-size:22px;margin-bottom:24px}button{max-height:25px;margin:0 -2px -1px}</style>
+<h1>Codex</h1>
+<div id="codex-runtime-preferences"><div id="codex-runtime-fields"></div></div>
+<script src="/content/preferences.js"></script>
+<script>
+(async () => {
+  const params = new URLSearchParams(location.search);
+  document.documentElement.style.colorScheme = params.get('theme') || 'light';
+  window.Services = {locale: {appLocaleAsBCP47: params.get('lang') || 'en-US'}};
+  const source = await (await fetch('/content/preferences.xhtml')).text();
+  const xml = new DOMParser().parseFromString(source, 'application/xml');
+  const style = document.createElement('style');
+  style.textContent = xml.getElementsByTagNameNS('http://www.w3.org/1999/xhtml', 'style')[0].textContent;
+  document.head.append(style);
+  ZoteroCodexModules.Preferences.mount(document.querySelector('#codex-runtime-preferences'), {
+    read: () => ({proxyMode: 'inherit', proxyURL: 'http://127.0.0.1:7890', proxyBypass: 'localhost,127.0.0.1,::1', codexPath: '', codexHome: '', workingDirectory: ''}),
+    busy: () => false, subscribe: () => () => {},
+    defaults: () => ({codexHome: '/example/Zotero/codex/runtime', workingDirectory: '/example/Zotero/codex/workspace'}),
+    apply: async () => ({authenticated: true})
+  });
+})();
+</script>

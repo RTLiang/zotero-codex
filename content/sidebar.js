@@ -57,6 +57,7 @@
       refresh: "M15 7a6 6 0 1 0-1 6M15 2v5h-5",
       chevron: "m6 7 3 3 3-3",
       back: "M15 9H3m5-5L3 9l5 5",
+      close: "M5 5l8 8M13 5l-8 8",
       skill: "m9 1 2.2 5.8L17 9l-5.8 2.2L9 17l-2.2-5.8L1 9l5.8-2.2Z",
       shield: "M9 1.5 15 4v5c0 3.2-3 5.8-6 7.5C6 14.8 3 12.2 3 9V4Zm-3 7 2 2 4-4",
       chat: "M3 2.5h12a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H7L2 17V3.5a1 1 0 0 1 1-1Z",
@@ -498,12 +499,13 @@
       const connectionIcon = create(doc, "span", "zcs-connection-icon", "C");
       const connectionCopy = create(doc, "div", "zcs-connection-copy");
       const connectionTitle = create(doc, "div", "zcs-connection-title", "Codex CLI");
+      const isolatedStorage = Boolean(this.manager.getPreference("codexHome"));
       const connectionSubtitle = createL10n(
         doc,
         "div",
         "zcs-connection-subtitle",
-        "zotero-codex-cli-subtitle",
-        "Uses the same sign-in and conversations as other Codex apps on this computer.",
+        isolatedStorage ? "zotero-codex-cli-subtitle-isolated" : "zotero-codex-cli-subtitle",
+        isolatedStorage ? "Uses a dedicated Codex storage directory." : "Uses the same sign-in and conversations as other Codex apps on this computer.",
       );
       connectionCopy.append(connectionTitle, connectionSubtitle);
       connectionTop.append(connectionIcon, connectionCopy, connectionState);
@@ -540,16 +542,21 @@
       );
       reconnectButton.type = "button";
       settingsActions.append(autoPathButton, reconnectButton);
-      connectionCard.append(connectionTop, pathLabel, pathStatus, settingsActions);
+      const runtimeSettingsButton = createL10n(doc, "button", "zcs-settings-navigation",
+        "zotero-codex-runtime-settings", "Proxy and storage");
+      runtimeSettingsButton.type = "button";
+      connectionCard.append(connectionTop, pathLabel, pathStatus, settingsActions, runtimeSettingsButton);
       const sharingNote = create(doc, "div", "zcs-settings-note");
       sharingNote.append(
-        createL10n(doc, "div", "zcs-settings-note-title", "zotero-codex-task-sharing", "Shared conversations"),
+        createL10n(doc, "div", "zcs-settings-note-title",
+          isolatedStorage ? "zotero-codex-task-isolation" : "zotero-codex-task-sharing",
+          isolatedStorage ? "Dedicated conversations" : "Shared conversations"),
         createL10n(
           doc,
           "div",
           "zcs-settings-note-copy",
-          "zotero-codex-task-sharing-copy",
-          "Conversations you open or start here are also available in Codex Desktop, the command line, and the browser sidebar on this computer.",
+          isolatedStorage ? "zotero-codex-task-isolation-copy" : "zotero-codex-task-sharing-copy",
+          isolatedStorage ? "These conversations live in the selected Codex storage directory. Other Codex apps must use that directory to see them." : "Conversations you open or start here are also available in Codex Desktop, the command line, and the browser sidebar on this computer.",
         ),
       );
       const chatSectionTitle = createL10n(
@@ -880,6 +887,7 @@
         threadList,
         settingsView,
         settingsBackButton,
+        runtimeSettingsButton,
         refreshButton,
         status,
         statusText,
@@ -930,6 +938,7 @@
         permissionSettings: () => {
           this.togglePopover("permissions");
         },
+        openRuntimeSettings: () => global.Zotero.getMainWindow().ZoteroPane.openPreferences("zotero-codex-settings"),
         toggleThreads: () => this.togglePopover("threads"),
         threadHeaderContextMenu: (event) => {
           if (!this.threadID) return;
@@ -1041,7 +1050,7 @@
             void this.send();
           }
         },
-        documentClick: (event) => this.handleDocumentClick(event),
+        documentPointerdown: (event) => this.handleDocumentPointerdown(event),
         permissionChange: () => this.savePermissions(),
         documentKeydown: (event) => {
           if (event.key !== "Escape") return;
@@ -1063,6 +1072,7 @@
       newThreadButton.addEventListener("click", this.handlers.newTask);
       paperOnlyCheckbox.addEventListener("change", this.handlers.togglePaperOnly);
       refreshButton.addEventListener("click", this.handlers.refresh);
+      runtimeSettingsButton.addEventListener("click", this.handlers.openRuntimeSettings);
       settingsBackButton.addEventListener("click", this.handlers.closeSettings);
       autoPathButton.addEventListener("click", this.handlers.useAutoPath);
       threadSearch.addEventListener("input", this.handlers.searchThreads);
@@ -1088,7 +1098,7 @@
       composer.addEventListener("dragover", this.handlers.dragover);
       composer.addEventListener("dragleave", this.handlers.dragleave);
       composer.addEventListener("drop", this.handlers.drop);
-      doc.addEventListener("click", this.handlers.documentClick);
+      doc.addEventListener("pointerdown", this.handlers.documentPointerdown);
       doc.addEventListener("keydown", this.handlers.documentKeydown);
       this.setStatus("idle", "");
       this.applyWorkProcessPreference();
@@ -1251,7 +1261,7 @@
       }
     }
 
-    handleDocumentClick(event) {
+    handleDocumentPointerdown(event) {
       const target = event.target;
       const eventPath = typeof event.composedPath === "function" ? event.composedPath() : [];
       const containers = [
@@ -1357,7 +1367,7 @@
     }
 
     skillDirectory() {
-      return this.thread?.cwd || pathDirectory(this.context?.pdfPath) || ClientTools.getHomeDirectory();
+      return this.thread?.cwd || this.manager.paperDirectory(this.context) || ClientTools.getHomeDirectory();
     }
 
     async refreshSkills({ forceReload = false } = {}) {
@@ -1713,7 +1723,7 @@
     }
 
     isCurrentContext(epoch, context = this.context) {
-      return !this.destroyed && epoch === this.contextEpoch && context === this.context;
+      return !this.destroyed && !this.manager.reconfiguring && epoch === this.contextEpoch && context === this.context;
     }
 
     isThreadVisible(threadID) {
@@ -1733,19 +1743,21 @@
       finally {
         if (epoch === this.contextEpoch && !this.destroyed) {
           this.contextTransitioning = false;
+          this.manager.restoreRuntimeDraft?.(this);
           this.updateComposerState();
         }
       }
     }
 
     async initialize() {
-      if (this.initialized || this.initializing) return;
+      if (this.destroyed || this.manager.reconfiguring || this.initialized || this.initializing) return;
       this.initializing = true;
-      const serial = ++this.loadSerial;
+      this.contextTransitioning = true;
+      let epoch = this.contextEpoch;
       try {
         this.setStatus("busy", "");
         await this.client.connect();
-        if (serial !== this.loadSerial || this.destroyed) return;
+        if (this.destroyed) return;
         if (this.client.binaryPath) setPlainText(this.elements.pathStatus, this.client.binaryPath);
         else setLocalizedText(
           this.elements.pathStatus,
@@ -1753,8 +1765,9 @@
           "Connected using auto-detect.",
         );
         await this.refreshModels();
+        if (this.destroyed) return;
         this.initialized = true;
-        const epoch = this.contextEpoch;
+        epoch = this.contextEpoch;
         const context = await this.refreshContext();
         if (context && this.isCurrentContext(epoch, context)) await this.refreshThreads();
         else if (!this.destroyed) await this.loadCurrentItem(this.contextEpoch);
@@ -1764,17 +1777,19 @@
       }
       finally {
         this.initializing = false;
-        if (!this.destroyed) {
+        if (!this.destroyed && (!this.initialized || epoch === this.contextEpoch)) {
           this.contextTransitioning = false;
+          this.manager.restoreRuntimeDraft?.(this);
           this.updateComposerState();
         }
       }
     }
 
     async refreshContext() {
+      const epoch = this.contextEpoch;
       const item = this.item;
       const context = await resolveItemContext(item, this.tabType);
-      if (this.destroyed || item !== this.item) return null;
+      if (this.destroyed || epoch !== this.contextEpoch || item !== this.item) return null;
       this.context = context;
       if (context.title) setPlainText(this.elements.contextMeta, context.title);
       else setLocalizedText(
@@ -1786,7 +1801,7 @@
         formatValue(this.doc, "zotero-codex-pdf-available", null, "PDF available"),
         formatValue(this.doc, "zotero-codex-no-local-pdf", null, "No local PDF"),
       ]);
-      if (this.destroyed || item !== this.item) return null;
+      if (this.destroyed || epoch !== this.contextEpoch || item !== this.item) return null;
       const meta = [
         Protocol.firstLine(context.creators, 58),
         context.date,
@@ -2110,7 +2125,7 @@
       this.setStatus("busy", "");
       try {
         const paperKey = Protocol.paperContextKey(this.context);
-        const paperCwd = pathDirectory(this.context?.pdfPath);
+        const paperCwd = this.manager.paperDirectory(this.context);
         const onlyThisPaper = Boolean(paperKey && this.manager.getPreference("paperOnlyChats"));
         const [recent, inPaperDirectory] = await Promise.all([
           this.client.listThreads(500),
@@ -2194,7 +2209,7 @@
       const onlyThisPaper = Boolean(paperKey && this.manager.getPreference("paperOnlyChats"));
       this.elements.paperOnlyFilter.hidden = !paperKey;
       this.elements.paperOnlyCheckbox.checked = onlyThisPaper;
-      const paperCwd = pathDirectory(this.context?.pdfPath);
+      const paperCwd = this.manager.paperDirectory(this.context);
       const allThreads = this.thread?.id && !this.threads.some((thread) => thread.id === this.thread.id)
         ? [this.thread, ...this.threads]
         : this.threads;
@@ -2344,7 +2359,7 @@
 
     async selectThread(threadID, { bind = true, quiet = false, preserveScroll = false } = {}) {
       if (!quiet) this.showPage?.("chat", { focus: false });
-      if (!threadID || this.destroyed || this.creatingTask) return false;
+      if (!threadID || this.destroyed || this.manager.reconfiguring || this.creatingTask) return false;
       this.hideCommandMenu?.();
       const contextEpoch = this.contextEpoch;
       const context = this.context;
@@ -2581,10 +2596,11 @@
       preview.tabIndex = 0;
       preview.setAttribute("role", "button");
       preview.setAttribute("aria-haspopup", "dialog");
-      preview.title = "Double-click to enlarge";
+      preview.title = "Click to enlarge";
       setL10n(preview, "zotero-codex-image-enlarge");
-      preview.addEventListener("dblclick", (event) => {
+      preview.addEventListener("click", (event) => {
         event.preventDefault();
+        event.stopPropagation();
         this.openImagePreview(preview, name);
       });
       preview.addEventListener("keydown", (event) => {
@@ -2606,7 +2622,8 @@
       setL10n(dialog, "zotero-codex-image-preview-dialog");
       const toolbar = create(doc, "div", "zcs-image-dialog-toolbar");
       const caption = create(doc, "span", "zcs-image-dialog-caption", Protocol.firstLine(name, 120));
-      const close = create(doc, "button", "zcs-image-dialog-close", "×");
+      const close = create(doc, "button", "zcs-image-dialog-close");
+      close.append(createUIIcon(doc, "close"));
       close.type = "button";
       close.title = "Close image preview";
       close.setAttribute("aria-label", close.title);
@@ -2882,6 +2899,7 @@
     }
 
     async createThreadForMessage(text, { epoch = this.contextEpoch, context = this.context } = {}) {
+      if (this.destroyed || this.manager.reconfiguring) return null;
       if (this.threadID) return this.thread;
       this.creatingTask = true;
       this.elements.newThreadButton.disabled = true;
@@ -2896,7 +2914,7 @@
           58,
         ) || "Zotero research";
         const thread = await this.client.startThread({
-          cwd: pathDirectory(context.pdfPath) || ClientTools.getHomeDirectory(),
+          cwd: this.manager.paperDirectory(context) || ClientTools.getHomeDirectory(),
           title,
           model: this.selectedModel,
         });
@@ -2921,6 +2939,7 @@
     }
 
     async send() {
+      if (this.destroyed || this.manager.reconfiguring) return;
       let text = this.elements.input.value.trim();
       if (text.startsWith("/") && !this.creatingTask && !this.contextTransitioning) {
         const epoch = this.contextEpoch;
@@ -3023,7 +3042,7 @@
           context: additionalContext,
           model: this.selectedModel,
           effort: this.selectedEffort,
-          cwd: this.thread?.cwd || pathDirectory(paperContext.pdfPath) || ClientTools.getHomeDirectory(),
+          cwd: this.thread?.cwd || this.manager.paperDirectory(paperContext) || ClientTools.getHomeDirectory(),
           useOfficialZoteroSkill: true,
         });
         if (this.manager.runningTurns.get(threadID) === runningTurn) runningTurn.turnID = turn.id;
@@ -3061,7 +3080,7 @@
       edit,
       { epoch = this.contextEpoch, context = this.context } = {},
     ) {
-      if (!edit?.threadID || !edit?.turnID) return;
+      if (this.destroyed || this.manager.reconfiguring || !edit?.threadID || !edit?.turnID) return;
       this.creatingTask = true;
       this.updateComposerState();
       try {
@@ -3127,7 +3146,7 @@
     }
 
     async reconnect() {
-      if (this.manager.runningTurns.size) return;
+      if (this.destroyed || this.manager.reconfiguring || this.manager.runningTurns.size) return;
       const path = this.elements.pathInput.value.trim();
       this.manager.setPreference("codexPath", path);
       this.setStatus("busy", "");
@@ -3420,6 +3439,7 @@
       e.newThreadButton.removeEventListener("click", this.handlers.newTask);
       e.paperOnlyCheckbox.removeEventListener("change", this.handlers.togglePaperOnly);
       e.refreshButton.removeEventListener("click", this.handlers.refresh);
+      e.runtimeSettingsButton.removeEventListener("click", this.handlers.openRuntimeSettings);
       e.settingsBackButton.removeEventListener("click", this.handlers.closeSettings);
       e.autoPathButton.removeEventListener("click", this.handlers.useAutoPath);
       e.threadSearch.removeEventListener("input", this.handlers.searchThreads);
@@ -3445,7 +3465,7 @@
       e.composer.removeEventListener("dragover", this.handlers.dragover);
       e.composer.removeEventListener("dragleave", this.handlers.dragleave);
       e.composer.removeEventListener("drop", this.handlers.drop);
-      this.doc.removeEventListener("click", this.handlers.documentClick);
+      this.doc.removeEventListener("pointerdown", this.handlers.documentPointerdown);
       this.doc.removeEventListener("keydown", this.handlers.documentKeydown);
       this.body.replaceChildren();
     }
@@ -3463,6 +3483,9 @@
       this.pluginID = "";
       this.paneID = "";
       this.views = new Map();
+      this.reconfiguring = false;
+      this.runtimeViews = new Map();
+      this.runtimeDrafts = new WeakMap();
       this.runningTurns = new Map();
       this.completedTurnIDs = new Set();
       this.shuttingDown = false;
@@ -3609,6 +3632,67 @@
       }
     }
 
+    runtimeDraftKey(view) {
+      return JSON.stringify([view.item?.libraryID || 0, view.item?.id || view.item?.key || ""]);
+    }
+
+    saveRuntimeDraft(view) {
+      const key = this.runtimeDraftKey(view);
+      let drafts = this.runtimeDrafts.get(view.body);
+      const text = view.elements.input.value;
+      const images = view.images.map(image => ({ ...image }));
+      if (!text && !images.length) {
+        drafts?.delete(key);
+        return;
+      }
+      if (!drafts) this.runtimeDrafts.set(view.body, drafts = new Map());
+      drafts.set(key, { text, images });
+    }
+
+    restoreRuntimeDraft(view) {
+      if (view.destroyed || view.contextTransitioning || this.views.get(view.body) !== view) return;
+      const drafts = this.runtimeDrafts.get(view.body);
+      const key = this.runtimeDraftKey(view);
+      const draft = drafts?.get(key);
+      if (!draft || view.elements.input.value || view.images.length) return;
+      drafts.delete(key);
+      view.elements.input.value = draft.text;
+      view.images = draft.images;
+      view.resizeComposer();
+      view.renderContextAttachment();
+      view.updateComposerState();
+    }
+
+    detachRuntimeViews() {
+      this.reconfiguring = true;
+      for (const [body, view] of this.views) {
+        this.runtimeViews.set(body, { doc: view.doc, body, item: view.item, tabType: view.tabType });
+        this.saveRuntimeDraft(view);
+        view.destroy();
+      }
+      this.views.clear();
+    }
+
+    restoreRuntimeViews() {
+      this.reconfiguring = false;
+      const pending = [...this.runtimeViews.values()];
+      this.runtimeViews.clear();
+      for (const props of pending) {
+        if (!props.body.isConnected) continue;
+        const view = new SidebarView(this, props);
+        this.views.set(props.body, view);
+        void view.initialize().finally(() => this.restoreRuntimeDraft(view))
+          .catch(error => view.showError(error));
+      }
+    }
+
+    paperDirectory(context) {
+      const base = this.getPreference("workingDirectory");
+      if (!base) return pathDirectory(context?.pdfPath);
+      const key = Protocol.paperContextKey(context);
+      return key ? global.PathUtils.join(base, "papers", encodeURIComponent(key)) : base;
+    }
+
     isWorkProcessVisible() {
       return this.getPreference("showWorkProcess") === true;
     }
@@ -3722,13 +3806,19 @@
           if (!item) setSectionSummary("");
           else void formatValue(
             body.ownerDocument,
-            "zotero-codex-section-summary",
+            this.getPreference("codexHome") ? "zotero-codex-section-summary-isolated" : "zotero-codex-section-summary",
             null,
-            "Shared local tasks",
+            this.getPreference("codexHome") ? "Dedicated Zotero conversations" : "Shared local tasks",
           ).then(setSectionSummary);
-          this.views.get(body)?.setItem(item, tabType);
+          if (this.reconfiguring) {
+            this.runtimeViews.set(body, { doc: body.ownerDocument, body, item, tabType });
+          } else this.views.get(body)?.setItem(item, tabType);
         },
         onRender: (props) => {
+          if (this.reconfiguring) {
+            this.runtimeViews.set(props.body, props);
+            return;
+          }
           let view = this.views.get(props.body);
           if (!view) {
             view = new SidebarView(this, props);
@@ -3848,9 +3938,23 @@
         cleanup();
         this.clearLiveSelection(attachmentID, liveSelectionID);
       });
-      observer.observe(doc.documentElement, { childList: true, subtree: true });
-      this.selectionPopupCleanups.add(cleanup);
-      win?.addEventListener?.("unload", cleanup, { once: true });
+      try {
+        // Reader event documents belong to the content compartment. Its DOM
+        // observer cannot read a privileged options dictionary through an Xray
+        // wrapper; clone it into the observer's window before crossing realms.
+        const options = { childList: true, subtree: true };
+        const utils = global.Cu || global.Components?.utils;
+        observer.observe(doc.documentElement, utils?.cloneInto ? utils.cloneInto(options, win) : options);
+        this.selectionPopupCleanups.add(cleanup);
+        win?.addEventListener?.("unload", cleanup, { once: true });
+      }
+      catch (error) {
+        cleanup();
+        this.clearLiveSelection(attachmentID, liveSelectionID);
+        // Zotero dispatches plugin handlers sequentially without a per-handler
+        // catch. Optional popup tracking must not prevent other plugins running.
+        this.log("Could not track the PDF selection popup", error);
+      }
     }
 
     setBoundedSelectionEntry(map, attachmentID, value) {
@@ -3873,7 +3977,8 @@
           (candidate) => candidate.dataset?.pane === this.paneID,
         );
         if (paneButton && typeof win.MouseEvent === "function") {
-          paneButton.dispatchEvent(new win.MouseEvent("click", { bubbles: true, button: 0 }));
+          // Zotero's sidenav only scrolls for a single click (detail === 1).
+          paneButton.dispatchEvent(new win.MouseEvent("click", { bubbles: true, button: 0, detail: 1 }));
           return true;
         }
         if (typeof details.scrollToPane === "function") {
@@ -3974,6 +4079,8 @@
       const view = providedView || this.views.get(body);
       view?.destroy();
       this.views.delete(body);
+      this.runtimeViews.delete(body);
+      this.runtimeDrafts.delete(body);
     }
 
     async shutdown() {

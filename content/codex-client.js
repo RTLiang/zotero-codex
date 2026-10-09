@@ -230,13 +230,16 @@
       this.binaryPath = await resolveCodexPath(configuredPath);
       const Subprocess = await this.loadSubprocessModule();
       const path = processPath(this.binaryPath);
+      const settings = modules.RuntimeSettings?.read(this.getPreference);
+      if (settings) await modules.RuntimeSettings.prepare(settings);
 
       try {
         this.process = await Subprocess.call({
           command: this.binaryPath,
-          arguments: ["app-server"],
+          arguments: ["app-server", ...(settings?.codexHome ? ["-c", `sqlite_home=${JSON.stringify(settings.codexHome)}`] : [])],
           stderr: "pipe",
-          environment: { PATH: path },
+          environment: { PATH: path, ...(settings ? modules.RuntimeSettings.environment(settings) : {}) },
+          ...(settings?.workingDirectory ? { workdir: settings.workingDirectory } : {}),
           environmentAppend: true,
         });
       }
@@ -499,8 +502,11 @@
 
     async startThread({ cwd, title, model } = {}) {
       await this.connect();
+      if (cwd && this.getPreference("workingDirectory")) {
+        await global.IOUtils.makeDirectory(cwd, { createAncestors: true, permissions: 0o700 });
+      }
       const result = await this.request("thread/start", {
-        cwd: cwd || getHomeDirectory(),
+        cwd: cwd || this.getPreference("workingDirectory") || getHomeDirectory(),
         ephemeral: false,
         ...this.threadPermissions(),
         serviceName: "zotero-codex-sidebar",
@@ -534,7 +540,7 @@
     async generateThreadTitle({ text, context, answer, model, effort } = {}) {
       await this.connect();
       const started = await this.request("thread/start", {
-        cwd: getHomeDirectory(),
+        cwd: this.getPreference("workingDirectory") || getHomeDirectory(),
         ephemeral: true,
         approvalPolicy: "never",
         sandbox: "read-only",
@@ -680,7 +686,7 @@
       const { approvalPolicy, approvalsReviewer, sandbox, networkAccess } = this.permissionSettings();
       await this.ensureThreadLoaded(threadID);
       const input = Protocol.buildTurnInput(text, images);
-      const workingDirectory = cwd || getHomeDirectory();
+      const workingDirectory = cwd || this.getPreference("workingDirectory") || getHomeDirectory();
       if (useOfficialZoteroSkill || /(?:^|\s)\$/u.test(String(text || ""))) {
         try {
           const skills = await this.listSkills({ cwd: workingDirectory });

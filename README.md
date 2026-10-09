@@ -15,7 +15,7 @@ If Codex is not found automatically, enter its absolute executable path in the s
 
 Read a paper in Zotero and discuss it with Codex in the same window. Add citation details, the abstract, or selected PDF text when useful, then continue the conversation in Codex Desktop, the command line, or this sidebar.
 
-Conversations use your existing Codex sign-in and remain available across Codex apps on this computer. ChatGPT conversations on chatgpt.com are separate and do not appear here.
+By default, conversations use your existing Codex sign-in and remain available across Codex apps on this computer. You can opt into dedicated storage in Zotero preferences. ChatGPT conversations on chatgpt.com are separate and do not appear here.
 
 ## Features
 
@@ -30,7 +30,7 @@ Conversations use your existing Codex sign-in and remain available across Codex 
 - The main view contains the chat, with model, reasoning effort, and permissions below the composer. Open Settings for connection and display options. Skills are invoked through the `/` menu.
 - Show activity details such as tool use, file changes, and reasoning summaries; off by default.
 - Add images from the “+” menu, paste screenshots, or drag them into the message. Preview or remove images before sending.
-- Double-click an attached or generated image to enlarge it. Press Esc, click the empty area, or use the close button to return to the chat.
+- Click an attached or generated image to enlarge it. Press Esc, click the empty area, or use the close button to return to the chat.
 - Choose “Generate image” or type `$imagegen` to request images; generated images appear directly in the conversation.
 - The sidebar, PDF selection button, notifications, and errors follow Zotero's Simplified Chinese or English language setting.
 - Choose from the models available to your Codex account and their supported reasoning efforts. While a response is running, you can choose settings for the next reply.
@@ -41,6 +41,25 @@ Conversations use your existing Codex sign-in and remain available across Codex 
 - Stop a running response and handle command, file, and permission approvals in the sidebar.
 - Type `/` to browse commands and enabled skills. `/skills` searches available skills; selecting one inserts `$skill-name`, and `/skill-name your request` invokes it directly. Use ↑/↓ to choose, Enter or Tab to select, and Escape to close the menu. `/model` opens model settings and `/new` starts a chat while existing replies continue.
 - `/approvals` opens the bottom permission panel for approval policy (`untrusted`, `on-request`, `never`), reviewer (you or automatic review), file access, and network access. Changes apply to the next reply, including in existing chats. Defaults remain `read-only` with `on-request` approvals. `never` denies actions that require approval; full access allows file changes and network access. The plugin itself does not directly modify Zotero items.
+
+## Proxy, paths and dedicated storage
+
+Open **Zotero Settings → Codex** (also linked from the sidebar's settings).
+
+- **Proxy mode:** inherit Zotero's environment (the default), connect directly, or specify an HTTP/HTTPS/SOCKS5 proxy. Desktop Zotero may not inherit terminal proxy variables. Manual mode overrides all uppercase/lowercase proxy variables; direct mode clears them and bypasses every host. Use the actual Codex executable: a custom wrapper can override these choices.
+- **Codex executable:** an absolute path, or leave blank for auto-detection.
+- **Codex storage directory:** leave blank to keep existing shared storage. **Use dedicated Zotero directories** fills `<Zotero data directory>/codex-sidebar/runtime`. Its `sessions/` folder and SQLite state are kept there; changing the working directory alone does not relocate sessions. Configuration and skills are also separate. Existing chats are not moved: switch back to their storage directory to continue them.
+- **Working directory:** leave blank to use the paper's PDF directory. When configured, new chats use separate `papers/<paper-key>` subdirectories. Existing chats retain their original working directory.
+
+Save after all replies, including background replies, and requests have finished. The sidebar reconnects and preserves unsent text/images with their original paper. If you switch papers or open another reader while it reconnects, the sidebar restores the latest selection. Paper-to-chat bindings are maintained separately for each storage directory.
+
+A new storage directory needs its own login. Optionally check **Import existing local Codex login once** when saving: this copies only the local `auth.json` without overwriting an existing login. It does not continuously synchronize credentials; reauthentication may be required later. Keyring-only logins cannot be imported this way. Alternatively, sign in using that directory:
+
+```sh
+CODEX_HOME="/absolute/path/to/codex-storage" codex login
+```
+
+In Windows PowerShell, set `$env:CODEX_HOME = "C:\absolute\path\to\codex-storage"` before running `codex login`. Other Codex apps only see these chats when configured to use the same storage directory. Keep the directory private and out of cloud sync because it contains login credentials and conversation data.
 
 ## Requirements and CLI detection
 
@@ -75,7 +94,7 @@ Pushes to `main` and pull requests run syntax checks, tests, XPI builds, and arc
 
 ## Privacy and permissions
 
-Current-paper context is included by default and appears as a removable attachment. You can turn it off through the “+” menu. Metadata, the local PDF path, and selected passages are sent as application context only when you send a message. The plugin does not read or copy `auth.json`; authentication and network requests are handled by your existing Codex CLI.
+Current-paper context is included by default and appears as a removable attachment. You can turn it off through the “+” menu. Metadata, the local PDF path, and selected passages are sent as application context only when you send a message. Authentication and network requests are handled by Codex CLI. Only the explicitly selected one-time login import copies `auth.json` locally into the chosen storage directory (private file permissions, no overwrite); the plugin does not parse or log its contents.
 
 This is a local integration. It does not embed the ChatGPT website. The `codex app-server` interface is experimental, so major CLI updates may require protocol adjustments.
 

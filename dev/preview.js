@@ -84,5 +84,9 @@
   await view.refreshModels();
   await view.refreshThreads();
   await view.selectThread("create");
+  if (options.has("image")) view.appendMessageImages(view.elements.transcript, [{
+    url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    name: "Image preview fixture",
+  }]);
   window.addEventListener("pagehide", () => view.destroy(), { once: true });
 })();

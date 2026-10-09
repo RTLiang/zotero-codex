@@ -11,3 +11,9 @@ pref("extensions.zotero.codexSidebar.approvalPolicy", "on-request");
 pref("extensions.zotero.codexSidebar.approvalsReviewer", "user");
 pref("extensions.zotero.codexSidebar.sandbox", "read-only");
 pref("extensions.zotero.codexSidebar.networkAccess", false);
+
+pref("extensions.zotero.codexSidebar.proxyMode", "inherit");
+pref("extensions.zotero.codexSidebar.proxyURL", "http://127.0.0.1:7890");
+pref("extensions.zotero.codexSidebar.proxyBypass", "localhost,127.0.0.1,::1");
+pref("extensions.zotero.codexSidebar.codexHome", "");
+pref("extensions.zotero.codexSidebar.workingDirectory", "");

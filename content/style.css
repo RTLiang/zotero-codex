@@ -782,6 +782,14 @@ width: fit-content;
 }
 
 .zcs-image-dialog-close {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  min-width: 32px;
+  min-height: 32px;
   flex-shrink: 0;
   width: 32px;
   height: 32px;
@@ -789,8 +797,13 @@ width: fit-content;
   border-radius: 8px;
   background: var(--zcs-card, Canvas);
   color: CanvasText;
-  font: 24px/1 system-ui, sans-serif;
+  line-height: 1;
   cursor: pointer;
+}
+
+.zcs-image-dialog-close .zcs-ui-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .zcs-image-dialog-stage {
@@ -1994,3 +2007,32 @@ display: flex;
     padding-inline: 12px;
   }
 }
+
+.zcs-settings-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: calc(100% + 26px);
+  margin: 14px -13px -13px;
+  padding: 13px;
+  border: 0;
+  border-top: 1px solid var(--zcs-border, color-mix(in srgb, CanvasText 12%, transparent));
+  border-radius: 0 0 12px 12px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.zcs-settings-navigation::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin: 0 4px 0 12px;
+  border-top: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  opacity: .5;
+}
+.zcs-settings-navigation:hover { background: var(--zcs-hover, color-mix(in srgb, CanvasText 5%, transparent)); }
+.zcs-settings-navigation:focus-visible { outline: 2px solid Highlight; outline-offset: -3px; }
