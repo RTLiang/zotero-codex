@@ -351,7 +351,7 @@ async function prove(client) {
     }
   }
   const sidenav = entry === "reader" ? "#zotero-context-pane-sidenav" : "#zotero-view-item-sidenav";
-  const pane = await client.evaluate(`const e=[...document.querySelectorAll(arguments[0]+' [data-pane]')].find(e=>e.dataset.pane.includes('codex-sidebar')); if(!e)return null; return arguments[0]+' [data-pane="'+e.dataset.pane+'"]';`,[sidenav]);
+  const pane = await client.evaluate(`const e=[...document.querySelectorAll(arguments[0]+' [data-pane]')].find(e=>e.dataset.pane.includes('codex-sidebar')); if(!e)return null; return arguments[0]+' [data-pane*="codex-sidebar"]';`,[sidenav]);
   assert.ok(pane, "Codex sidenav button is missing");
   await drive(client, "click", pane);
   for (let i = 0; i < 60; i++) {
