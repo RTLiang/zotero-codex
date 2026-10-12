@@ -1,11 +1,15 @@
 // Read-only Marionette script for control.mjs read. Open the slash menu first.
-const menu = document.querySelector('.zcs-command-menu:not([hidden])');
+const menu = [...document.querySelectorAll('.zcs-command-menu:not([hidden])')].find(e => {
+  const bounds = e.getBoundingClientRect();
+  return bounds.width > 0 && bounds.height > 0 && bounds.bottom > 0 &&
+    bounds.top < window.innerHeight && !e.closest('[hidden],[collapsed="true"]');
+});
 if (!menu) throw new Error('Command menu is not visible');
 const rows = [...menu.querySelectorAll('.zcs-command-row')];
 if (!rows.length) throw new Error('Command menu has no entries');
 const errors = [];
 const menuBounds = menu.getBoundingClientRect();
-const headerBounds = document.querySelector('.zcs-topbar').getBoundingClientRect();
+const headerBounds = menu.closest('.zcs-shell').querySelector('.zcs-topbar').getBoundingClientRect();
 if (menuBounds.top < headerBounds.bottom - 0.5) errors.push('Menu is clipped or covers the chat header');
 const measurements = rows.map((row, index) => {
   const name = row.querySelector('.zcs-command-name');
