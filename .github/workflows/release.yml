@@ -3,6 +3,13 @@ name: Release
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'tests/**'
+      - '.cursor/**'
+      - '.github/**'
+      - 'dev/**'
 
 permissions:
   contents: write

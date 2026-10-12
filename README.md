@@ -90,7 +90,7 @@ The layout follows a conversation-focused Chrome sidebar. Neutral surfaces and g
 
 ## CI and releases
 
-Pushes to `main` and pull requests run syntax checks, tests, XPI builds, and archive integrity checks. CI artifacts are retained for 14 days. After successful checks on `main`, the release workflow generates the next version, builds the XPI, publishes a tagged GitHub Release, calculates SHA-256, and updates `updates.json` and the version fields for Zotero's automatic updates. Release titles contain only the version number. Manual version bumps and tag pushes are unnecessary.
+Pushes to `main` and pull requests run syntax checks, tests, XPI builds, and archive integrity checks. CI artifacts are retained for 14 days. Pushes that change only documentation, tests, verification tools, preview files, or GitHub workflows do not trigger a release. For other pushes to `main`, the release workflow reruns the checks, generates the next version, builds the XPI, publishes a tagged GitHub Release, calculates SHA-256, and updates `updates.json` and the version fields for Zotero's automatic updates. Release titles contain only the version number. Manual version bumps and tag pushes are unnecessary.
 
 ## Privacy and permissions
 
