@@ -8,6 +8,7 @@ The plugin offers Follow Zotero, English, and 简体中文 for its own controls.
 - `native-preferences-choice` switches Codex's native preferences and open sidebar without requiring Save and reconnect.
 - `follow-host` restores Zotero's application locale and persists the selected mode.
 - `reader-entry` applies the same choice in the PDF reader's item pane.
+- `localized-feedback` covers local errors, PDF-selection popup labels and background notification titles.
 
 ## How to get to it (user POV)
 
@@ -20,6 +21,7 @@ The plugin offers Follow Zotero, English, and 简体中文 for its own controls.
 - Launch a fresh isolated profile and run doctor. Seed a disposable paper, select its visible row, and open the Codex sidenav. Capture `snapshot language-before --run "$verify_run"` and check the host chrome language separately.
 - Click `.zcs-more-button` (the sidebar's Settings button, `zotero-codex-settings-button`) to open the sidebar settings page, then `select '.zcs-language-select' zh-CN --run "$verify_run"`. Capture `snapshot language-zh --run "$verify_run"`. The plugin settings title, section labels, and option text should be Chinese while Zotero chrome remains in its original language.
 - Open the chat page, capture its localized title and composer placeholder, then reopen Settings. Switch to `en-US`; capture the same controls in English. Use `read` only to inspect the stored `extensions.zotero.codexSidebar.language` preference independently, not to change it.
+- In each explicit language, enter an unknown slash command and press Enter; capture its localized error without sending a model turn. Share the paper-selection proof to inspect Add to Codex and its added/duplicate feedback, and the background-chat proof to inspect notification titles. Report those branches separately if native selection or notification delivery is unavailable.
 - Open Zotero Settings → Codex using the sidebar link. The sidebar settings page is open after the language step, so `click '[data-zcs-l10n-id="zotero-codex-runtime-settings"]' --run "$verify_run"` leaves for native preferences. `windows` must show the preferences window. Use `select '#codex-setting-language' zh-CN --run "$verify_run" --window preferences`, then capture both native preferences and the sidebar. Repeat with `auto`, and check the saved preference plus the displayed host-language strings.
 - On a separate fresh profile, seed/open a disposable PDF through the reader path described in the main skill. Switch the PDF reader sidebar's `.zcs-language-select`, capture its plugin strings, and verify the stored choice. Keep the PDF fixture and profile disposable.
 - Run cleanup. Keep the screenshots, DOM snapshots, action log, and independent preference observation outside `scratch/`.

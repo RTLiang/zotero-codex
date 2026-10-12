@@ -68,6 +68,10 @@ For other mapped features, use these commands against the same owned instance:
 
 Before using selectors, inspect the current DOM snapshot. Classes and `data-zcs-l10n-id` handles survive all three plugin language choices; native `data-l10n-id` is absent when the plugin uses an explicit language. Translated button text may change. Scope selectors to the active item-details pane if library and PDF views coexist. The helper rejects hidden or disabled targets. It does not drive a native file picker, select PDF text, or synthesize clipboard images. Use available native app control for those actions and pair its screenshots/action record with this helper's resulting DOM snapshot. Report such entry points as untested if native control is unavailable.
 
+Feature recipe selectors are relative to the active pane. Prefix every selector with `#zotero-item-pane ` for the library or `#zotero-context-pane-inner ` for the reader, including slash commands and popover choices. Hidden panes can retain matching controls. Zotero also keeps an invisible pinned-tab copy: use the observed `.tabs-wrapper .tab[data-id="zotero-pane"]` for the visible library tab, rather than the first global `.tab` match.
+
+For PDF reference cleanup, use the read-only [settled-state condition](scripts/pdf-reference-settled.js) with `--capture-when` on a repeated reference click. It waits for both temporary position highlighting and Find paint to clear, and returns the physical page and annotation count. Inspect the screenshot and compare annotations to the baseline; a successful condition alone does not prove the right object is visible.
+
 Real reply, history, and image-generation tests need a login in the scratch Codex directory. Configure it through Zotero Settings → Codex's one-time login import, or sign in with the CLI configured for that directory. Keep credentials out of evidence. Preserve the isolated storage and working directory when changing other settings. The permission smoke needs no login; passing it says nothing about remote model availability, tool approvals, or generated images.
 
 ## Evidence
