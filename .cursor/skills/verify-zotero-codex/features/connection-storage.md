@@ -1,6 +1,6 @@
 # Connection and storage
 
-Users choose the CLI executable, proxy, private session storage and working directory in Zotero's Codex preferences. Saving reconnects the sidebar while preserving unsent drafts.
+Users choose the CLI executable, proxy, Codex storage and working directory in Zotero's Codex preferences. Saving reconnects the sidebar while preserving unsent drafts.
 
 ## Sub-features
 
@@ -13,7 +13,7 @@ Users choose the CLI executable, proxy, private session storage and working dire
 
 ## How to get to it (user POV)
 
-- In the sidebar, click ••• → Proxy and storage. In Zotero itself, open Settings → Codex.
+- In the sidebar, click Settings (•••), then Proxy and storage on the settings page. In Zotero itself, open Settings → Codex.
 - Choose proxy mode, executable, storage and working directory, then Save and reconnect.
 - Use Zotero directories fills paths. Import existing login once is an explicit checkbox.
 - Reconnect and CLI auto-detection controls are also available in sidebar Settings.

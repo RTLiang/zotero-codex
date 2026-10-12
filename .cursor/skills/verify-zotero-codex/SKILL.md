@@ -102,8 +102,6 @@ For dry-run or test-mode paths, observe files, sessions, network activity or ext
 
 Repository unit tests are separate evidence. Run `npm test` and record its exit status when the change affects covered behavior. A native proof does not erase failing unit tests, and passing unit tests do not prove native behavior.
 
-The initial executed proof and its limits are recorded in [verification.md](verification.md).
-
 ## Cleanup
 
 ```sh
