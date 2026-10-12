@@ -159,9 +159,23 @@ async function launch() {
   assert.ok(fs.existsSync(binary), `Set ZOTERO_BIN to Zotero 10's executable: ${binary}`);
   assert.equal(process.platform, "darwin", "This native Marionette recipe is verified on macOS only");
   const sourceHash = fingerprint();
+  const setupLog = [];
+  if (!fs.existsSync(path.join(root, "node_modules", "typescript"))) {
+    const install = spawnSync("npm", ["ci"], { cwd: root, encoding: "utf8" });
+    setupLog.push(`$ npm ci\n${(install.stdout || "") + (install.stderr || "")}`);
+    assert.equal(install.status, 0, `npm ci failed; see ${run}/check.log`);
+  }
+  const shallow = spawnSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: root, encoding: "utf8" });
+  if ((shallow.stdout || "").trim() === "true") {
+    const fetch = spawnSync("git", ["fetch", "--unshallow"], { cwd: root, encoding: "utf8" });
+    setupLog.push(`$ git fetch --unshallow\n${(fetch.stdout || "") + (fetch.stderr || "")}`);
+    assert.equal(fetch.status, 0, `git fetch --unshallow failed; see ${run}/check.log`);
+  }
+  assert.equal(fingerprint(), sourceHash, "Source changed while preparing the build; retry with a fresh run");
   for (const name of ["check", "build"]) {
     const result = spawnSync("npm", ["run", name], { cwd: root, encoding: "utf8" });
-    fs.writeFileSync(path.join(run, `${name}.log`), (result.stdout || "") + (result.stderr || ""));
+    const setup = name === "check" ? setupLog.join("\n") : "";
+    fs.writeFileSync(path.join(run, `${name}.log`), `${setup ? `${setup}\n` : ""}${result.stdout || ""}${result.stderr || ""}`);
     assert.equal(result.status, 0, `${name} failed; see ${run}/${name}.log`);
   }
   assert.equal(fingerprint(), sourceHash, "Source changed during packaging; retry with a fresh run");
