@@ -16,7 +16,9 @@ function canonical(name, text) {
 
 function baseline(name) {
   const result = spawnSync("git", ["show", `${reference}:content/${name}.js`], { cwd: projectRoot, encoding: "utf8" });
-  if (result.status !== 0) throw new Error(`No content/${name}.js at ${reference}`);
+  if (result.status !== 0) {
+    throw new Error(`No content/${name}.js at ${reference}. A shallow clone cannot read the baseline commit; fetch the full history.`);
+  }
   return result.stdout;
 }
 
