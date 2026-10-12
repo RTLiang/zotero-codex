@@ -75,10 +75,13 @@ In Windows PowerShell, set `$env:CODEX_HOME = "C:\absolute\path\to\codex-storage
 To build from source, run these commands in the project directory and install the resulting XPI from `dist/`:
 
 ```bash
+npm ci
 npm test
 npm run check
 npm run build
 ```
+
+The sidebar runtime is TypeScript under `src/`. `npm run build` compiles it to `content/*.js` and packages the XPI. Built JavaScript is not tracked, so run `npm ci` once before the other commands.
 
 Versions follow `year.day-of-year.daily-revision`. The release workflow increments versions using the UTC date.
 
@@ -107,7 +110,7 @@ This is a local integration. It does not embed the ChatGPT website. The `codex a
 
 ## Development and troubleshooting
 
-`npm run check` validates the manifest and script syntax. `npm test` covers chat history, Zotero context conversion, and CLI discovery. If the sidebar cannot find Codex, check the executable and authentication in your terminal:
+`npm run check` compiles and type-checks the TypeScript sources, validates the manifest, checks script syntax, and compares the emitted JavaScript with the pre-migration build. `npm test` covers chat history, Zotero context conversion, and CLI discovery. If the sidebar cannot find Codex, check the executable and authentication in your terminal:
 
 ```bash
 # macOS / Linux

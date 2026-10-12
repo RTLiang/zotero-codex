@@ -30,6 +30,7 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
+      - run: npm ci
       - name: Prepare next release version
         id: version
         shell: bash

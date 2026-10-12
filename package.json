@@ -5,11 +5,16 @@
   "description": "Discuss papers with Codex in Zotero and continue your conversations across Codex apps.",
   "scripts": {
     "check": "node scripts/check.mjs",
+    "compile": "node scripts/compile.mjs",
+    "pretest": "node scripts/compile.mjs",
     "test": "node --test tests/*.test.cjs",
     "build": "node scripts/build.mjs",
     "preview": "node scripts/preview.mjs"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
   }
 }
