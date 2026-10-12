@@ -1,12 +1,12 @@
 # TypeScript migration
 
-Goal: move the plugin runtime from hand-written JavaScript to TypeScript sources that compile
-to the same shipped JavaScript, with the behavior contract pinned and checked.
+Goal: move the plugin parts that carry data shapes, state, or a contract to TypeScript sources that
+compile to the same shipped JavaScript, with the behavior contract pinned and checked.
 
-Done means every file in the `bootstrap.js` script list has a `.ts` source under `src/`,
-`npm run check` type-checks those sources under `strict`, the emitted `content/*.js` keep the
-tokens of the files they replace, the test suite passes against the emitted files, and the plugin
-runs in Zotero 10 from the packaged build.
+Done means the files under Scope have a `.ts` source under `src/`, `npm run check` type-checks those
+sources under `strict`, the emitted `content/*.js` keep the tokens of the files they replace, the
+test suite passes against the emitted files, and the plugin runs in Zotero 10 from the packaged
+build.
 
 Non-goals: no new plugin behavior, no module-system change, no bundler, no sidebar redesign, and
 no change to `manifest.json`, `bootstrap.js`, `prefs.js`, or the XPI layout.
@@ -42,19 +42,22 @@ holds the registry type and shrinks as migrated modules declare their own interf
 rather than everything under `content/`, which now holds build output. A fresh clone and a built
 tree then fingerprint the same.
 
-## Units
+## Scope
 
-Each unit is one commit and ends green.
+Types pay where code carries a data shape, state, or a boundary contract, and pay less in DOM view
+code, where annotations mostly restate the DOM and dynamic element creation forces casts at every
+use.
 
-1. Build pipeline, with `runtime-settings.ts` as the first file. Adds `typescript`,
-   `tsconfig.json`, the compiler entry point, the equivalence gate, and the CI install step.
-2. `protocol.ts`. Pure data transforms with the largest test file.
-3. `localization.ts` and `preferences.ts`.
-4. `codex-client.ts`. Types the app-server JSON-RPC boundary.
-5. `markdown.ts`.
-6. `sidebar.ts`, verified by the six sidebar test files.
-7. `main.ts`, which declares the `ZoteroCodexPlugin` global that `bootstrap.js` calls.
-8. Cleanup. Delete the equivalence gate, which has nothing left to check, and update the docs.
+Migrated: `runtime-settings.ts` for settings parsing and the proxy mode union, and `protocol.ts`
+for app-server payloads and transcript entries.
+
+Next by payoff: `codex-client.ts` for the JSON-RPC request and notification shapes, `main.ts` for
+the plugin object and the preference pane contract, and `localization.ts` for the language choices
+and the l10n context cache.
+
+Left as JavaScript: `sidebar.js`, `preferences.js`, and `markdown.js`. The first two are DOM
+plumbing. `markdown.js` builds render trees and is the closest call, so a change to its parsing
+shapes is the moment to move it.
 
 ## Checks
 
