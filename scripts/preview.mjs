@@ -1,8 +1,11 @@
 import { createServer } from "node:http";
+import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve, extname, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
+const compiled = spawnSync(process.execPath, [resolve(root, "scripts/compile.mjs")], { cwd: root, stdio: "inherit" });
+if (compiled.status !== 0) process.exit(compiled.status || 1);
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".woff2": "font/woff2" };
 const server = createServer(async (request, response) => {
   try {

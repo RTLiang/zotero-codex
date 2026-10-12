@@ -9,6 +9,12 @@ const manifest = JSON.parse(readFileSync(resolve(projectRoot, "manifest.json"), 
 const outputDirectory = resolve(projectRoot, "dist");
 const output = resolve(outputDirectory, `zotero-codex-sidebar-${manifest.version}.xpi`);
 
+const compiled = spawnSync(process.execPath, [resolve(projectRoot, "scripts/compile.mjs")], {
+  cwd: projectRoot,
+  stdio: "inherit",
+});
+if (compiled.status !== 0) process.exit(compiled.status || 1);
+
 mkdirSync(outputDirectory, { recursive: true });
 rmSync(output, { force: true });
 

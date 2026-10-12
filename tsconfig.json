@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "module": "none",
+    "rootDir": "src",
+    "outDir": "content",
+    "strict": true,
+    "alwaysStrict": false,
+    "useDefineForClassFields": false,
+    "erasableSyntaxOnly": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "removeComments": false,
+    "newLine": "lf",
+    "types": [],
+    "skipLibCheck": true
+  },
+  "include": ["src"]
+}

@@ -38,13 +38,12 @@ function record(action, result) {
 }
 function fingerprint() {
   const hash = crypto.createHash("sha256");
-  function visit(relative) {
-    const filename = path.join(root, relative);
-    if (fs.statSync(filename).isDirectory()) {
-      for (const entry of fs.readdirSync(filename).sort()) visit(path.join(relative, entry));
-    } else hash.update(relative).update(fs.readFileSync(filename));
+  const tracked = spawnSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" });
+  assert.equal(tracked.status, 0, "git ls-files failed");
+  // Built JavaScript is not tracked, so the fingerprint stays stable across check and build runs.
+  for (const relative of tracked.stdout.split("\0").filter(Boolean).sort()) {
+    hash.update(relative).update(fs.readFileSync(path.join(root, relative)));
   }
-  for (const entry of ["_locales", "manifest.json", "bootstrap.js", "prefs.js", "content", "locale", "LICENSE"]) visit(entry);
   return hash.digest("hex");
 }
 

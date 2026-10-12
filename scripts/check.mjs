@@ -38,11 +38,18 @@ for (const locale of ["en_US", "zh_CN"]) {
   }
 }
 
+for (const script of ["scripts/compile.mjs", "scripts/check-emit-equivalence.mjs"]) {
+  const result = spawnSync(process.execPath, [resolve(projectRoot, script)], {
+    cwd: projectRoot,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) process.exit(result.status || 1);
+}
+
 for (const file of [
   "bootstrap.js",
   "content/protocol.js",
   "content/codex-client.js",
-  "content/runtime-settings.js",
   "content/localization.js",
   "content/preferences.js",
   "content/markdown.js",
@@ -95,4 +102,4 @@ for (const key of localeKeySets[1]) {
   if (!localeKeySets[0].has(key)) throw new Error(`${localeFiles[0]} is missing ${key}`);
 }
 
-console.log("Static checks passed");
+console.log("Static checks and TypeScript compilation passed");
