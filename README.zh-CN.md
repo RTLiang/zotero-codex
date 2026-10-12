@@ -88,6 +88,10 @@ npm run build
 
 版本号使用 `年份.当年第几天.当天小版本号`。Release 工作流会按 UTC 日期自动递增版本号。
 
+## 贡献与验证
+
+修改运行时行为前，请阅读 [AGENTS.md](AGENTS.md) 和[原生验证 skill](.cursor/skills/verify-zotero-codex/SKILL.md)。所有测试都必须遵守其中的[贡献者隐私规则](.cursor/skills/verify-zotero-codex/SKILL.md#contributor-privacy)：使用虚构身份和可丢弃的测试数据，原始证据只保留在本机，分享前检查脱敏副本。提示词、日志、截图、PR 报告和提交元数据不得泄露个人绝对路径、邮箱、账号信息或凭据。共享说明和报告中的路径使用仓库相对路径或占位符。
+
 ## CI/CD
 
 推送到 `main` 或创建 Pull Request 时，GitHub Actions 会自动执行静态检查、测试、XPI 构建和压缩包完整性检查，并保留 14 天的 CI 构建产物。仅修改文档、测试、验证工具、预览文件或 GitHub 工作流的推送不会触发发版。其他推送到 `main` 的改动会触发 Release 工作流；它会重新执行检查，然后自动生成下一个 `年份.当年第几天.当天小版本号` 版本、构建 XPI、创建带版本 tag 的 GitHub Release、计算 SHA-256，并更新 `updates.json` 和两个版本字段，供 Zotero 自动更新使用。无需手动改版本号或推送 tag。

@@ -7,6 +7,16 @@ description: Verify Codex for Zotero in the real Zotero 10 desktop sidebar on ma
 
 Read [features/README.md](features/README.md), then the feature being changed. The primary application is a bootstrapped Zotero plugin. `npm run preview` is a secondary browser layout preview with simulated data. It cannot prove native installation, PDF selection, real conversations, or storage behavior.
 
+## Contributor privacy
+
+These rules apply to everyone running this skill, feature recipes, unit tests, or other project checks.
+
+- Use synthetic names, `tester@example.invalid`, and disposable fixtures. Keep private papers, personal library data, and unrelated chats out of test prompts and captures. Before a real model request, inspect its paper context, attachments, and message for personal information; use a fixture without personal metadata or disable that context.
+- Keep machine-specific absolute paths local when a command needs them. In shared commands, output, reports, and links, use repository-relative paths or placeholders such as `<repo>`, `<profile>`, and `<codex-storage>`. Never disclose a contributor's home directory, local username, personal email, hostname, or private account details. Use a hosting provider's no-reply email for published commit metadata if the configured email is personal.
+- Raw helper output is private: `instance.json`, doctor results, action records, DOM snapshots, logs, and screenshots can contain absolute paths or account information even in an isolated profile. Keep originals local and out of Git and CI uploads. Cleanup removes scratch state; it does not sanitize surviving evidence.
+- Before sharing evidence in a chat, issue, PR, or CI artifact, inspect every text file and screenshot. Create a separate sanitized copy, replace personal paths and identifiers consistently, and crop or redact visible account information. Check filenames, link targets, embedded metadata, and archives too. Never capture, print, send, or upload credentials or `auth.json` contents.
+- Share only the inspected, sanitized copies. Preserve actions, assertions, failures, and results when redacting. If an artifact cannot be shared safely, omit it and state the verification result and evidence limitation without including personal information.
+
 ## Launch
 
 Run from the repository root. Prerequisites are Node 20 or later, npm, `zip`, macOS, and Zotero 10.0.x. The helper defaults to `/Applications/Zotero.app/Contents/MacOS/zotero`; set `ZOTERO_BIN` to another installation's executable if necessary. `VERIFY_CODEX_BIN` can select the actual Codex executable. Otherwise the helper uses `which codex`, and the plugin retains its normal auto-detection fallback.
