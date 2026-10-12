@@ -25,7 +25,7 @@ Preconditions:
 - Doctor passes and the current fixture sidebar is open. Keep `scratch/runtime` and `scratch/workspace` configured; never point this verification instance at daily Codex storage.
 - Saving/reconnecting needs an actual usable CLI. Proxy reachability needs an actual proxy endpoint, not a guessed address.
 
-- Enter through `click '.zcs-more-button'` then `click '[data-l10n-id="zotero-codex-runtime-settings"]'`, with `--run "$verify_run"`. `windows --run "$verify_run"` should list the native preferences URL. Alternatively use native app control to open Zotero Settings → Codex and capture that independent entry.
+- Enter through `click '.zcs-more-button'` then `click '[data-zcs-l10n-id="zotero-codex-runtime-settings"]'`, with `--run "$verify_run"`. `windows --run "$verify_run"` should list the native preferences URL. Alternatively use native app control to open Zotero Settings → Codex and capture that independent entry.
 - Inspect `snapshot runtime-before --run "$verify_run" --window preferences`. Set `select '#codex-setting-proxyMode' manual` with both flags and confirm `#codex-setting-proxyURL` and `#codex-setting-proxyBypass` become enabled. Switch to direct and inherit and confirm disabled fields. This proves field behavior only.
 - For a real save, leave isolated directories intact, enter an actual executable in `#codex-setting-codexPath`, and click `#codex-settings-save`. Capture `#codex-settings-status`, then run doctor to check connection/runtime identity. Read stored preference values independently. A status saying Connected alone does not prove a model reply or actual proxy routing.
 - Before opening preferences, enter `Draft survives reconnect` in `.zcs-input` and attach a disposable image through the normal picker. Save the native settings, close only the isolated preferences window with `close-window --run "$verify_run" --window preferences`, then return to the paper and capture both text and attachment. Switch papers during reconnection only when explicitly testing that branch; confirm restoration follows the latest selected paper.
@@ -36,6 +36,7 @@ Preconditions:
 ## Gotchas
 
 - Saving is asynchronous and can temporarily disable the sidebar. Wait for actual completion and re-run doctor if anything looks wrong.
+- An unopened library sidebar with a pending paper must not keep Save disabled while the reader sidebar is idle. Open native preferences from the reader before ever opening the library sidebar, then confirm Save is enabled. Initializing views, active context loads and model requests still block Save.
 - Use Zotero directories populates fields; it does not apply them until Save. Existing chats are not moved to new storage.
 - A custom executable wrapper can override proxy environment choices. Use the actual executable for routing tests and observe the child's environment/network separately.
 - One-time login import is different from ongoing credential synchronization. Never include auth contents in evidence.

@@ -16,6 +16,7 @@ async function startup({ id, version, rootURI }) {
     "content/protocol.js",
     "content/runtime-settings.js",
     "content/codex-client.js",
+    "content/localization.js",
     "content/preferences.js",
     "content/vendor/katex/katex.min.js",
     "content/markdown.js",

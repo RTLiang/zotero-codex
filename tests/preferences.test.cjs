@@ -3,6 +3,24 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
+test("an unopened sidebar's pending paper does not block settings, while active work does", () => {
+  const context = {};
+  vm.runInNewContext(fs.readFileSync(require.resolve("../content/main.js"), "utf8"), context);
+  const plugin = context.ZoteroCodexPlugin;
+  const unopened = { initialized: false, contextTransitioning: true };
+  const active = { initialized: true, contextTransitioning: false };
+  plugin.client = { connecting: null, pending: new Map() };
+  plugin.sidebar = { runningTurns: new Map(), views: new Map([["library", unopened], ["reader", active]]) };
+  assert.equal(plugin.runtimeBusy(), false);
+  for (const flag of ["running", "creatingTask", "initializing", "contextTransitioning"]) {
+    active[flag] = true;
+    assert.equal(plugin.runtimeBusy(), true, flag);
+    active[flag] = false;
+  }
+  plugin.client.pending.set(1, {});
+  assert.equal(plugin.runtimeBusy(), true);
+});
+
 test("settings save follows background activity and recovers after requests end without a notification", async () => {
   const nodes = [];
   let poll, unload, listener, unsubscribed = false, timerCleared = false;
@@ -11,6 +29,7 @@ test("settings save follows background activity and recovers after requests end 
       setInterval(fn) { poll = fn; return 1; },
       clearInterval(id) { assert.equal(id, 1); timerCleared = true; },
       addEventListener(name, fn) { assert.equal(name, "unload"); unload = fn; },
+      removeEventListener() {},
     },
     createElementNS(_ns, tag) {
       const node = { tag, children: [], events: {}, value: "", disabled: false,
@@ -25,10 +44,12 @@ test("settings save follows background activity and recovers after requests end 
   const body = { childElementCount: 0, appendChild() {} };
   const root = { ownerDocument: doc, querySelector: () => body };
   const context = { Services: { locale: { appLocaleAsBCP47: "en-US" } } };
+  vm.runInNewContext(fs.readFileSync(require.resolve("../content/localization.js"), "utf8"), context);
   vm.runInNewContext(fs.readFileSync(require.resolve("../content/preferences.js"), "utf8"), context);
   let busy = true;
   const api = {
     read: () => ({ proxyMode: "inherit" }), busy: () => busy,
+    language: () => "auto", setLanguage() {},
     subscribe(fn) { listener = fn; return () => { unsubscribed = true; }; },
     apply: async () => ({ authenticated: true }),
   };

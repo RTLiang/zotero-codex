@@ -20,6 +20,9 @@ function option(name, fallback = "") {
 const run = path.resolve(option("--run", path.join(root, "output/verification/current")));
 const windowKind = option("--window", "main");
 const entry = option("--entry", "library");
+const fixturePDF = option("--pdf");
+const captureLabel = option("--capture");
+const captureWhen = option("--capture-when");
 const scratch = path.join(run, "scratch");
 const statePath = path.join(run, "instance.json");
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -254,7 +257,7 @@ async function snapshot(client, label) {
         .filter(e=>e.getClientRects().length&&!e.closest('[hidden],[collapsed="true"]')&&e.getBoundingClientRect().width)
         .map(e=>({tag:e.localName,id:e.id,class:e.getAttribute('class'),role:e.getAttribute('role'),
           label:e.getAttribute('aria-label')||e.getAttribute('label')||e.title,
-          l10n:e.getAttribute('data-l10n-id'),text:e.textContent?.trim().slice(0,300),
+          l10n:e.getAttribute('data-zcs-l10n-id')||e.getAttribute('data-l10n-id'),text:e.textContent?.trim().slice(0,300),
           value:e.value,checked:e.checked,disabled:e.disabled,expanded:e.getAttribute('aria-expanded')}))};
   `);
   json(path.join(run, `${label}.dom.json`), dom);
@@ -265,8 +268,9 @@ async function snapshot(client, label) {
 }
 
 async function seed(client) {
-  const pdf = entry === "reader" ? path.join(scratch, "workspace", "Verification.pdf") : "";
-  if (pdf) {
+  const pdf = entry === "reader" ? (fixturePDF ? path.resolve(fixturePDF) : path.join(scratch, "workspace", "Verification.pdf")) : "";
+  if (fixturePDF) assert.ok(fs.existsSync(pdf) && /\.pdf$/iu.test(pdf), "Fixture PDF must be an existing local PDF");
+  if (pdf && !fixturePDF) {
     const stream = "BT /F1 18 Tf 72 720 Td (Disposable PDF permission-control fixture) Tj ET\n";
     const objects = [
       "<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -482,12 +486,13 @@ async function cleanup() {
 async function main() {
   if (command === "launch") return launch();
   if (command === "cleanup") return cleanup();
-  assert.ok(["doctor","windows","seed","prove","snapshot","read","click","dblclick","fill","key","select","check","close-window"].includes(command), "Use launch|doctor|windows|seed|prove|snapshot LABEL|read SCRIPT_FILE|click SELECTOR|dblclick SELECTOR|fill SELECTOR VALUE|key SELECTOR KEY|select SELECTOR VALUE|check SELECTOR true|close-window --window preferences|cleanup --run DIRECTORY [--entry library|reader]");
+  assert.ok(["doctor","windows","focus","seed","prove","snapshot","read","click","dblclick","fill","key","select","check","close-window"].includes(command), "Use launch|doctor|windows|focus|seed|prove|snapshot LABEL|read SCRIPT_FILE|click SELECTOR|dblclick SELECTOR|fill SELECTOR VALUE|key SELECTOR KEY|select SELECTOR VALUE|check SELECTOR true|close-window --window preferences|cleanup --run DIRECTORY [--entry library|reader]");
   const client = await connect();
   try {
     let result;
     if (command === "doctor") { result = await doctor(client); json(path.join(run, "doctor.json"), result); }
     else if (command === "windows") result = client.windows;
+    else if (command === "focus") { result = await client.evaluate("window.focus(); return document.title;"); record("focus", { title: result }); }
     else if (command === "seed") result = await seed(client);
     else if (command === "prove") result = await prove(client);
     else if (command === "snapshot") result = {path:run,label:argv[0],controls:(await snapshot(client,argv[0])).controls.length};
@@ -497,7 +502,23 @@ async function main() {
       result = await client.evaluate("window.close(); return true;");
       record("close-window", { window: "preferences", result });
     }
-    else result = await drive(client, command, argv[0], argv[1]);
+    else {
+      result = await drive(client, command, argv[0], argv[1]);
+      if (captureLabel) {
+        if (captureWhen) {
+          const observation = fs.readFileSync(captureWhen, "utf8");
+          const started = Date.now();
+          let state;
+          while (!(state = await client.evaluate(observation))) {
+            assert.ok(Date.now() - started < 10000, "Capture condition was not observed within 10 seconds");
+            await delay(50);
+          }
+          record("capture-condition", { file: captureWhen, state });
+        }
+        else await delay(150);
+        await snapshot(client, captureLabel);
+      }
+    }
     console.log(JSON.stringify(result, null, 2));
   } catch (error) {
     if (command === "prove") await snapshot(client, "failed-proof").catch(() => {});

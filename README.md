@@ -32,7 +32,7 @@ By default, conversations use your existing Codex sign-in and remain available a
 - Add images from the “+” menu, paste screenshots, or drag them into the message. Preview or remove images before sending.
 - Click an attached or generated image to enlarge it. Press Esc, click the empty area, or use the close button to return to the chat.
 - Choose “Generate image” or type `$imagegen` to request images; generated images appear directly in the conversation.
-- The sidebar, PDF selection button, notifications, and errors follow Zotero's Simplified Chinese or English language setting.
+- In the Codex sidebar's Settings → Interface → Language, choose **Follow Zotero**, **English**, or **简体中文**. The plugin defaults to following Zotero; an explicit choice changes only this plugin's interface, PDF selection button, notifications, and errors.
 - Choose from the models available to your Codex account and their supported reasoning efforts. While a response is running, you can choose settings for the next reply.
 - Copy messages. Editing your latest message updates the conversation; editing an earlier message starts a branch so later replies remain available.
 - Choose whether to include the current paper's title, authors, date, DOI, abstract, and local PDF path.
@@ -40,7 +40,7 @@ By default, conversations use your existing Codex sign-in and remain available a
 - Selected PDF text is attached to the next message. A new selection replaces the current selection; “Add to Codex” pins a selection so you can include several passages.
 - Stop a running response and handle command, file, and permission approvals in the sidebar.
 - Type `/` to browse commands and enabled skills. `/skills` searches available skills; selecting one inserts `$skill-name`, and `/skill-name your request` invokes it directly. Use ↑/↓ to choose, Enter or Tab to select, and Escape to close the menu. `/model` opens model settings and `/new` starts a chat while existing replies continue.
-- `/approvals` opens the bottom permission panel for approval policy (`untrusted`, `on-request`, `never`), reviewer (you or automatic review), file access, and network access. Changes apply to the next reply, including in existing chats. Defaults remain `read-only` with `on-request` approvals. `never` denies actions that require approval; full access allows file changes and network access. The plugin itself does not directly modify Zotero items.
+- `/approvals` opens the bottom permission panel for approval policy (`untrusted`, `on-request`, `never`), reviewer (you or automatic review), file access, and network access. Changes apply to the next reply, including in existing chats. Defaults are `on-request`, automatic review, `read-only`, and network access enabled. `never` denies actions that require approval; full access allows file changes and network access. The plugin itself does not directly modify Zotero items.
 
 ## Proxy, paths and dedicated storage
 

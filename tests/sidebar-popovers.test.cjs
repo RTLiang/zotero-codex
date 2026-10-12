@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 global.ZoteroCodexModules = {
   Protocol: require("../content/protocol.js"), CodexClient: {}, Markdown: {},
 };
+require("../content/localization.js");
 require("../content/sidebar.js");
 const { SidebarView } = global.ZoteroCodexModules.Sidebar;
 
@@ -84,9 +85,9 @@ test("permission choices support keyboard navigation and Escape closes only the 
   });
   choice.button.focus();
   key("ArrowDown");
-  assert.equal(view.doc.activeElement.dataset.value, "auto_review");
+  assert.equal(view.doc.activeElement.dataset.value, "user");
   key("Enter");
-  assert.equal(preferences.get("approvalsReviewer"), "auto_review");
+  assert.equal(preferences.get("approvalsReviewer"), "user");
   choice.button.click();
   key("Escape");
   assert.equal(choice.options.hidden, true);

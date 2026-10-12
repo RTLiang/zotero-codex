@@ -43,6 +43,7 @@ var ZoteroCodexPlugin = {
     if (!modules?.CodexClient || !modules?.Sidebar) {
       throw new Error("Codex for Zotero modules failed to load");
     }
+    modules.Localization.configure((name) => this.getPreference(name));
 
     const pluginLog = (message, error) => {
       Zotero.debug(`Codex for Zotero: ${message}`);
@@ -73,6 +74,8 @@ var ZoteroCodexPlugin = {
       reconnect: () => this.client.reconnect(),
       settings: {
         read: () => modules.RuntimeSettings.read(name => this.getPreference(name)),
+        language: () => modules.Localization.selected(),
+        setLanguage: (value) => this.sidebar.setLanguage(value),
         busy: () => this.applyingSettings || this.runtimeBusy(),
         subscribe: (listener) => this.client.subscribe(listener),
         defaults: () => ({
@@ -98,7 +101,7 @@ var ZoteroCodexPlugin = {
   runtimeBusy() {
     return Boolean(this.client.connecting || this.client.pending.size || this.sidebar.runningTurns.size
       || [...this.sidebar.views.values()].some(view =>
-        view.running || view.creatingTask || view.initializing || view.contextTransitioning));
+        view.running || view.creatingTask || view.initializing || (view.initialized && view.contextTransitioning)));
   },
 
   async applySettings(values, { importLogin = false } = {}) {

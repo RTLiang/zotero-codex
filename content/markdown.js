@@ -723,6 +723,40 @@
     return node;
   }
 
+  function pdfReferenceSegments(value) {
+    const source = String(value || "");
+    const references = /(?<![A-Za-z0-9])(?:Figure|Fig\.?|Table|Eq(?:uation)?\.?)\s*[（(]?\d{1,4}[A-Za-z]?[）)]?|(?:图|表|公式|式)\s*[（(]?\d{1,4}[A-Za-z]?[）)]?|第\s*\d{1,3}(?:\.\d{1,3})*\s*节|(?:Section|Sec\.?)\s*\d{1,3}(?:\.\d{1,3})*|第\s*\d{1,4}(?:\s*[-–至]\s*\d{1,4})?\s*页|(?:pages?|pp?\.)\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?|“[^”\n]{20,160}”|"[^"\n]{20,160}"/giu;
+    const segments = [];
+    let offset = 0;
+    let nearbySection = null;
+    for (const match of source.matchAll(references)) {
+      if (match.index > offset) segments.push({ text: source.slice(offset, match.index) });
+      const label = match[0];
+      const page = label.match(/^(?:第\s*(\d+)(?:\s*[-–至]\s*\d+)?\s*页|(?:pages?|pp?\.)\s*(\d+)(?:\s*[-–]\s*\d+)?)$/iu);
+      const section = label.match(/^(?:第\s*(\d{1,3}(?:\.\d{1,3})*)\s*节|(?:Section|Sec\.?)\s*(\d{1,3}(?:\.\d{1,3})*))$/iu);
+      const number = label.match(/\d{1,4}[A-Za-z]?/u)?.[0] || "";
+      let reference;
+      if (page) reference = { pageNumber: Number(page[1] || page[2]) };
+      else if (section) {
+        reference = { sectionNumber: section[1] || section[2] };
+        nearbySection = { number: reference.sectionNumber, end: match.index + label.length };
+      }
+      else if (/^[“"]/u.test(label)) {
+        // A translated or paraphrased quote is absent from the PDF text layer.
+        // Only link it when the surrounding reply names its source section.
+        reference = nearbySection && match.index - nearbySection.end <= 24
+          ? { sectionNumber: nearbySection.number } : null;
+      }
+      else if (/^(?:Figure|Fig\.?|图)/iu.test(label)) reference = { query: `Figure ${number}` };
+      else if (/^(?:Table|表)/iu.test(label)) reference = { query: `Table ${number}` };
+      else reference = { query: `(${number})` };
+      segments.push({ text: label, reference });
+      offset = match.index + label.length;
+    }
+    if (offset < source.length) segments.push({ text: source.slice(offset) });
+    return segments;
+  }
+
   function createMathML(doc, tag, text = null) {
     const node = doc.createElementNS(MATHML_NAMESPACE, tag);
     if (text != null) node.textContent = text;
@@ -859,7 +893,26 @@
 
   function appendInlineTokens(doc, parent, tokens, options) {
     for (const token of tokens) {
-      if (token.type === "text") parent.append(doc.createTextNode(token.text));
+      if (token.type === "text") {
+        if (!options.openPdfReference) {
+          parent.append(doc.createTextNode(token.text));
+          continue;
+        }
+        for (const segment of pdfReferenceSegments(token.text)) {
+          if (!segment.reference) {
+            parent.append(doc.createTextNode(segment.text));
+            continue;
+          }
+          const link = create(doc, "a", "zcs-link zcs-pdf-reference", segment.text);
+          link.href = "#";
+          link.title = "Jump to PDF";
+          link.addEventListener("click", (event) => {
+            event.preventDefault();
+            options.openPdfReference({ ...segment.reference, label: segment.text });
+          });
+          parent.append(link);
+        }
+      }
       else if (token.type === "break") parent.append(doc.createElement("br"));
       else if (token.type === "code") parent.append(create(doc, "code", "zcs-inline-code", token.text));
       else if (token.type === "math") parent.append(createRenderedMath(doc, token.latex || token.text));
@@ -869,8 +922,29 @@
         parent.append(node);
       }
       else if (token.type === "link") {
-        const link = create(doc, "a", "zcs-link");
         const target = String(token.target || "");
+        const label = (token.children || []).map((child) =>
+          child.text || child.children?.map((nested) => nested.text || "").join("") || "").join("");
+        const paperLink = options.resolveLink?.(target, label);
+        if (paperLink?.kind === "text") {
+          appendInlineTokens(doc, parent, token.children,
+            { ...options, openPdfReference: null, resolveLink: null });
+          continue;
+        }
+        const link = create(doc, "a", paperLink?.kind === "pdf"
+          ? "zcs-link zcs-pdf-reference" : "zcs-link");
+        if (paperLink?.kind === "pdf") {
+          link.href = "#";
+          link.title = "Jump to PDF";
+          link.addEventListener("click", (event) => {
+            event.preventDefault();
+            options.openPdfReference?.(paperLink.reference);
+          });
+          appendInlineTokens(doc, link, token.children,
+            { ...options, openPdfReference: null, resolveLink: null });
+          parent.append(link);
+          continue;
+        }
         link.href = /^https?:\/\//iu.test(target) ? target : "#";
         link.title = token.title || target;
         if (target.startsWith("/") || /^file:\/\//iu.test(target)) link.classList.add("zcs-local-link");
@@ -878,7 +952,8 @@
           event.preventDefault();
           options.openTarget?.(target);
         });
-        appendInlineTokens(doc, link, token.children, options);
+        appendInlineTokens(doc, link, token.children,
+          { ...options, openPdfReference: null, resolveLink: null });
         parent.append(link);
       }
     }
@@ -979,6 +1054,7 @@
     tableAlignmentRow,
     parseBlocks,
     parseInlines,
+    pdfReferenceSegments,
     parseLatex,
     latexToText,
     appendMarkdown,

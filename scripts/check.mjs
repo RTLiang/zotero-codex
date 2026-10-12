@@ -43,6 +43,7 @@ for (const file of [
   "content/protocol.js",
   "content/codex-client.js",
   "content/runtime-settings.js",
+  "content/localization.js",
   "content/preferences.js",
   "content/markdown.js",
   "content/sidebar.js",

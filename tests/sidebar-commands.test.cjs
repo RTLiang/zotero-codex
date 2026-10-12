@@ -5,6 +5,7 @@ global.ZoteroCodexModules = {
   Protocol: require("../content/protocol.js"), Markdown: {},
   CodexClient: { getHomeDirectory: () => "/home", clientError: (_id, _args, fallback) => new Error(fallback) },
 };
+require("../content/localization.js");
 require("../content/sidebar.js");
 const { SidebarView, SidebarManager } = global.ZoteroCodexModules.Sidebar;
 

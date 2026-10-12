@@ -8,6 +8,7 @@ global.ZoteroCodexModules = {
   CodexClient: {},
   Markdown: {},
 };
+require("../content/localization.js");
 require("../content/sidebar.js");
 
 const { SidebarManager, SidebarView } = global.ZoteroCodexModules.Sidebar;
@@ -45,6 +46,42 @@ test("new paper chats start with the paper title and capture its context for nam
   assert.match(titleRequest.context.zotero.value, /Cross-Representation/);
   assert.match(titleRequest.context.zotero.value, /CREATE/);
   assert.doesNotMatch(titleRequest.context.zotero.value, /different paper|\/papers/);
+});
+
+test("sending a PDF location question supplies Zotero-extracted page evidence", async () => {
+  const previousZotero = global.Zotero;
+  const calls = [];
+  global.Zotero = {
+    PDFWorker: {
+      getFullText: async (...args) => {
+        calls.push(args);
+        return {
+          text: "1 Introduction\nThe paper cites ablation later.\f5 Ablation study\nWe test graph size.",
+          extractedPages: 2,
+        };
+      },
+    },
+  };
+  try {
+    const view = titleSendView();
+    view.elements.input.value = "where is ablation";
+    let sent;
+    view.client.startTurn = async (args) => { sent = args; return { id: "first-turn" }; };
+    await SidebarView.prototype.send.call(view);
+    assert.deepEqual(calls, [[2, null, true]]);
+    assert.match(sent.context.zotero.value, /Excerpt, physical PDF page 2:\n5 Ablation study/u);
+  }
+  finally {
+    global.Zotero = previousZotero;
+  }
+});
+
+test("MCP access prompts explain the requested access when the server provides a message", () => {
+  const description = SidebarView.prototype.requestDescription.call({}, {
+    method: "mcpServer/elicitation/request",
+    params: { serverName: "Computer Use", message: "Allow access to Zotero" },
+  });
+  assert.deepEqual(description, { text: "Allow access to Zotero" });
 });
 
 test("title generation respects disabled item context", async () => {

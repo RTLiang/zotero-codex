@@ -2,8 +2,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Protocol = require("../content/protocol.js");
 
-test("keeps conservative permission defaults and accepts explicit access settings", () => {
+test("uses the default permission policy and preserves explicit access settings", () => {
   assert.deepEqual(Protocol.normalizePermissions({ approvalPolicy: "invalid", sandbox: "invalid", networkAccess: "true" }), {
+    approvalPolicy: "on-request", approvalsReviewer: "auto_review", sandbox: "read-only", networkAccess: true,
+  });
+  assert.deepEqual(Protocol.normalizePermissions({ approvalsReviewer: "user", networkAccess: false }), {
     approvalPolicy: "on-request", approvalsReviewer: "user", sandbox: "read-only", networkAccess: false,
   });
   const selected = { approvalPolicy: "never", approvalsReviewer: "auto_review", sandbox: "workspace-write", networkAccess: true };
@@ -230,7 +233,7 @@ test("creates untrusted Zotero context only when requested", () => {
   assert.equal(context.zotero.kind, "untrusted");
   assert.match(context.zotero.value, /untrusted source material/u);
   assert.match(context.zotero.value, /Example Paper/u);
-  assert.match(context.zotero.value, /Selected text \(page 3\)/u);
+  assert.match(context.zotero.value, /Selected text \(printed page label 3; physical PDF page unknown\)/u);
 });
 
 test("keeps an explicitly added PDF selection when item metadata is disabled", () => {
@@ -243,7 +246,48 @@ test("keeps an explicitly added PDF selection when item metadata is disabled", (
     { includeItem: false },
   );
   assert.doesNotMatch(context.zotero.value, /Private item metadata|Not requested/u);
-  assert.match(context.zotero.value, /Selected text \(page 7\):\nThe selected sentence/u);
+  assert.match(context.zotero.value, /Selected text \(physical PDF page 7\):\nThe selected sentence/u);
+});
+
+test("PDF citation context distinguishes physical pages from printed page labels", () => {
+  const context = Protocol.buildZoteroContext({ pdfPath: "/tmp/paper.pdf" }, [
+    { text: "Introduction", pageNumber: 4, pageLabel: "14823" },
+  ]);
+  assert.match(context.zotero.value, /physical PDF page 4; printed label 14823/u);
+});
+
+test("a paper-location question receives the matching PDF section and physical page", () => {
+  const pdf = [
+    "1 Introduction\nWe present the model.",
+    "Sec. 5 presents the ablation study.\n2 Related work",
+    "3 Method\nWe train two encoders.",
+    "4 Experiments\nResults follow.",
+    "4.2 Results\nComparison follows.",
+    "5 Ablation study\nWe ablate the graph size and warm-up epochs.\n5.1 Graph size",
+    "The Barlow Twins loss is also ablated.",
+  ].join("\f");
+  const evidence = Protocol.buildPdfEvidence(pdf, 7, "where is ablation");
+  assert.match(evidence, /Excerpt, physical PDF page 6:\n5 Ablation study/u);
+  assert.ok(evidence.indexOf("Excerpt, physical PDF page 6") < evidence.indexOf("Excerpt, physical PDF page 2"));
+  const context = Protocol.buildZoteroContext({ title: "Paper", pdfPath: "/paper.pdf", abstract: "Unrelated abstract" }, [], {
+    pdfEvidence: evidence,
+  });
+  assert.match(context.zotero.value, /Excerpt, physical PDF page 6:\n5 Ablation study/u);
+  assert.ok(context.zotero.value.length < 4_000);
+  assert.doesNotMatch(context.zotero.value, /Unrelated abstract/u);
+});
+
+test("a Chinese paper-location question selects English PDF text", () => {
+  const evidence = Protocol.buildPdfEvidence("1 Introduction\f5 Ablation study\nGraph size matters.", 2, "这篇论文如何做消融实验？");
+  assert.match(evidence, /Excerpt, physical PDF page 2:\n5 Ablation study\nGraph size matters/u);
+  assert.equal(Protocol.buildPdfEvidence("one page", 2, "where"), "");
+});
+
+test("long PDFs put a matched later section before the context limit", () => {
+  const pdf = `${"unrelated text. ".repeat(5500)}\f5 Ablation study\nGraph size matters.`;
+  const evidence = Protocol.buildPdfEvidence(pdf, 2, "where is ablation");
+  assert.match(evidence, /Excerpt, physical PDF page 2:\n5 Ablation study/u);
+  assert.ok(evidence.length <= 3_000);
 });
 
 test("merges the live PDF selection with pinned selections without duplicates", () => {

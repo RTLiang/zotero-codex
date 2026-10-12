@@ -7,6 +7,35 @@ require("../content/codex-client.js");
 
 const { CodexAppServerClient } = global.ZoteroCodexModules.CodexClient;
 
+test("new and resumed chats receive the same trusted PDF citation contract", async () => {
+  const client = new CodexAppServerClient();
+  client.connect = async () => {};
+  const calls = [];
+  client.request = async (method, params) => {
+    calls.push({ method, params });
+    return method === "turn/start" ? { turn: { id: "paper-turn" } } : { thread: { id: "paper-chat" } };
+  };
+  await client.startThread({ cwd: "/papers" });
+  client.loadedThreads.clear();
+  await client.ensureThreadLoaded("paper-chat");
+  assert.deepEqual(calls.map((call) => call.method), ["thread/start", "thread/resume"]);
+  const instructions = calls[0].params.developerInstructions;
+  assert.equal(calls[1].params.developerInstructions, instructions);
+  for (const target of ["#page=4", "#section=4.3", "#figure=1", "#table=2", "#equation=10"]) {
+    assert.ok(instructions.includes(target));
+  }
+  assert.match(instructions, /never use the paraphrased wording as a text-search target/u);
+  assert.match(instructions, /include at least one of these Markdown citation links/u);
+  assert.match(instructions, /no additional file access is required for those citations/u);
+  assert.match(instructions, /#page=4&quote=/u);
+  assert.match(instructions, /Never put a paraphrase or translation in quote/u);
+  const context = Protocol.buildZoteroContext({ title: "Paper", pdfPath: "/papers/paper.pdf" });
+  await client.startTurn({ threadID: "paper-chat", text: "Explain the method", context });
+  assert.deepEqual(calls[2].params.additionalContext, context);
+  assert.equal(calls[2].params.developerInstructions, undefined);
+  assert.equal(context.zoteroCitationContract, undefined);
+});
+
 test("discovers skills for the current working directory and sends native skill inputs", async () => {
   const client = new CodexAppServerClient();
   client.connect = async () => {};
@@ -39,8 +68,8 @@ test("applies changed permissions to the next turn of an existing chat", async (
   client.request = async (_method, value) => { params = value; return { turn: { id: "turn" } }; };
   await client.startTurn({ threadID: "existing", text: "Explain", cwd: "/papers" });
   assert.equal(params.approvalPolicy, "on-request");
-  assert.equal(params.approvalsReviewer, "user");
-  assert.deepEqual(params.sandboxPolicy, { type: "readOnly", networkAccess: false });
+  assert.equal(params.approvalsReviewer, "auto_review");
+  assert.deepEqual(params.sandboxPolicy, { type: "readOnly", networkAccess: true });
   Object.assign(preferences, { approvalPolicy: "never", approvalsReviewer: "auto_review", sandbox: "workspace-write", networkAccess: true });
   await client.startTurn({ threadID: "existing", text: "Edit", cwd: "/papers" });
   assert.equal(params.approvalPolicy, "never");
@@ -59,7 +88,7 @@ test("permission edits during skill loading only affect later turns", async () =
   let params;
   client.request = async (_method, value) => { params = value; return { turn: { id: "turn" } }; };
   await client.startTurn({ threadID: "existing", text: "$pdf Explain", cwd: "/papers" });
-  assert.deepEqual(params.sandboxPolicy, { type: "readOnly", networkAccess: false });
+  assert.deepEqual(params.sandboxPolicy, { type: "readOnly", networkAccess: true });
 });
 
 test("generates a paper title from metadata, a generic request, and the answer", async () => {
@@ -143,7 +172,9 @@ test("forks before the edited turn without changing the source task", async () =
   });
 
   assert.equal(thread.id, "forked-task");
-  assert.deepEqual(request, {
+  assert.match(request.params.developerInstructions, /PDF citation output contract/u);
+  const { developerInstructions: _instructions, ...forkParams } = request.params;
+  assert.deepEqual({ method: request.method, params: forkParams }, {
     method: "thread/fork",
     params: {
       threadId: "source-task",
@@ -151,7 +182,7 @@ test("forks before the edited turn without changing the source task", async () =
       excludeTurns: false,
       ephemeral: false,
       approvalPolicy: "on-request",
-      approvalsReviewer: "user",
+      approvalsReviewer: "auto_review",
       sandbox: "read-only",
       model: "gpt-5.6-sol",
     },

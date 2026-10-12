@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 global.ZoteroCodexModules = {
   Protocol: require("../content/protocol.js"), CodexClient: { getHomeDirectory: () => "/tmp" }, Markdown: {},
 };
+require("../content/localization.js");
 require("../content/sidebar.js");
 const { SidebarManager, SidebarView } = global.ZoteroCodexModules.Sidebar;
 

@@ -185,21 +185,11 @@
   }
 
   function setL10n(element, id, args = null) {
-    if (!element || !id) return element;
-    const l10n = element.ownerDocument?.l10n;
-    if (l10n?.setAttributes) l10n.setAttributes(element, id, args || undefined);
-    else {
-      element.setAttribute("data-l10n-id", id);
-      if (args) element.setAttribute("data-l10n-args", JSON.stringify(args));
-      else element.removeAttribute("data-l10n-args");
-    }
-    return element;
+    return modules.Localization.setAttributes(element, id, args);
   }
 
   function clearL10n(element) {
-    element?.removeAttribute?.("data-l10n-id");
-    element?.removeAttribute?.("data-l10n-args");
-    return element;
+    return modules.Localization.clearAttributes(element);
   }
 
   function createL10n(doc, tag, className, id, fallback, args = null) {
@@ -218,12 +208,7 @@
   }
 
   async function formatValue(doc, id, args, fallback) {
-    try {
-      return await doc?.l10n?.formatValue?.(id, args || undefined) || fallback;
-    }
-    catch (_error) {
-      return fallback;
-    }
+    return modules.Localization.formatValue(doc, id, args, fallback);
   }
 
   async function copyMessageText(doc, value) {
@@ -276,6 +261,73 @@
       return;
     }
     global.Zotero.File?.reveal?.(path);
+  }
+
+  function paperLinkIdentity(value) {
+    const source = String(value || "").trim();
+    let decoded;
+    try { decoded = decodeURIComponent(source); }
+    catch (_error) { decoded = source; }
+    const normalized = decoded.toLowerCase();
+    const arxiv = normalized.match(/(?:^|\/)arxiv\.org\/(?:abs|pdf|html)\/([^?#]+)/u);
+    if (arxiv) return `arxiv:${arxiv[1].replace(/\.pdf$/u, "").replace(/v\d+$/u, "")}`;
+    const doi = normalized.match(/10\.\d{4,9}\/[^\s?#]+/u);
+    if (doi) return `doi:${doi[0].replace(/\/+$/u, "")}`;
+    return normalized.replace(/^https?:\/\//u, "").replace(/^www\./u, "")
+      .replace(/[?#].*$/u, "").replace(/\/+$/u, "");
+  }
+
+  function resolvePaperLink(target, context, label = "") {
+    const value = String(target || "").trim();
+    if (!context?.attachmentID || !context.pdfPath) {
+      return /^#(?:page|section|figure|table|equation)=/iu.test(value) ? { kind: "text" } : null;
+    }
+    const passage = value.match(/^#page=([1-9]\d{0,3})&quote=(.+)$/iu);
+    if (passage) {
+      try {
+        const quote = decodeURIComponent(passage[2]).replace(/\s+/gu, " ").trim();
+        return quote && quote.length <= 2000
+          ? { kind: "pdf", reference: { pageNumber: Number(passage[1]), quote } }
+          : { kind: "text" };
+      }
+      catch (_) { return { kind: "text" }; }
+    }
+    const locator = value.match(/^#(page|section|figure|table|equation)=([\d.A-Za-z]+)$/iu);
+    if (locator) {
+      const kind = locator[1].toLowerCase();
+      const number = locator[2];
+      let reference = null;
+      if (kind === "page" && /^[1-9]\d{0,3}$/u.test(number)) {
+        reference = { pageNumber: Number(number) };
+      }
+      else if (kind === "section" && /^\d{1,3}(?:\.\d{1,3})*$/u.test(number)) {
+        reference = { sectionNumber: number };
+      }
+      else if (/^\d{1,4}[A-Za-z]?$/u.test(number)) {
+        if (kind === "figure") reference = { query: `Figure ${number}` };
+        if (kind === "table") reference = { query: `Table ${number}` };
+        if (kind === "equation") reference = { query: `(${number})` };
+      }
+      return reference ? { kind: "pdf", reference } : { kind: "text" };
+    }
+    if (value.startsWith("#")) return { kind: "text" };
+    const page = value.match(/(?:[?#&]page=)(\d{1,4})/iu);
+    const sameFile = value === context.pdfPath || value === `file://${context.pdfPath}`;
+    const identity = paperLinkIdentity(value);
+    const samePaper = sameFile || [context.url, context.doi]
+      .filter(Boolean).some((candidate) => paperLinkIdentity(candidate) === identity);
+    const section = String(label).match(/第\s*(\d{1,3}(?:\.\d{1,3})*)\s*节|\b(?:section|sec\.?)\s*(\d{1,3}(?:\.\d{1,3})*)|§\s*(\d{1,3}(?:\.\d{1,3})*)/iu);
+    const fragmentSection = value.match(/#(?:s|sec(?:tion)?[-_]?)(\d{1,3}(?:[._]\d{1,3})*)\b/iu);
+    const sectionNumber = section?.[1] || section?.[2] || section?.[3]
+      || fragmentSection?.[1]?.replace(/_/gu, ".");
+    const sectionTitle = /(?:方法部分|方法章节|\bmethod(?:s|ology)?\b|\bapproach\b)/iu.test(label)
+      ? "method" : null;
+    const titleLink = /^(?:本文|原文|论文|全文|paper|full text)$/iu.test(String(label).trim());
+    if (!samePaper) return { kind: "text" };
+    if (page) return { kind: "pdf", reference: { pageNumber: Number(page[1]) } };
+    if (sectionNumber) return { kind: "pdf", reference: { sectionNumber } };
+    if (sectionTitle) return { kind: "pdf", reference: { sectionTitle } };
+    return titleLink ? { kind: "pdf", reference: { pageNumber: 1 } } : { kind: "text" };
   }
 
   function getField(item, field) {
@@ -360,8 +412,20 @@
     };
   }
 
-  function appendMarkdown(doc, parent, value) {
-    Markdown.appendMarkdown(doc, parent, value, { openTarget: openMarkdownTarget });
+  async function pdfEvidenceForQuestion(context, question) {
+    if (!context?.attachmentID || !context.pdfPath || !String(question || "").trim()) return "";
+    const worker = global.Zotero?.PDFWorker;
+    if (typeof worker?.getFullText !== "function") return "";
+    const result = await worker.getFullText(context.attachmentID, null, true);
+    return Protocol.buildPdfEvidence(result?.text, result?.extractedPages, question);
+  }
+
+  function appendMarkdown(doc, parent, value, openPdfReference = null, paperContext = null) {
+    Markdown.appendMarkdown(doc, parent, value, {
+      openTarget: openMarkdownTarget,
+      openPdfReference,
+      resolveLink: (target, label) => resolvePaperLink(target, paperContext, label),
+    });
   }
 
   class SidebarView {
@@ -373,6 +437,7 @@
       this.item = props.item;
       this.tabType = props.tabType;
       this.context = null;
+      this.taggedPdfIndex = null;
       this.threadID = "";
       this.thread = null;
       this.threads = [];
@@ -527,10 +592,30 @@
         create(doc, "span", "zcs-settings-header-spacer"),
       );
       const settingsContent = create(doc, "div", "zcs-settings-content");
+      settingsContent.append(createL10n(doc, "div", "zcs-settings-section-title",
+        "zotero-codex-interface-settings", "Interface"));
+      const languageCard = create(doc, "div", "zcs-language-card");
+      const languageLabel = createL10n(doc, "label", "zcs-setting-label",
+        "zotero-codex-language", "Language");
+      const languageSelect = create(doc, "select", "zcs-language-select");
+      languageSelect.id = `${pagePrefix}-language`;
+      languageLabel.htmlFor = languageSelect.id;
+      for (const [value, id, fallback] of [
+        ["auto", "zotero-codex-language-auto", "Follow Zotero"],
+        ["en-US", "zotero-codex-language-english", "English"],
+        ["zh-CN", "zotero-codex-language-chinese", "简体中文"],
+      ]) {
+        const option = createL10n(doc, "option", "", id, fallback);
+        option.value = value;
+        languageSelect.append(option);
+      }
+      languageSelect.value = modules.Localization.selected();
+      languageCard.append(languageLabel, languageSelect);
+      settingsContent.append(languageCard);
       settingsContent.append(createL10n(
         doc,
         "div",
-        "zcs-settings-section-title",
+        "zcs-settings-section-title zcs-settings-section-spaced",
         "zotero-codex-local-codex",
         "Codex connection",
       ));
@@ -940,6 +1025,7 @@
         connectionTitle,
         connectionSubtitle,
         reconnectButton,
+        languageSelect,
         showWorkProcessToggle,
         permissionInputs,
         permissionChoices,
@@ -1045,6 +1131,7 @@
         toggleWorkProcess: () => {
           this.manager.setShowWorkProcess(showWorkProcessToggle.checked);
         },
+        changeLanguage: () => this.manager.setLanguage(languageSelect.value),
         resizeStart: (event) => this.startShellResize(event),
         resizeMove: (event) => this.moveShellResize(event),
         resizeEnd: (event) => this.finishShellResize(event),
@@ -1100,6 +1187,7 @@
       sendButton.addEventListener("click", this.handlers.sendOrStop);
       reconnectButton.addEventListener("click", this.handlers.reconnect);
       showWorkProcessToggle.addEventListener("change", this.handlers.toggleWorkProcess);
+      languageSelect.addEventListener("change", this.handlers.changeLanguage);
       networkAccess.addEventListener("change", this.handlers.permissionChange);
       resizeHandle.addEventListener("pointerdown", this.handlers.resizeStart);
       resizeHandle.addEventListener("pointermove", this.handlers.resizeMove);
@@ -1850,6 +1938,262 @@
       this.renderSelections();
       this.renderContextAttachment();
       return context;
+    }
+
+    async getTaggedPdfRegions(internal) {
+      const pdfDocument = internal?._primaryView?._iframeWindow
+        ?.PDFViewerApplication?.pdfDocument;
+      if (!pdfDocument?.getPage) return [];
+      if (this.taggedPdfIndex?.document !== pdfDocument) {
+        const promise = (async () => {
+          const regions = [];
+          for (let pageIndex = 0; pageIndex < pdfDocument.numPages; pageIndex++) {
+            let tree;
+            try {
+              const page = await pdfDocument.getPage(pageIndex + 1);
+              tree = await page.getStructTree?.();
+            }
+            catch (_) {
+              continue;
+            }
+            if (!tree) continue;
+            const visit = (node) => {
+              if (!node || typeof node !== "object") return;
+              const role = String(node.role || "").toLowerCase();
+              const label = [node.alt, node.title].find((value) => typeof value === "string");
+              const bbox = node.bbox;
+              if ((role === "figure" || role === "table") && label &&
+                  Array.isArray(bbox) && bbox.length === 4 &&
+                  bbox.every(Number.isFinite) && bbox[0] < bbox[2] && bbox[1] < bbox[3]) {
+                regions.push({ role, label, pageIndex, bbox: Array.from(bbox) });
+              }
+              for (const child of node.children || []) visit(child);
+            };
+            visit(tree);
+          }
+          return regions;
+        })();
+        this.taggedPdfIndex = { document: pdfDocument, promise };
+      }
+      return this.taggedPdfIndex.promise;
+    }
+
+    async findPdfSectionLocation(pdfDocument, reference) {
+      if (!pdfDocument?.getPage) return null;
+      const escaped = reference.sectionNumber?.replace(/\./gu, "\\.");
+      const heading = escaped
+        ? new RegExp(`^\\s*(?:section\\s+)?${escaped}(?![\\d.])(?:\\s|[.):：、-]|$)`, "iu")
+        : /^\s*(?:(?:\d+(?:\.\d+)*|[IVX]+)[.、]?\s+)?(?:approach|methods?|methodology|方法)(?:\s|$|[:：])/iu;
+      let outline = null;
+      try { outline = await pdfDocument.getOutline?.(); }
+      catch (_) { /* Some PDFs have an unreadable outline; inspect their text instead. */ }
+      const pending = Array.isArray(outline) ? [...outline] : [];
+      while (pending.length) {
+        const entry = pending.shift();
+        if (!heading.test(String(entry?.title || ""))) {
+          if (Array.isArray(entry?.items)) pending.push(...entry.items);
+          continue;
+        }
+        if (entry.dest) {
+          try {
+            const destination = typeof entry.dest === "string"
+              ? await pdfDocument.getDestination?.(entry.dest) : entry.dest;
+            if (destination?.[1]?.name === "XYZ" && Number.isFinite(destination[2]) && Number.isFinite(destination[3])) {
+              const pageIndex = Number.isInteger(destination[0])
+                ? destination[0] : await pdfDocument.getPageIndex?.(destination[0]);
+              if (Number.isInteger(pageIndex) && pageIndex >= 0 && pageIndex < pdfDocument.numPages) {
+                const x = destination[2], y = destination[3];
+                return { position: { pageIndex, rects: [[x, y - 2, x + 1, y + 12]] } };
+              }
+            }
+          }
+          catch (_) { /* Keep the original destination when its coordinates cannot be resolved. */ }
+          return { dest: entry.dest };
+        }
+      }
+      for (let pageIndex = 0; pageIndex < pdfDocument.numPages; pageIndex++) {
+        let items;
+        try {
+          const page = await pdfDocument.getPage(pageIndex + 1);
+          items = (await page.getTextContent()).items || [];
+        }
+        catch (_) { continue; }
+        for (let index = 0; index < items.length; index++) {
+          const item = items[index];
+          const next = items[index + 1];
+          const baseline = item?.transform?.[5];
+          const adjacent = next?.transform && Number.isFinite(baseline)
+            && Math.abs(next.transform[5] - baseline) < 4
+            && next.transform[4] > item.transform[4]
+            && next.transform[4] - item.transform[4] < 110;
+          const text = `${item?.str || ""}${adjacent ? ` ${next.str || ""}` : ""}`.trim();
+          if (!heading.test(text) || !Number.isFinite(baseline)) continue;
+          const x = item.transform[4];
+          const right = adjacent ? next.transform[4] + (next.width || 0) : x + (item.width || 0);
+          return { position: { pageIndex, rects: [[x, baseline - 2,
+            Math.max(x + 1, right), baseline + Math.max(8, item.height || 0)]] } };
+        }
+      }
+      return null;
+    }
+
+    async openPdfReference(reference) {
+      const attachmentID = this.context?.attachmentID;
+      if (!attachmentID || !reference) return;
+      try {
+        const location = reference.pageNumber
+          ? { pageIndex: reference.pageNumber - 1 }
+          : undefined;
+        const opened = await global.Zotero.Reader.open(attachmentID, location);
+        const reader = opened || global.Zotero.Reader._readers?.find(
+          (candidate) => candidate.itemID === attachmentID && !candidate._isTabClosed,
+        );
+        if (reference.query || reference.quote || reference.sectionNumber || reference.sectionTitle) {
+          if (!reader) throw new Error("Could not open the PDF reader");
+          await reader._initPromise;
+          await reader._internalReader?._primaryView?.initializedPromise;
+          const internal = reader._internalReader;
+          if (reference.sectionNumber || reference.sectionTitle) {
+            const pdfDocument = internal?._primaryView?._iframeWindow
+              ?.PDFViewerApplication?.pdfDocument;
+            const location = await this.findPdfSectionLocation(pdfDocument, reference);
+            if (!location) throw new Error(`Section ${reference.sectionNumber || reference.sectionTitle} was not found in this PDF`);
+            await reader.navigate(location);
+            return;
+          }
+          if (typeof internal?._handleFindStateChange !== "function") {
+            throw new Error("PDF text search is unavailable in this Zotero reader");
+          }
+          const utils = global.Cu || global.Components?.utils;
+          const sendFindState = (query, popupOpen) => {
+            const previous = internal._state.primaryViewFindState;
+            const state = {
+              ...previous,
+              popupOpen,
+              active: true,
+              query,
+              caseSensitive: false,
+              entireWord: false,
+              highlightAll: false,
+              index: null,
+              result: null,
+            };
+            internal._handleFindStateChange(true,
+              utils?.cloneInto ? utils.cloneInto(state, reader._iframeWindow) : state);
+            if (previous?.active && previous.query === query &&
+                !previous.caseSensitive && !previous.entireWord &&
+                !previous.highlightAll && !popupOpen) {
+              const request = {
+                type: "find", query, phraseSearch: true,
+                caseSensitive: false, entireWord: false,
+                highlightAll: false, findPrevious: false,
+              };
+              internal._primaryView?._findController?.find(
+                utils?.cloneInto ? utils.cloneInto(request, reader._iframeWindow) : request);
+            }
+          };
+          if (reference.quote) {
+            const pageIndex = reference.pageNumber - 1;
+            const primary = internal._primaryView;
+            const pdfDocument = primary?._iframeWindow?.PDFViewerApplication?.pdfDocument;
+            if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= pdfDocument?.numPages) {
+              throw new Error("The quoted passage has an invalid physical PDF page");
+            }
+            let position;
+            try {
+              sendFindState(reference.quote, false);
+              const controller = primary._findController;
+              await new Promise((resolve, reject) => {
+                const started = Date.now();
+                const poll = () => {
+                  const state = internal._state.primaryViewFindState;
+                  if (state?.query === reference.quote && state.result?.total != null
+                      && Array.isArray(controller?._pageMatches?.[pageIndex])) resolve();
+                  else if (Date.now() - started >= 8000) reject(new Error("PDF passage lookup timed out"));
+                  else global.setTimeout(poll, 75);
+                };
+                poll();
+              });
+              const positions = await controller.getMatchPositionsAsync(pageIndex);
+              if (positions.length !== 1) throw new Error(positions.length
+                ? `Quoted text is ambiguous on PDF page ${reference.pageNumber}; cite a longer passage`
+                : `Could not locate quoted text on PDF page ${reference.pageNumber}`);
+              position = positions[0];
+            }
+            finally {
+              const state = { ...internal._state.primaryViewFindState,
+                active: false, popupOpen: false, query: "", result: null };
+              internal._handleFindStateChange(true,
+                utils?.cloneInto ? utils.cloneInto(state, reader._iframeWindow) : state);
+            }
+            await reader.navigate({ position });
+            return;
+          }
+          const number = reference.query.match(/\d{1,4}[A-Za-z]?/u)?.[0];
+          const figure = Boolean(number && /^Figure /i.test(reference.query));
+          const table = Boolean(number && /^Table /i.test(reference.query));
+          if (figure || table) {
+            const regions = await this.getTaggedPdfRegions(internal);
+            const marker = figure ? "(?:fig(?:ure)?\\.?|图)" : "(?:table|表)";
+            const labelPattern = new RegExp(`(?:^|\\W)${marker}\\s*${number}(?![\\dA-Za-z])`, "iu");
+            const region = regions.find((candidate) =>
+              candidate.role === (figure ? "figure" : "table") &&
+              labelPattern.test(candidate.label));
+            if (region) {
+              await reader.navigate({
+                position: { pageIndex: region.pageIndex, rects: [region.bbox] },
+              });
+              return;
+            }
+          }
+          let queries = [reference.query];
+          if (figure) {
+            queries = /^图/u.test(reference.label || "")
+              ? [`图 ${number}：`, `图${number}：`, `图 ${number}:`, `图${number}:`, `Figure ${number}:`]
+              : [`Figure ${number}:`, `Figure ${number}.`, `Fig. ${number}:`, `Fig. ${number}.`];
+          }
+          else if (table) {
+            queries = /^表/u.test(reference.label || "")
+              ? [`表 ${number}：`, `表${number}：`, `表 ${number}:`, `表${number}:`, `Table ${number}:`]
+              : [`Table ${number}:`, `Table ${number}.`];
+          }
+          else if (number && /^[（(]\d/u.test(reference.query)) {
+            queries = [`（${number}）`, reference.query];
+          }
+          for (const query of queries) {
+            sendFindState(query, false);
+            const found = await new Promise((resolve) => {
+              const started = Date.now();
+              const poll = () => {
+                const state = internal._state.primaryViewFindState;
+                if (state?.query === query && state.result?.total != null) {
+                  resolve(state.result.total > 0);
+                }
+                else if (Date.now() - started >= 4000) resolve(null);
+                else global.setTimeout(poll, 75);
+              };
+              poll();
+            });
+            if (found) {
+              const controller = internal._primaryView?._findController;
+              const selected = controller?.selected;
+              if (!selected || selected.pageIdx < 0 || selected.matchIdx < 0) {
+                throw new Error(`Could not locate ${reference.label || reference.query} in the PDF`);
+              }
+              const positions = await controller.getMatchPositionsAsync(selected.pageIdx);
+              const position = positions?.[selected.matchIdx];
+              if (!position) throw new Error(`Could not locate ${reference.label || reference.query} in the PDF`);
+              await reader.navigate({ position });
+              return;
+            }
+            if (found === null) break;
+          }
+          throw new Error(`Could not locate ${reference.label || reference.query} in the PDF`);
+        }
+      }
+      catch (error) {
+        this.showError(error);
+      }
     }
 
     renderSelections({ highlightSelectionID = "" } = {}) {
@@ -2622,7 +2966,9 @@
         }
         else {
           const message = create(this.doc, "div", "zcs-process-message");
-          appendMarkdown(this.doc, message, entry.text);
+          appendMarkdown(this.doc, message, entry.text,
+            this.context?.attachmentID ? (reference) => { void this.openPdfReference(reference); } : null,
+            this.context);
           body.append(message);
         }
       }
@@ -2737,7 +3083,9 @@
           streaming ? "Working…" : "Work process",
         ));
         const content = create(this.doc, "div", "zcs-message-content zcs-process-body");
-        appendMarkdown(this.doc, content, entry.text);
+        appendMarkdown(this.doc, content, entry.text,
+          this.context?.attachmentID ? (reference) => { void this.openPdfReference(reference); } : null,
+          this.context);
         details.append(content);
         if (streaming) details.classList.add("zcs-streaming");
         transcript.append(details);
@@ -2745,7 +3093,11 @@
       }
       const article = create(this.doc, "article", `zcs-message zcs-${entry.role}`);
       const content = create(this.doc, "div", "zcs-message-content");
-      if (entry.text) appendMarkdown(this.doc, content, entry.text);
+      if (entry.text) appendMarkdown(this.doc, content, entry.text,
+        entry.role === "assistant" && this.context?.attachmentID
+          ? (reference) => { void this.openPdfReference(reference); }
+          : null,
+        entry.role === "assistant" ? this.context : null);
       const body = create(this.doc, "div", "zcs-message-body");
       if (entry.text) body.append(content);
       this.appendMessageImages(body, entry.images);
@@ -2893,7 +3245,9 @@
       else {
         const content = this.streamingNode.querySelector(".zcs-message-content");
         content.replaceChildren();
-        appendMarkdown(this.doc, content, this.streamingText);
+        appendMarkdown(this.doc, content, this.streamingText,
+          this.context?.attachmentID ? (reference) => { void this.openPdfReference(reference); } : null,
+          this.context);
       }
     }
 
@@ -3026,8 +3380,18 @@
         const liveSelection = this.manager.getLiveSelection(paperContext.attachmentID);
         const selections = Protocol.mergeContextSelections(liveSelection, pinnedSelections);
         const includeItem = Boolean(this.manager.getPreference("includeItemContext"));
+        let pdfEvidence = "";
+        if (includeItem) {
+          try {
+            pdfEvidence = await pdfEvidenceForQuestion(paperContext, text);
+          }
+          catch (error) {
+            this.manager.log("Could not extract current PDF text", error);
+          }
+          if (!this.isCurrentContext(contextEpoch, paperContext)) return;
+        }
         const additionalContext = includeItem || selections.length
-          ? Protocol.buildZoteroContext(paperContext, selections, { includeItem })
+          ? Protocol.buildZoteroContext(paperContext, selections, { includeItem, pdfEvidence })
           : null;
         this.elements.input.value = "";
         this.hideCommandMenu?.();
@@ -3334,6 +3698,11 @@
               text: "Codex wants additional file or network access",
             };
       }
+      if (request.method === "mcpServer/elicitation/request") {
+        const detail = params.reason || params.message || params.description;
+        if (detail) return { text: detail };
+        if (params.serverName) return { text: `Codex requests access to ${params.serverName}` };
+      }
       return params.reason
         ? { text: params.reason }
         : { id: "zotero-codex-request-confirmation", text: "Codex needs your confirmation" };
@@ -3492,6 +3861,7 @@
       e.generateImageOption.removeEventListener("click", this.handlers.chooseImageGeneration);
       e.sendButton.removeEventListener("click", this.handlers.sendOrStop);
       e.reconnectButton.removeEventListener("click", this.handlers.reconnect);
+      e.languageSelect.removeEventListener("change", this.handlers.changeLanguage);
       e.showWorkProcessToggle.removeEventListener("change", this.handlers.toggleWorkProcess);
       e.permissionInputs.networkAccess.removeEventListener("change", this.handlers.permissionChange);
       e.resizeHandle.removeEventListener("pointerdown", this.handlers.resizeStart);
@@ -3520,7 +3890,7 @@
       this.getPreference = getPreference;
       this.setPreference = setPreference;
       this.log = log || (() => {});
-      this.locale = global.Services?.locale?.appLocaleAsBCP47 || "en-US";
+      this.locale = modules.Localization.effectiveLocale();
       this.pluginID = "";
       this.paneID = "";
       this.views = new Map();
@@ -3741,6 +4111,17 @@
     setShowWorkProcess(visible) {
       this.setPreference("showWorkProcess", Boolean(visible));
       for (const view of this.views.values()) view.applyWorkProcessPreference();
+    }
+
+    setLanguage(value) {
+      const language = modules.Localization.normalize(value);
+      this.setPreference("language", language);
+      this.locale = modules.Localization.effectiveLocale();
+      for (const view of this.views.values()) {
+        view.elements.languageSelect.value = language;
+        modules.Localization.refresh(view.body);
+        view.renderThreadPicker();
+      }
     }
 
     getSidebarHeight() {
@@ -4151,6 +4532,8 @@
     SidebarManager,
     SidebarView,
     resolveItemContext,
+    pdfEvidenceForQuestion,
+    resolvePaperLink,
     appendMarkdown,
     copyMessageText,
   };

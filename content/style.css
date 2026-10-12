@@ -366,7 +366,6 @@ margin-top: 0;
 .zcs-path-input:focus,
 .zcs-question-input:focus {
   border-color: CanvasText;
-  box-shadow: 0 0 0 1px CanvasText;
 }
 
 .zcs-path-status {
@@ -496,6 +495,7 @@ border: 1px solid var(--zcs-border);
 
 .zcs-settings-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 7px;
   margin-top: 4px;
@@ -503,8 +503,16 @@ border: 1px solid var(--zcs-border);
 
 .zcs-settings-actions .zcs-primary-button,
 .zcs-settings-actions .zcs-secondary-button {
-  min-width: 0;
-  flex: 1 1 auto;
+  width: 100%;
+  height: 32px;
+  min-width: min(150px, 100%);
+  min-height: 32px;
+  max-height: none;
+  flex: 1 1 150px;
+  margin: 0;
+  padding-block: 0;
+  line-height: 20px;
+  white-space: nowrap;
 }
 
 .zcs-settings-note {
@@ -521,6 +529,32 @@ border: 1px solid var(--zcs-border);
   color: var(--zcs-muted);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.zcs-language-card {
+  display: grid;
+  gap: 8px;
+  padding: 13px;
+  border: 1px solid var(--zcs-border);
+  border-radius: 12px;
+  background: var(--zcs-card, Canvas);
+}
+
+.zcs-language-select {
+  width: 100%;
+  min-height: 32px;
+  max-height: none;
+  padding: 5px 9px;
+  border: 1px solid var(--zcs-border-strong);
+  border-radius: 7px;
+  color: var(--zcs-fg, CanvasText);
+  background: var(--zcs-card, Canvas);
+  font: inherit;
+}
+
+.zcs-language-select:focus-visible {
+  outline: 2px solid CanvasText;
+  outline-offset: 2px;
 }
 
 .zcs-settings-toggle-card {
@@ -597,7 +631,7 @@ border: 1px solid var(--zcs-border);
 }
 
 .zcs-switch-input:focus-visible + .zcs-switch {
-  outline: 2px solid AccentColor;
+  outline: 2px solid CanvasText;
   outline-offset: 2px;
 }
 
@@ -1206,8 +1240,8 @@ position: relative;
 }
 
 .zcs-composer-editing {
-  border-color: color-mix(in srgb, AccentColor 68%, var(--zcs-border-strong));
-  box-shadow: 0 0 0 1px color-mix(in srgb, AccentColor 18%, transparent),
+  border-color: color-mix(in srgb, CanvasText 38%, var(--zcs-border-strong));
+  box-shadow: 0 0 0 1px color-mix(in srgb, CanvasText 12%, transparent),
     0 2px 8px color-mix(in srgb, CanvasText 9%, transparent);
 }
 
@@ -1310,8 +1344,8 @@ display: flex;
 }
 
 .zcs-composer-dragging {
-  border-color: AccentColor;
-  box-shadow: 0 0 0 2px color-mix(in srgb, AccentColor 20%, transparent),
+  border-color: color-mix(in srgb, CanvasText 55%, var(--zcs-border-strong));
+  box-shadow: 0 0 0 2px color-mix(in srgb, CanvasText 16%, transparent),
     0 2px 8px color-mix(in srgb, CanvasText 9%, transparent);
 }
 
@@ -1688,7 +1722,7 @@ display: flex;
 .zcs-model-choice:hover,
 .zcs-model-choice[aria-expanded="true"],
 .zcs-model-choice:focus-visible {
-  border-color: color-mix(in srgb, AccentColor 70%, var(--zcs-border-strong));
+  border-color: color-mix(in srgb, CanvasText 40%, var(--zcs-border-strong));
   background: var(--zcs-soft) !important;
 }
 
@@ -1912,9 +1946,14 @@ display: flex;
 .zcs-suggestion:hover {
   background: var(--zcs-soft);
 }
-.zcs-shell :is(button, input, textarea, select):where(:not(.zcs-input)):focus-visible {
-  outline: 2px solid var(--zcs-accent);
+.zcs-shell :is(button, input[type="checkbox"]):focus-visible {
+  outline: 2px solid CanvasText;
   outline-offset: 2px;
+}
+
+.zcs-shell :is(input:not([type="checkbox"]), textarea, select):is(:focus, :focus-visible) {
+  outline: none;
+  box-shadow: none;
 }
 
 @media (forced-colors: active) { .zcs-shell { --zcs-bg: Canvas; --zcs-card: Canvas; --zcs-fg: CanvasText; --zcs-border: ButtonBorder; --zcs-border-strong: ButtonBorder; --zcs-muted: CanvasText; --zcs-accent: Highlight; } }
@@ -2036,4 +2075,4 @@ display: flex;
   opacity: .5;
 }
 .zcs-settings-navigation:hover { background: var(--zcs-hover, color-mix(in srgb, CanvasText 5%, transparent)); }
-.zcs-settings-navigation:focus-visible { outline: 2px solid Highlight; outline-offset: -3px; }
+.zcs-settings-navigation:focus-visible { outline: 2px solid CanvasText; outline-offset: -3px; }

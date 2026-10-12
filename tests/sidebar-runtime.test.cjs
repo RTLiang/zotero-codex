@@ -24,6 +24,7 @@ function fixture() {
       Reader: { registerEventListener() {} },
     },
   };
+  vm.runInNewContext(fs.readFileSync(require.resolve("../content/localization.js"), "utf8"), context);
   vm.runInNewContext(fs.readFileSync(require.resolve("../content/sidebar.js"), "utf8"), context);
   const { SidebarManager, SidebarView } = context.ZoteroCodexModules.Sidebar;
 

@@ -22,6 +22,7 @@ Users open permission or model controls from the composer footer or local slash 
 Preconditions:
 
 - Launch and doctor pass. The local permission proof needs no model login.
+- In a fresh profile, the first permission panel should show `on-request`, `auto_review`, `read-only`, and network access checked. Capture this before changing any option. Existing saved choices may differ.
 - `prove` supplies two fixture papers, selects paper A and opens Codex. For manual coverage, use `seed` once and click its title-bearing `[role="treeitem"]` row from the DOM snapshot.
 - Model/skill catalog checks require the actual CLI and applicable account/skills, not preview fixtures.
 
@@ -32,7 +33,7 @@ Preconditions:
 - Cover the composer entry with `fill '.zcs-input' /approvals`, then `key '.zcs-input' Enter`, each with `--run "$verify_run"`. Expect the same dialog and no sent user message.
 - Cover menu navigation with `fill '.zcs-input' /`, `key '.zcs-input' ArrowDown`, and `key '.zcs-input' Escape`. Capture `.zcs-command-menu` visibility and its option/active-descendant state before and after.
 - With the slash menu open, run `"$verify_control" read .cursor/skills/verify-zotero-codex/scripts/command-menu-layout.js --run "$verify_run"`. It rejects collapsed descriptions, text outside its row, overlapping rows, horizontal overflow and a menu clipped above the chat header. Include long skill names discovered by the real CLI in the scratch workspace, and capture the menu screenshot. Shrink the chat with its resize handle and repeat the check. Zotero's default button height and margins do not apply in the browser preview.
-- Open model controls with `click '.zcs-model-trigger'`, or `fill '.zcs-input' /model` then `key '.zcs-input' Enter`. The `.zcs-model-popover` appears. Click `[data-l10n-id="zotero-codex-model-choice"]` and choose an actually listed `[role="option"]`; repeat with `[data-l10n-id="zotero-codex-effort-choice"]`. Capture both the selected option and footer text. Use the current snapshot to scope an option uniquely.
+- Open model controls with `click '.zcs-model-trigger'`, or `fill '.zcs-input' /model` then `key '.zcs-input' Enter`. The `.zcs-model-popover` appears. Click `[data-zcs-l10n-id="zotero-codex-model-choice"]` and choose an actually listed `[role="option"]`; repeat with `[data-zcs-l10n-id="zotero-codex-effort-choice"]`. Capture both the selected option and footer text. Use the current snapshot to scope an option uniquely.
 - Capture `snapshot commands-after --run "$verify_run"`. Record which entry points were exercised, including library versus PDF when the changed behavior affects both.
 
 ## Gotchas

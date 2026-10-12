@@ -5,7 +5,7 @@
     const doc = root.ownerDocument;
     const body = root.querySelector("#codex-runtime-fields");
     if (!body || body.childElementCount) return;
-    const zh = global.Services.locale.appLocaleAsBCP47.startsWith("zh");
+    const zh = modules.Localization.effectiveLocale().startsWith("zh");
     const t = (en, cn) => zh ? cn : en;
     function element(tag, text, parent = body) {
       const node = doc.createElementNS("http://www.w3.org/1999/xhtml", tag);
@@ -37,6 +37,13 @@
       fields[key] = node;
       return node;
     }
+    const interfaceSettings = section(t("Interface", "界面"));
+    const language = field(interfaceSettings, "language", t("Language", "语言"), "", [
+      ["auto", t("Follow Zotero", "跟随 Zotero")],
+      ["en-US", "English"],
+      ["zh-CN", "简体中文"],
+    ]);
+    language.value = api.language();
     const proxy = section(t("Connection", "连接"));
     field(proxy, "proxyMode", t("Proxy", "代理"), "", [
       ["inherit", t("Use Zotero environment", "使用 Zotero 环境")],
@@ -77,10 +84,18 @@
     }
     const unsubscribe = api.subscribe(update);
     const timer = doc.defaultView.setInterval(update, 500);
-    doc.defaultView.addEventListener("unload", () => {
+    const dispose = () => {
       unsubscribe();
       doc.defaultView.clearInterval(timer);
-    }, { once: true });
+      doc.defaultView.removeEventListener("unload", dispose);
+    };
+    doc.defaultView.addEventListener("unload", dispose);
+    language.addEventListener("change", () => {
+      api.setLanguage(language.value);
+      dispose();
+      body.replaceChildren();
+      mount(root, api);
+    });
     for (const [key, value] of Object.entries(api.read())) fields[key].value = value;
     executable.open = Boolean(fields.codexPath.value);
     storage.open = Boolean(fields.codexHome.value || fields.workingDirectory.value);

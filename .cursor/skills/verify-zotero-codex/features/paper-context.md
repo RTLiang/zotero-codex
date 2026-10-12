@@ -5,10 +5,15 @@ The composer can attach the current paper's metadata and PDF passages. Each pape
 ## Sub-features
 
 - `item-context` shows title, creators, date, DOI, abstract and the local PDF path when available.
+- `pdf-question-evidence` reads the attached local PDF through Zotero's PDFWorker before sending an item-scoped question. It selects matching passages and section headings with physical PDF page markers, keeping the context short enough to avoid Codex's middle truncation. The abstract is omitted when excerpts are present. This supplies paper locations without Computer Use access to the Zotero window. Extraction failure falls back to the existing item metadata and local PDF path.
 - `context-toggle` includes or removes current-item metadata.
 - `selection-live` uses the latest reader text selection for the next message.
 - `selection-pin` pins several passages through Add to Codex and supports removing a passage.
 - `paper-switch` keeps drafts, attachments and chat bindings associated with the selected paper.
+- `pdf-reference` opens a cited page or jumps to a figure, table, equation or numbered section in the attached PDF. A tagged figure/table with a labeled bounding box uses the PDF structure tree; sections use the PDF outline when present; other references use PDF text positions. A paraphrased quotation immediately following a numbered section points to that section. An unanchored quotation is plain text, because its wording may be absent from the PDF. Navigation crosses into the reader through `Zotero.Reader.navigate`.
+- `same-paper-links` opens links to this paper's arXiv, DOI or catalog URL in its attached PDF when the link names a page or section. Method links resolve against the PDF outline. Ambiguous and unrelated links in a PDF-scoped assistant reply are shown as text.
+- `citation-harness` supplies a trusted citation contract on new, resumed and forked chats, without repeating it in turn context. Codex should emit current-PDF Markdown targets `#page=N`, `#section=N`, `#figure=N`, `#table=N` and `#equation=N`, verified against the attached PDF or original excerpts. Excerpts distinguish physical PDF pages from printed page labels. The explicit target controls navigation independently of its visible label.
+- `quote-highlight` uses `#page=N&quote=URI-encoded-original-text` to locate a verbatim passage on its physical PDF page and briefly highlight the reader's exact character rectangles. It closes Find without adding a library annotation. Missing or repeated passages report an error instead of choosing another occurrence.
 
 ## How to get to it (user POV)
 
@@ -16,6 +21,8 @@ The composer can attach the current paper's metadata and PDF passages. Each pape
 - Open a PDF and click Codex in the reader's right sidenav.
 - Click the composer's Item button or +, then Include current item. The current-paper attachment also has a remove button.
 - Select PDF text to attach the live selection. Click Add to Codex in the selection popup to pin it.
+- Click a page, figure, table, equation or section reference in an assistant reply to return to its PDF location. A paraphrase beside a section reference points to that section.
+- Click a link to the current paper in an existing assistant reply; it should open the Zotero PDF rather than an online copy.
 
 ## Driving it with control.mjs and native app control
 
@@ -23,6 +30,7 @@ Preconditions:
 
 - Doctor passes. Run `seed` once or use the fixtures already created by `prove`.
 - Metadata-only checks need no model reply. Reader paths require a disposable local PDF attached to a fixture paper through Zotero's normal attachment UI.
+- `seed` and `prove` accept `--entry reader --pdf /absolute/path/to/fixture.pdf` to import a chosen local PDF as fixture data into the isolated profile. Without `--pdf`, they generate the one-page permission fixture. The original file is read without modification.
 
 - Select paper A by its visible title in `#zotero-items-tree [role="treeitem"]`. `snapshot paper-list --run "$verify_run"` exposes the current row ID. In the fresh fixture list A is `#item-tree-main-default-row-0`; use `click '#item-tree-main-default-row-0'` with the run argument and confirm the title before relying on the index.
 - Click the visible Codex `[data-pane]` button whose value contains `codex-sidebar`. The smoke resolves this handle dynamically. Capture `snapshot paper-context-before --run "$verify_run"`; expect Verification paper A in the attachment.
@@ -30,6 +38,11 @@ Preconditions:
 - Type an unsent draft with `fill '.zcs-input' 'Draft for paper A'`. Select B's title-bearing row with pointer actions and confirm A's draft/context does not appear on B. Return to A and capture the restored draft. No direct view setters count as proof.
 - For PDF entry, open the fixture attachment in Zotero using native app control, click its Codex sidenav, then select visible text with a real pointer drag. Capture the selection action and the `.zcs-live-selection-attachment` result. Click the selection popup's `.zcs-reader-add` button in the reader document and select another passage. Expect separate pinned `.zcs-selection-attachment` chips. The main-window helper does not traverse the embedded PDF text layer; native control must perform this step.
 - Remove a live or pinned passage through that chip's `.zcs-attachment-remove`, then capture the attachment list. For an authenticated send, inspect the stored user turn as well as the screen to confirm only the intended passages were sent and consumed.
+- For PDF reference links, use a real assistant reply in an authenticated scratch profile. Click a page link, a numbered section link, and a figure/table/equation link in `.zcs-assistant .zcs-pdf-reference`. Check that a translated paraphrase next to a section number goes to that section, and that an unanchored paraphrase has no link. Use both a tagged PDF with labeled figure bounds and an untagged PDF with a searchable caption. Capture the reader page before and after each click; the figure or table body should be visible without the Find popup. Verify an unmatched reference reports that it could not be located without opening Find. A seeded or fabricated assistant transcript does not prove this path.
+- For `same-paper-links`, use a real reply with a Markdown link to the current paper's online copy and a local PDF attachment. Click its `.zcs-pdf-reference` and confirm the current Zotero attachment opens, including the requested page when the link has `#page=N`. An unrelated external link in that PDF-scoped answer should have no anchor. Check the stored reply separately so the display-only routing is not mistaken for changed model output.
+- For `citation-harness`, ask a normal paper question in a new authenticated scratch chat, then continue a resumed chat and edit an earlier message to fork it. Inspect each real stored response for supported Markdown targets and verified source locations. Click a generated section link and confirm the native PDF reaches that heading. A model transport probe establishes generated output only; it does not prove the native click path.
+- For `pdf-question-evidence`, import a multipage PDF into the isolated reader profile and send a question about a heading near the end. Inspect the stored user turn's `additionalContext.zotero.value` for the matching text and its physical page marker, then inspect the answer and approval area. Confirm the answer can locate the heading without a Computer Use permission request. Repeat with a Chinese question about an English heading. The PDFWorker call and context formatting can be checked read-only in the isolated profile without login; the actual send and absence of an approval card require an authenticated scratch profile.
+- For `quote-highlight`, provide a verified original excerpt and physical page, ask for a verbatim citation, and inspect the real response's encoded quote target. Focus the isolated window, then click its anchor with `click SELECTOR --capture quote-highlight --capture-when SCRIPT_FILE --run "$verify_run"`. The read-only condition should observe the current reader's `_internalReader._primaryView._highlightedPosition`, so the screenshot catches the temporary highlight before it expires. Confirm the intended words across line breaks are highlighted on the cited page, Find stays closed and the attachment's annotation count is unchanged. Check missing and repeated text separately. The display label can be translated, but the target must contain original PDF wording.
 
 ## Gotchas
 
@@ -37,4 +50,7 @@ Preconditions:
 - A paper without a PDF is valid for metadata checks but cannot prove reader selection behavior.
 - The main window can retain both library and reader panes. Scope DOM selectors to the visible pane and use native control only on the owned fixture window.
 - Replacing live selection and pinning selection are different operations. Cover both when selection handling changes.
+- Figure and table numbers can also occur in surrounding prose. In tagged PDFs, check that the structure label and box refer to the actual object. In untagged PDFs, check that a caption anchors the jump and the figure or table body is visible; report cases where the PDF text has no usable caption.
+- For a section bookmark with XYZ coordinates, check that the heading itself is visible after navigation, including headings near a page's bottom. A valid destination or a changed page number alone does not establish this. Physical-page citations use the page index and must not be redirected by printed page labels.
+- Existing replies keep their original stored Markdown. The sidebar changes their clickable destination when it renders them; copying the raw reply can still include the old online URL.
 - Unsent draft restoration is distinct from persisted conversation bindings. A chat-binding claim needs a real created chat for each paper and reopening evidence.
