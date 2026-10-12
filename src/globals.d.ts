@@ -21,3 +21,5 @@ declare var IOUtils: IOUtilsHost;
 declare var PathUtils: PathUtilsHost;
 declare var Services: ServicesHost;
 declare var Zotero: ZoteroHost;
+
+declare var module: { exports?: unknown } | undefined;
