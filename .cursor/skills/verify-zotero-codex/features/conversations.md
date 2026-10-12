@@ -10,7 +10,7 @@ Users create, search, resume and manage chats while replies stream. Chats can co
 - `background` keeps a reply running while users switch chats and restores its Stop button.
 - `history-edit` copies messages, edits the latest turn, or branches an earlier turn.
 - `manage` archives/deletes a chat and clears its paper bindings after success.
-- `title` begins with the paper title and later generates a paper-related name.
+- `title` begins with the paper title when Include current item is enabled, then may generate a paper-related name.
 
 ## How to get to it (user POV)
 
@@ -32,7 +32,7 @@ Preconditions:
 - For interruption/background coverage, use a prompt that produces enough text to observe an active reply. While `.zcs-send-stop` is visible, switch through the picker or start a new chat. Return to the running row and confirm Stop is restored. Click `.zcs-send-button` to interrupt. Capture terminal state and the stored turn. Native notification delivery/click needs native app control and a genuinely background completion.
 - Open `click '.zcs-thread-trigger'`, then `fill '.zcs-thread-search' VERIFICATION_OK`. Capture matching and empty search states. Toggle `.zcs-paper-only-filter input`. Scroll the real chat list with native control for pagination; a short list cannot prove further-batch loading.
 - Message buttons use `[data-l10n-id="zotero-codex-copy-message"]` and `[data-l10n-id="zotero-codex-edit-message"]`. Scope to the target `.zcs-user` message before clicking. Use the composer to resend, reopen history, and confirm the latest-turn update. Repeat on an earlier user turn and verify the original chat remains available. Do not call edit/fork methods directly.
-- Use native context-click on a disposable picker row or title. Select the visible `.zcs-thread-context-menu` action and complete Zotero's real confirmation dialog. Reopen the picker and inspect the stored chat/binding state. Capture cancel and success separately; never target the user's real chats.
+- Use native context-click on a disposable picker row or title. Select Archive in `.zcs-thread-context-menu` and inspect the stored chat/binding state; archive runs without a confirmation dialog. On a separate disposable chat, select Delete, capture cancellation in Zotero's confirmation dialog, then confirm deletion and inspect the stored state. Never target the user's real chats.
 
 ## Gotchas
 
@@ -40,4 +40,4 @@ Preconditions:
 - Automatic title generation can create an extra model request. Record the final name after completion, and preserve a manual name if that path is under test.
 - Background reply, OS notification delivery and notification-click navigation are separate claims.
 - Picker search depends on the actual loaded chat title/text, not necessarily the literal prompt. Use the displayed title when the prompt term is absent.
-- Archive and delete differ. Verify the selected operation and cancellation; screenshots of a disappearing row alone do not establish backend success.
+- Archive and delete differ: only deletion asks for confirmation. Verify the selected operation and deletion cancellation; screenshots of a disappearing row alone do not establish backend success.
