@@ -2,6 +2,8 @@
 
 This map covers the native Zotero sidebar and its preferences. Read the main [verification skill](../SKILL.md) for launch, ownership, authentication and cleanup. In each recipe, `verify_control` and `verify_run` are the shell variables established there. Use a fresh run for each independent proof.
 
+Before any recipe, follow [contributor privacy](../SKILL.md#contributor-privacy) for fixtures, model requests, and shared evidence. Raw captures remain local; share only inspected, sanitized copies.
+
 ## Coverage and evidence
 
 | Feature | User entry points | Initial proof status |
