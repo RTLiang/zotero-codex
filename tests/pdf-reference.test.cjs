@@ -3,11 +3,57 @@ const assert = require("node:assert/strict");
 const Markdown = require("../content/markdown.js");
 
 global.ZoteroCodexModules = {
-  Protocol: require("../content/protocol.js"), CodexClient: {}, Markdown,
+  Protocol: require("../content/protocol.js"), CodexClient: { publicError: error => error.message }, Markdown,
 };
 require("../content/localization.js");
 require("../content/sidebar.js");
 const { SidebarView, resolvePaperLink, appendMarkdown } = global.ZoteroCodexModules.Sidebar;
+
+function errorStatusView() {
+  return Object.assign(Object.create(SidebarView.prototype), {
+    statusRevision: 0,
+    transientStatusTimer: null,
+    elements: { status: { dataset: {}, hidden: true }, statusText: {}, pathStatus: {} },
+    manager: { log() {} },
+  });
+}
+
+test("PDF lookup errors disappear after one second and clear their settings text", t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const view = errorStatusView();
+  view.showError(new Error("Missing figure"), { transient: true });
+  t.mock.timers.tick(999);
+  assert.equal(view.elements.status.hidden, false);
+  t.mock.timers.tick(1);
+  assert.equal(view.elements.status.hidden, true);
+  assert.equal(view.elements.statusText.textContent, "");
+  assert.equal(view.elements.pathStatus.textContent, "");
+});
+
+test("an expired PDF error cannot clear a newer connection error", t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const view = errorStatusView();
+  view.showError(new Error("Missing figure"), { transient: true });
+  t.mock.timers.tick(500);
+  view.showError(new Error("Connection failed"));
+  t.mock.timers.tick(1000);
+  assert.equal(view.elements.status.hidden, false);
+  assert.equal(view.elements.statusText.textContent, "Connection failed");
+  assert.equal(view.elements.pathStatus.textContent, "Connection failed");
+});
+
+test("delayed localization cannot restore an expired PDF error", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const view = errorStatusView();
+  let translate;
+  view.doc = { l10n: { formatValue: () => new Promise(resolve => { translate = resolve; }) } };
+  view.showError(Object.assign(new Error("Missing figure"), { l10nID: "missing" }), { transient: true });
+  t.mock.timers.tick(1000);
+  translate("Translated missing figure");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(view.elements.status.hidden, true);
+  assert.equal(view.elements.pathStatus.textContent, "");
+});
 
 test("same-paper links use explicit PDF locations and do not invent a page-one target", () => {
   const context = {
@@ -135,6 +181,7 @@ async function withReader(pdfDocument, action, options = {}) {
       _pageMatches: Array.from({ length: 10 }, () => []),
       getMatchPositionsAsync: async (pageIndex) => {
         options.requestedPage?.(pageIndex);
+        if (options.positionError) throw options.positionError;
         return options.positions || [{ pageIndex: 0, rects: [[40, 100, 100, 120]] }];
       },
     },
@@ -145,6 +192,7 @@ async function withReader(pdfDocument, action, options = {}) {
     _state: { primaryViewFindState: {} },
     _handleFindStateChange(_primary, state) {
       findStates.push(state);
+      options.findState?.(state);
       this._state.primaryViewFindState = {
         ...state, result: { total: options.foundQuery === state.query ? 1 : 0 },
       };
@@ -174,6 +222,25 @@ async function withReader(pdfDocument, action, options = {}) {
 test("a physical PDF page citation bypasses printed page labels", async () => {
   const { opened } = await withReader({}, (view) => view.openPdfReference({ pageNumber: 4 }));
   assert.deepEqual(opened, [{ id: 42, location: { pageIndex: 3 } }]);
+});
+
+test("a valid page jump leaves a PDF error visible until its one-second expiry", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  await withReader({}, async view => {
+    Object.assign(view, errorStatusView(), { showError: SidebarView.prototype.showError });
+    await view.openPdfReference({ query: "Figure 999" });
+    assert.equal(view.elements.status.hidden, false);
+    assert.match(view.elements.statusText.textContent, /Figure 999/);
+    assert.notEqual(view.transientStatusTimer, null);
+    await view.openPdfReference({ pageNumber: 4 });
+    assert.equal(view.elements.status.hidden, false);
+    t.mock.timers.tick(999);
+    assert.equal(view.elements.status.hidden, false);
+    t.mock.timers.tick(1);
+    assert.equal(view.elements.status.hidden, true);
+    assert.equal(view.transientStatusTimer, null);
+    assert.equal(view.elements.pathStatus.textContent, "");
+  });
 });
 
 test("clicking an original passage highlights its exact multiline rectangles on the cited page", async () => {
@@ -217,7 +284,7 @@ test("a tagged figure jumps to its own bounding box, not a prose mention or Fig.
   assert.deepEqual(findStates, []);
 });
 
-test("an untagged figure uses its caption and leaves the Find popup closed", async () => {
+test("an untagged figure uses its caption and clears Find", async () => {
   const pdfDocument = {
     numPages: 1,
     async getPage() { return { async getStructTree() { return null; } }; },
@@ -225,13 +292,54 @@ test("an untagged figure uses its caption and leaves the Find popup closed", asy
   const { navigation, findStates } = await withReader(pdfDocument,
     (view) => view.openPdfReference({ query: "Figure 1", label: "图1" }),
     { foundQuery: "Figure 1:" });
-  assert.deepEqual(findStates.map((state) => state.query), [
+  assert.deepEqual(findStates.filter((state) => state.active).map((state) => state.query), [
     "图 1：", "图1：", "图 1:", "图1:", "Figure 1:",
   ]);
-  assert.deepEqual(findStates.map((state) => state.popupOpen), [false, false, false, false, false]);
+  assert.ok(findStates.every((state) => state.popupOpen === false));
+  assert.equal(findStates.at(-1).active, false);
+  assert.equal(findStates.at(-1).query, "");
   assert.deepEqual(navigation, [
     { position: { pageIndex: 0, rects: [[40, 100, 100, 120]] } },
   ]);
+});
+
+test("repeated figure, table and equation jumps leave no active search highlight", async () => {
+  const pdfDocument = {
+    numPages: 1,
+    async getPage() { return { async getStructTree() { return null; } }; },
+  };
+  for (const query of ["Figure 1", "Table 2", "(10)"]) {
+    const foundQuery = query.startsWith("(") ? query : `${query}:`;
+    const { findStates, navigation } = await withReader(pdfDocument, async view => {
+      await view.openPdfReference({ query });
+      await view.openPdfReference({ query });
+    }, { foundQuery });
+    assert.equal(navigation.length, 2);
+    assert.equal(findStates.filter(state => state.active === false).length, 2);
+    assert.equal(findStates.at(-1).query, "");
+    assert.ok(findStates.every(state => state.popupOpen === false));
+  }
+});
+
+test("missing captions and failed position lookups clear their search state", async () => {
+  const pdfDocument = {
+    numPages: 1,
+    async getPage() { return { async getStructTree() { return null; } }; },
+  };
+  for (const options of [
+    {},
+    { foundQuery: "Figure 1:", positionError: new Error("Position lookup failed") },
+    { foundQuery: "Figure 1:", positions: [] },
+  ]) {
+    const states = [];
+    await assert.rejects(withReader(pdfDocument,
+      view => view.openPdfReference({ query: "Figure 1" }), {
+        ...options, findState: state => states.push(state),
+      }), /Could not locate|Position lookup failed/);
+    assert.equal(states.at(-1).active, false);
+    assert.equal(states.at(-1).query, "");
+    assert.equal(states.at(-1).popupOpen, false);
+  }
 });
 
 test("a missing figure reports that it cannot be located without opening Find", async () => {

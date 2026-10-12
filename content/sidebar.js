@@ -474,6 +474,7 @@
       this.threadListLimit = THREAD_LIST_BATCH_SIZE;
       this.threadListMatchCount = 0;
       this.statusRevision = 0;
+      this.transientStatusTimer = null;
       this.managingThreadID = "";
       this.contextMenuThreadID = "";
       this.cleanupClient = this.client.subscribe((event) => this._handleClientEvent(event));
@@ -2065,6 +2066,12 @@
             throw new Error("PDF text search is unavailable in this Zotero reader");
           }
           const utils = global.Cu || global.Components?.utils;
+          const clearFindState = () => {
+            const state = { ...internal._state.primaryViewFindState,
+              active: false, popupOpen: false, query: "", result: null };
+            internal._handleFindStateChange(true,
+              utils?.cloneInto ? utils.cloneInto(state, reader._iframeWindow) : state);
+          };
           const sendFindState = (query, popupOpen) => {
             const previous = internal._state.primaryViewFindState;
             const state = {
@@ -2121,10 +2128,7 @@
               position = positions[0];
             }
             finally {
-              const state = { ...internal._state.primaryViewFindState,
-                active: false, popupOpen: false, query: "", result: null };
-              internal._handleFindStateChange(true,
-                utils?.cloneInto ? utils.cloneInto(state, reader._iframeWindow) : state);
+              clearFindState();
             }
             await reader.navigate({ position });
             return;
@@ -2160,39 +2164,42 @@
           else if (number && /^[（(]\d/u.test(reference.query)) {
             queries = [`（${number}）`, reference.query];
           }
-          for (const query of queries) {
-            sendFindState(query, false);
-            const found = await new Promise((resolve) => {
-              const started = Date.now();
-              const poll = () => {
-                const state = internal._state.primaryViewFindState;
-                if (state?.query === query && state.result?.total != null) {
-                  resolve(state.result.total > 0);
-                }
-                else if (Date.now() - started >= 4000) resolve(null);
-                else global.setTimeout(poll, 75);
-              };
-              poll();
-            });
-            if (found) {
-              const controller = internal._primaryView?._findController;
-              const selected = controller?.selected;
-              if (!selected || selected.pageIdx < 0 || selected.matchIdx < 0) {
-                throw new Error(`Could not locate ${reference.label || reference.query} in the PDF`);
+          let position;
+          try {
+            for (const query of queries) {
+              sendFindState(query, false);
+              const found = await new Promise((resolve) => {
+                const started = Date.now();
+                const poll = () => {
+                  const state = internal._state.primaryViewFindState;
+                  if (state?.query === query && state.result?.total != null) {
+                    resolve(state.result.total > 0);
+                  }
+                  else if (Date.now() - started >= 4000) resolve(null);
+                  else global.setTimeout(poll, 75);
+                };
+                poll();
+              });
+              if (found) {
+                const controller = internal._primaryView?._findController;
+                const selected = controller?.selected;
+                if (!selected || selected.pageIdx < 0 || selected.matchIdx < 0) break;
+                const positions = await controller.getMatchPositionsAsync(selected.pageIdx);
+                position = positions?.[selected.matchIdx];
+                break;
               }
-              const positions = await controller.getMatchPositionsAsync(selected.pageIdx);
-              const position = positions?.[selected.matchIdx];
-              if (!position) throw new Error(`Could not locate ${reference.label || reference.query} in the PDF`);
-              await reader.navigate({ position });
-              return;
+              if (found === null) break;
             }
-            if (found === null) break;
+            if (!position) throw new Error(`Could not locate ${reference.label || reference.query} in the PDF`);
           }
-          throw new Error(`Could not locate ${reference.label || reference.query} in the PDF`);
+          finally {
+            clearFindState();
+          }
+          await reader.navigate({ position });
         }
       }
       catch (error) {
-        this.showError(error);
+        this.showError(error, { transient: true });
       }
     }
 
@@ -2819,6 +2826,8 @@
     }
 
     setStatus(state, text) {
+      if (this.transientStatusTimer != null) global.clearTimeout(this.transientStatusTimer);
+      this.transientStatusTimer = null;
       const revision = ++this.statusRevision;
       this.elements.status.dataset.state = state;
       this.elements.statusText.textContent = text;
@@ -2834,15 +2843,29 @@
       return revision;
     }
 
-    showError(error) {
+    clearTransientStatus() {
+      if (this.transientStatusTimer == null) return;
+      this.setStatus("ready", "");
+      setPlainText(this.elements.pathStatus, "");
+    }
+
+    showError(error, { transient = false } = {}) {
       const message = ClientTools.publicError(error);
-      const revision = this.setStatus("error", message);
-      setPlainText(this.elements.pathStatus, message);
+      const display = (text) => {
+        const revision = this.setStatus("error", text);
+        setPlainText(this.elements.pathStatus, text);
+        if (transient) {
+          this.transientStatusTimer = global.setTimeout(() => {
+            if (!this.destroyed && revision === this.statusRevision) this.clearTransientStatus();
+          }, 1000);
+        }
+        return revision;
+      };
+      const revision = display(message);
       if (error?.l10nID) {
         void formatValue(this.doc, error.l10nID, error.l10nArgs, message).then((localized) => {
           if (this.destroyed || revision !== this.statusRevision) return;
-          this.setStatus("error", localized);
-          setPlainText(this.elements.pathStatus, localized);
+          display(localized);
         });
       }
       this.manager.log(message, error);
@@ -3825,6 +3848,8 @@
     destroy() {
       if (this.destroyed) return;
       this.destroyed = true;
+      if (this.transientStatusTimer != null) global.clearTimeout(this.transientStatusTimer);
+      this.transientStatusTimer = null;
       this.closeImagePreview?.();
       this.loadSerial++;
       this.threadRefreshSerial++;
