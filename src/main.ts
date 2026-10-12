@@ -1,4 +1,28 @@
-var ZoteroCodexPlugin = {
+interface ZoteroCodexPluginObject {
+  id: string;
+  version: string;
+  rootURI: string;
+  client: CodexClientInstance | null;
+  sidebar: SidebarInstance | null;
+  initialized: boolean;
+  storageHome: string;
+  applyingSettings: boolean;
+  sidebarOptions?: SidebarOptions;
+
+  preferenceKey(name: string): string;
+  getPreference(name: string): unknown;
+  setPreference(name: string, value: string): void;
+  init(options: { id: string; version: string; rootURI: string }): Promise<void>;
+  createSidebar(): void;
+  runtimeBusy(): boolean;
+  applySettings(values: Record<string, string>, options?: { importLogin?: boolean }): Promise<{ authenticated: boolean; binaryPath?: string }>;
+  addToAllWindows(): void;
+  addToWindow(window: Window): void;
+  removeFromWindow(window: Window): void;
+  shutdown(): Promise<void>;
+}
+
+var ZoteroCodexPlugin: ZoteroCodexPluginObject = {
   id: "",
   version: "",
   rootURI: "",
@@ -8,17 +32,17 @@ var ZoteroCodexPlugin = {
   storageHome: "",
   applyingSettings: false,
 
-  preferenceKey(name) {
-    const scoped = globalThis.ZoteroCodexModules?.RuntimeSettings.scopedKey(name, this.storageHome) || name;
+  preferenceKey(name: string): string {
+    const scoped = globalThis.ZoteroCodexModules?.RuntimeSettings!.scopedKey(name, this.storageHome) || name;
     return `extensions.zotero.codexSidebar.${scoped}`;
   },
 
-  getPreference(name) {
+  getPreference(name: string): unknown {
     const value = Zotero.Prefs.get(this.preferenceKey(name), true);
     return value ?? (name === "paperThreads" ? "{}" : "");
   },
 
-  setPreference(name, value) {
+  setPreference(name: string, value: string): void {
     Zotero.Prefs.set(this.preferenceKey(name), value, true);
   },
 
@@ -43,9 +67,9 @@ var ZoteroCodexPlugin = {
     if (!modules?.CodexClient || !modules?.Sidebar) {
       throw new Error("Codex for Zotero modules failed to load");
     }
-    modules.Localization.configure((name) => this.getPreference(name));
+    modules.Localization!.configure((name) => this.getPreference(name));
 
-    const pluginLog = (message, error) => {
+    const pluginLog = (message: string, error?: unknown) => {
       Zotero.debug(`Codex for Zotero: ${message}`);
       if (error) Zotero.logError(error);
     };
@@ -71,19 +95,19 @@ var ZoteroCodexPlugin = {
       get binaryPath() {
         return ZoteroCodexPlugin.client?.binaryPath || "";
       },
-      reconnect: () => this.client.reconnect(),
+      reconnect: () => this.client!.reconnect(),
       settings: {
-        read: () => modules.RuntimeSettings.read(name => this.getPreference(name)),
-        language: () => modules.Localization.selected(),
-        setLanguage: (value) => this.sidebar.setLanguage(value),
+        read: () => modules.RuntimeSettings!.read(name => this.getPreference(name)),
+        language: () => modules.Localization!.selected(),
+        setLanguage: (value) => this.sidebar!.setLanguage(value),
         busy: () => this.applyingSettings || this.runtimeBusy(),
-        subscribe: (listener) => this.client.subscribe(listener),
+        subscribe: (listener) => this.client!.subscribe(listener),
         defaults: () => ({
           codexHome: PathUtils.join(Zotero.DataDirectory.dir, "codex-sidebar", "runtime"),
           workingDirectory: PathUtils.join(Zotero.DataDirectory.dir, "codex-sidebar", "workspace"),
         }),
         apply: (values, options) => this.applySettings(values, options),
-        mount: (root) => modules.Preferences.mount(root, Zotero.CodexSidebar.settings),
+        mount: (root) => modules.Preferences!.mount(root, Zotero.CodexSidebar!.settings),
       },
     };
     await Zotero.PreferencePanes.register({
@@ -94,24 +118,24 @@ var ZoteroCodexPlugin = {
   },
 
   createSidebar() {
-    this.sidebar = new globalThis.ZoteroCodexModules.Sidebar.SidebarManager(this.sidebarOptions);
+    this.sidebar = new globalThis.ZoteroCodexModules!.Sidebar!.SidebarManager(this.sidebarOptions!);
     this.sidebar.init(this.id);
   },
 
   runtimeBusy() {
-    return Boolean(this.client.connecting || this.client.pending.size || this.sidebar.runningTurns.size
-      || [...this.sidebar.views.values()].some(view =>
+    return Boolean(this.client!.connecting || this.client!.pending.size || this.sidebar!.runningTurns.size
+      || [...this.sidebar!.views.values()].some(view =>
         view.running || view.creatingTask || view.initializing || (view.initialized && view.contextTransitioning)));
   },
 
-  async applySettings(values, { importLogin = false } = {}) {
-    const settings = globalThis.ZoteroCodexModules.RuntimeSettings;
+  async applySettings(values: Record<string, string>, { importLogin = false }: { importLogin?: boolean } = {}) {
+    const settings = globalThis.ZoteroCodexModules!.RuntimeSettings!;
     const next = settings.validate(values, Zotero.isWin);
     if (this.applyingSettings || this.runtimeBusy()) throw new Error("Wait for all replies and requests to finish, or stop them before saving settings.");
     this.applyingSettings = true;
     try {
       // Validate and prepare before interrupting any existing connection.
-      await globalThis.ZoteroCodexModules.CodexClient.resolveCodexPath(next.codexPath);
+      await globalThis.ZoteroCodexModules!.CodexClient!.resolveCodexPath(next.codexPath);
       await settings.prepare(next);
       if (this.runtimeBusy()) throw new Error("A request started while preparing settings. Stop it and save again.");
       if (importLogin) {
@@ -119,17 +143,17 @@ var ZoteroCodexPlugin = {
         if (this.runtimeBusy()) throw new Error("A request started while importing login. Stop it and save again.");
       }
       // Keep the registered section: unregister/register races Zotero's async render.
-      this.sidebar.detachRuntimeViews();
+      this.sidebar!.detachRuntimeViews();
       try {
-        await this.client.disconnect();
-        for (const key of settings.KEYS) this.setPreference(key, next[key]);
+        await this.client!.disconnect();
+        for (const key of settings.KEYS) this.setPreference(key, next[key as keyof RuntimeSettingsValues]);
         this.storageHome = next.codexHome;
         Services.prefs.savePrefFile(null);
-        await this.client.connect();
+        await this.client!.connect();
       } finally {
-        this.sidebar.restoreRuntimeViews();
+        this.sidebar!.restoreRuntimeViews();
       }
-      return { authenticated: Boolean(this.client.account), binaryPath: this.client.binaryPath };
+      return { authenticated: Boolean(this.client!.account), binaryPath: this.client!.binaryPath };
     } finally {
       this.applyingSettings = false;
     }
@@ -139,12 +163,12 @@ var ZoteroCodexPlugin = {
     for (const window of Zotero.getMainWindows()) this.addToWindow(window);
   },
 
-  addToWindow(window) {
+  addToWindow(window: Window) {
     if (!this.initialized || !window) return;
-    this.sidebar.addToWindow(window);
+    this.sidebar!.addToWindow(window);
   },
 
-  removeFromWindow(window) {
+  removeFromWindow(window: Window) {
     this.sidebar?.removeFromWindow(window);
   },
 

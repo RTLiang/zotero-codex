@@ -52,7 +52,6 @@ for (const file of [
   "content/preferences.js",
   "content/markdown.js",
   "content/sidebar.js",
-  "content/main.js",
   "scripts/prepare-release.mjs",
   "scripts/prepare-auto-release.mjs",
 ]) {
