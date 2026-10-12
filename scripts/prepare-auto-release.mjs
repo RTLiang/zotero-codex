@@ -22,11 +22,14 @@ function compareVersions(left, right) {
   return 0;
 }
 
-const latest = execFileSync("git", ["tag", "--list", "v*"], { encoding: "utf8" })
+const latest = execFileSync("git", ["ls-remote", "--tags", "--refs", "origin", "v*"], {
+  cwd: projectRoot,
+  encoding: "utf8",
+})
   .split(/\r?\n/u)
+  .map(line => line.split(/\s+/u).at(-1).replace(/^refs\/tags\//u, ""))
   .map(parseVersion)
   .filter(Boolean)
-  .concat([parseVersion(packageJSON.version)].filter(Boolean))
   .sort(compareVersions)
   .at(-1);
 
