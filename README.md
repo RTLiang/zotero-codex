@@ -87,7 +87,7 @@ Versions follow `year.day-of-year.daily-revision`. The release workflow incremen
 
 ## Contributing and verification
 
-Read [AGENTS.md](AGENTS.md) and the [native verification skill](.cursor/skills/verify-zotero-codex/SKILL.md) before changing runtime behavior. Follow its [contributor privacy rules](.cursor/skills/verify-zotero-codex/SKILL.md#contributor-privacy) for all tests: use synthetic identities and disposable fixtures, keep raw evidence local, and inspect sanitized copies before sharing. Prompts, logs, screenshots, PR reports, and commit metadata must not disclose personal absolute paths, email addresses, account information, or credentials. Use repository-relative paths or placeholders in shared instructions and reports.
+Read [AGENTS.md](AGENTS.md) and the [native verification skill](.cursor/skills/verify-zotero-codex/SKILL.md) before changing runtime behavior. Follow its [contributor privacy rules](.cursor/skills/verify-zotero-codex/SKILL.md#contributor-privacy) for all tests: use synthetic identities and disposable fixtures, keep raw evidence local, and inspect sanitized copies before sharing. Prompts, logs, screenshots, PR reports, and commit metadata must not disclose personal absolute paths, private account information, or credentials. Use repository-relative paths or placeholders in shared instructions and reports.
 
 ## Frontend preview
 

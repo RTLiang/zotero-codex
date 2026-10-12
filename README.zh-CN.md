@@ -90,7 +90,7 @@ npm run build
 
 ## 贡献与验证
 
-修改运行时行为前，请阅读 [AGENTS.md](AGENTS.md) 和[原生验证 skill](.cursor/skills/verify-zotero-codex/SKILL.md)。所有测试都必须遵守其中的[贡献者隐私规则](.cursor/skills/verify-zotero-codex/SKILL.md#contributor-privacy)：使用虚构身份和可丢弃的测试数据，原始证据只保留在本机，分享前检查脱敏副本。提示词、日志、截图、PR 报告和提交元数据不得泄露个人绝对路径、邮箱、账号信息或凭据。共享说明和报告中的路径使用仓库相对路径或占位符。
+修改运行时行为前，请阅读 [AGENTS.md](AGENTS.md) 和[原生验证 skill](.cursor/skills/verify-zotero-codex/SKILL.md)。所有测试都必须遵守其中的[贡献者隐私规则](.cursor/skills/verify-zotero-codex/SKILL.md#contributor-privacy)：使用虚构身份和可丢弃的测试数据，原始证据只保留在本机，分享前检查脱敏副本。提示词、日志、截图、PR 报告和提交元数据不得泄露个人绝对路径、私人账号信息或凭据。共享说明和报告中的路径使用仓库相对路径或占位符。
 
 ## CI/CD
 
