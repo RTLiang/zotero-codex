@@ -361,6 +361,16 @@ async function prove(client) {
   await snapshot(client, "permissions-before");
   await drive(client, "click", ui(".zcs-permissions-trigger"));
   assert.equal(await client.evaluate(`return document.querySelector(arguments[0]).hidden;`,[ui(".zcs-permissions-card")]), false);
+  const defaults = await client.evaluate(`
+    const root=document.querySelector(arguments[0]);
+    const values=Object.fromEntries(['approvalPolicy','approvalsReviewer','sandbox'].map(key=>[
+      key,root.querySelector('.zcs-permission-field[data-permission="'+key+'"] .zcs-model-choice').value]));
+    values.networkAccess=root.querySelector('.zcs-permission-network input').checked;
+    return values;
+  `,[prefix.trim()]);
+  assert.deepEqual(defaults, {
+    approvalPolicy:"on-request", approvalsReviewer:"auto_review", sandbox:"read-only", networkAccess:true,
+  }, "Fresh profile permission defaults differ from the documented defaults");
   await snapshot(client, "permissions-button-entry");
   const selections = [];
   for (const [key, values] of [
@@ -425,7 +435,7 @@ async function prove(client) {
   assert.ok(disk.includes('user_pref("extensions.zotero.codexSidebar.sandbox", "workspace-write");'));
   const sessions = path.join(scratch, "runtime/sessions");
   assert.ok(!fs.existsSync(sessions) || fs.readdirSync(sessions).length === 0, "Local command created a session");
-  json(path.join(run, "permissions-proof.json"), {feature:"commands-permissions",entry,entries:["bottom permission button","/approvals"],selections,result, persisted:true, sessionDirectoryEmpty:true, scope:"Native pointer clicks through all three permission choice lists and preference persistence; no model response or approval request was tested"});
+  json(path.join(run, "permissions-proof.json"), {feature:"commands-permissions",entry,entries:["bottom permission button","/approvals"],defaults,selections,result, persisted:true, sessionDirectoryEmpty:true, scope:"Native pointer clicks through all three permission choice lists and preference persistence; no model response or approval request was tested"});
   return result;
 }
 
@@ -472,7 +482,7 @@ async function cleanup() {
 async function main() {
   if (command === "launch") return launch();
   if (command === "cleanup") return cleanup();
-  assert.ok(["doctor","windows","seed","prove","snapshot","read","click","dblclick","fill","key","select","check"].includes(command), "Use launch|doctor|windows|seed|prove|snapshot LABEL|read SCRIPT_FILE|click SELECTOR|dblclick SELECTOR|fill SELECTOR VALUE|key SELECTOR KEY|select SELECTOR VALUE|check SELECTOR true|cleanup --run DIRECTORY [--window preferences] [--entry library|reader]");
+  assert.ok(["doctor","windows","seed","prove","snapshot","read","click","dblclick","fill","key","select","check","close-window"].includes(command), "Use launch|doctor|windows|seed|prove|snapshot LABEL|read SCRIPT_FILE|click SELECTOR|dblclick SELECTOR|fill SELECTOR VALUE|key SELECTOR KEY|select SELECTOR VALUE|check SELECTOR true|close-window --window preferences|cleanup --run DIRECTORY [--entry library|reader]");
   const client = await connect();
   try {
     let result;
@@ -482,6 +492,11 @@ async function main() {
     else if (command === "prove") result = await prove(client);
     else if (command === "snapshot") result = {path:run,label:argv[0],controls:(await snapshot(client,argv[0])).controls.length};
     else if (command === "read") { result=await client.evaluate(fs.readFileSync(argv[0],"utf8")); record("read",{file:argv[0],result}); }
+    else if (command === "close-window") {
+      assert.equal(windowKind, "preferences", "Only the isolated preferences window can be closed");
+      result = await client.evaluate("window.close(); return true;");
+      record("close-window", { window: "preferences", result });
+    }
     else result = await drive(client, command, argv[0], argv[1]);
     console.log(JSON.stringify(result, null, 2));
   } catch (error) {
