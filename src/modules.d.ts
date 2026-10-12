@@ -4,6 +4,7 @@ interface CodexClientModule {
 
 interface ZoteroCodexModuleRegistry {
   CodexClient: CodexClientModule;
+  Localization: LocalizationModule;
   Protocol: ProtocolModule;
   RuntimeSettings: RuntimeSettingsModule;
 }

@@ -11,10 +11,23 @@ interface PathUtilsHost {
 
 interface ServicesHost {
   env: { get(name: string): string };
+  locale?: { appLocaleAsBCP47?: string };
 }
 
 interface ZoteroHost {
   isWin: boolean;
+  getMainWindow?(): Window | null;
+}
+
+interface Window {
+  Localization?: L10nConstructor;
+}
+
+interface Document {
+  l10n?: {
+    setAttributes?(element: Element, id: string, args?: Record<string, unknown>): void;
+    formatValue?(id: string, args?: Record<string, unknown>): Promise<string | null>;
+  };
 }
 
 declare var IOUtils: IOUtilsHost;

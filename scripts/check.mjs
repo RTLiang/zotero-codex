@@ -49,7 +49,6 @@ for (const script of ["scripts/compile.mjs", "scripts/check-emit-equivalence.mjs
 for (const file of [
   "bootstrap.js",
   "content/codex-client.js",
-  "content/localization.js",
   "content/preferences.js",
   "content/markdown.js",
   "content/sidebar.js",
