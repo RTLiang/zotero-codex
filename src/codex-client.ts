@@ -1,8 +1,74 @@
+interface LocalizedError extends Error {
+  l10nID: string;
+  l10nArgs?: unknown;
+}
+
+interface AppServerResult {
+  [key: string]: any;
+}
+
+interface AppServerProcess {
+  stdout: { readString(): Promise<string | null> };
+  stderr?: { readString(): Promise<string | null> };
+  stdin: { write(data: string): void };
+  kill(): void;
+}
+
+interface PendingRequest {
+  resolve(value: AppServerResult): void;
+  reject(error: unknown): void;
+  timer: number;
+}
+
+interface SubprocessCallOptions {
+  command: string;
+  arguments: string[];
+  stderr: string;
+  environment: Record<string, string>;
+  workdir?: string;
+  environmentAppend: boolean;
+}
+
+interface SubprocessModule {
+  call(options: SubprocessCallOptions): Promise<AppServerProcess>;
+}
+
+interface ClientNotificationParams {
+  threadId?: unknown;
+  delta?: unknown;
+  turn?: { status?: unknown };
+}
+
+type CodexClientEvent =
+  | { type: "connected"; binaryPath: string; account: unknown }
+  | { type: "disconnected"; error: unknown }
+  | { type: "serverRequest"; id: unknown; method: string; params: unknown }
+  | { type: "notification"; method: string; params: ClientNotificationParams };
+
+interface ThreadTitleRequest {
+  text?: unknown;
+  context?: { zotero?: { value?: unknown } };
+  answer?: unknown;
+  model?: string;
+  effort?: string;
+}
+
+interface TurnRequest {
+  threadID: string;
+  text: unknown;
+  images: unknown;
+  context: unknown;
+  model?: string;
+  effort?: string;
+  cwd?: string;
+  useOfficialZoteroSkill?: boolean;
+}
+
 (function (global) {
   "use strict";
 
   const modules = global.ZoteroCodexModules = global.ZoteroCodexModules || {};
-  const Protocol = modules.Protocol;
+  const Protocol = modules.Protocol!;
   const REQUEST_TIMEOUT_MS = 60_000;
   const MAX_LOADED_THREADS = 500;
   const ZOTERO_DEVELOPER_INSTRUCTIONS = [
@@ -18,21 +84,21 @@
     "For ordinary questions that locate or explain content in the current paper, use the PDF text and physical-page evidence supplied in Zotero context. Do not request Computer Use access to Zotero or operate its window merely to read, search, or verify the PDF. If the supplied excerpts are insufficient, read the local PDF file with available non-UI tools; if its text is unavailable, explain the limitation instead of requesting UI permission.",
   ].join("\n");
 
-  function dirname(path) {
+  function dirname(path: string): string {
     const separator = path.includes("\\") ? "\\" : "/";
     const index = path.lastIndexOf(separator);
     return index > 0 ? path.slice(0, index) : separator;
   }
 
-  function unique(values) {
+  function unique(values: string[]): string[] {
     return [...new Set(values.filter(Boolean))];
   }
 
-  function environmentValue(name) {
+  function environmentValue(name: string): string {
     return global.Services?.env?.get(name) || "";
   }
 
-  function processPath(binaryPath) {
+  function processPath(binaryPath: string): string {
     const windows = Boolean(global.Zotero?.isWin);
     const separator = windows ? ";" : ":";
     return unique([
@@ -42,7 +108,7 @@
     ]).join(separator);
   }
 
-  async function resolveWindowsExecutable(path) {
+  async function resolveWindowsExecutable(path: string): Promise<string> {
     if (/\.exe$/iu.test(path)) return await pathExists(path) ? path : "";
     // npm shims are scripts, not executables accepted by Gecko Subprocess.
     // Find the native binary shipped by the package instead of using cmd.exe.
@@ -50,9 +116,9 @@
     const direct = `${root}\\codex.exe`;
     if (await pathExists(direct)) return direct;
     const packageRoot = `${root}\\node_modules\\@openai`;
-    async function findBinary(directory, depth) {
+    async function findBinary(directory: string, depth: number): Promise<string> {
       if (depth > 5 || !global.IOUtils?.getChildren) return "";
-      let children;
+      let children: string[];
       try { children = await global.IOUtils.getChildren(directory); }
       catch (_error) { return ""; }
       for (const child of children) {
@@ -68,7 +134,7 @@
     return findBinary(packageRoot, 0);
   }
 
-  function getHomeDirectory() {
+  function getHomeDirectory(): string {
     try {
       return global.Services.dirsvc.get("Home", global.Ci.nsIFile).path;
     }
@@ -77,14 +143,14 @@
     }
   }
 
-  async function pathExists(path) {
+  async function pathExists(path: string): Promise<boolean> {
     if (!path) return false;
     try {
       if (global.IOUtils?.exists) return await global.IOUtils.exists(path);
     }
     catch (_error) {}
     try {
-      const file = global.Cc["@mozilla.org/file/local;1"].createInstance(global.Ci.nsIFile);
+      const file = global.Cc["@mozilla.org/file/local;1"]!.createInstance(global.Ci.nsIFile);
       file.initWithPath(path);
       return file.exists() && file.isFile();
     }
@@ -93,14 +159,14 @@
     }
   }
 
-  function clientError(l10nID, l10nArgs, fallback) {
-    const error = new Error(fallback);
+  function clientError(l10nID: string, l10nArgs: unknown, fallback: string): LocalizedError {
+    const error = new Error(fallback) as LocalizedError;
     error.l10nID = l10nID;
     error.l10nArgs = l10nArgs || undefined;
     return error;
   }
 
-  async function resolveCodexPath(configuredPath = "") {
+  async function resolveCodexPath(configuredPath = ""): Promise<string> {
     const normalized = String(configuredPath || "").trim().replace(/^(['"])(.*)\1$/u, "$2");
     if (normalized) {
       if (global.Zotero?.isWin) {
@@ -117,7 +183,7 @@
     }
 
     const home = getHomeDirectory();
-    const candidates = global.Zotero?.isMac
+    const candidates: string[] = global.Zotero?.isMac
       ? [
           "/opt/homebrew/bin/codex",
           "/usr/local/bin/codex",
@@ -173,13 +239,27 @@
     );
   }
 
-  function publicError(error) {
+  function publicError(error: unknown): string {
     const message = error instanceof Error ? error.message : String(error || "Unknown error");
     return message.replace(/\s+/gu, " ").trim();
   }
 
   class CodexAppServerClient {
-    constructor({ getPreference, log } = {}) {
+    getPreference: (name: string) => string;
+    log: (message: string, error?: unknown) => void;
+    process: AppServerProcess | null;
+    connecting: Promise<CodexAppServerClient> | null;
+    closed: boolean;
+    nextID: number;
+    pending: Map<number, PendingRequest>;
+    listeners: Set<(event: CodexClientEvent) => void>;
+    loadedThreads: Set<unknown>;
+    stdoutBuffer: string;
+    stderrTail: string;
+    binaryPath: string;
+    account: unknown;
+
+    constructor({ getPreference, log }: CodexClientOptions = {}) {
       this.getPreference = getPreference || (() => "");
       this.log = log || (() => {});
       this.process = null;
@@ -195,12 +275,12 @@
       this.account = null;
     }
 
-    subscribe(listener) {
+    subscribe(listener: (event: CodexClientEvent) => void): () => void {
       this.listeners.add(listener);
       return () => this.listeners.delete(listener);
     }
 
-    emit(event) {
+    emit(event: CodexClientEvent): void {
       for (const listener of this.listeners) {
         try {
           listener(event);
@@ -211,7 +291,7 @@
       }
     }
 
-    async loadSubprocessModule() {
+    async loadSubprocessModule(): Promise<SubprocessModule> {
       const imported = global.ChromeUtils.importESModule(
         "resource://gre/modules/Subprocess.sys.mjs",
       );
@@ -224,7 +304,7 @@
       return Subprocess;
     }
 
-    async connect() {
+    async connect(): Promise<CodexAppServerClient | undefined> {
       if (this.process) return this;
       if (this.connecting) return this.connecting;
       this.closed = false;
@@ -234,7 +314,7 @@
       return this.connecting;
     }
 
-    async _connect() {
+    async _connect(): Promise<CodexAppServerClient> {
       this.stdoutBuffer = "";
       this.stderrTail = "";
       this.account = null;
@@ -243,14 +323,14 @@
       const Subprocess = await this.loadSubprocessModule();
       const path = processPath(this.binaryPath);
       const settings = modules.RuntimeSettings?.read(this.getPreference);
-      if (settings) await modules.RuntimeSettings.prepare(settings);
+      if (settings) await modules.RuntimeSettings!.prepare(settings);
 
       try {
         this.process = await Subprocess.call({
           command: this.binaryPath,
           arguments: ["app-server", ...(settings?.codexHome ? ["-c", `sqlite_home=${JSON.stringify(settings.codexHome)}`] : [])],
           stderr: "pipe",
-          environment: { PATH: path, ...(settings ? modules.RuntimeSettings.environment(settings) : {}) },
+          environment: { PATH: path, ...(settings ? modules.RuntimeSettings!.environment(settings) : {}) },
           ...(settings?.workingDirectory ? { workdir: settings.workingDirectory } : {}),
           environmentAppend: true,
         });
@@ -288,7 +368,7 @@
       }
     }
 
-    async _readStdout() {
+    async _readStdout(): Promise<void> {
       const process = this.process;
       try {
         while (process && process === this.process && !this.closed) {
@@ -321,7 +401,7 @@
       }
     }
 
-    async _readStderr() {
+    async _readStderr(): Promise<void> {
       const process = this.process;
       if (!process?.stderr?.readString) return;
       try {
@@ -334,7 +414,7 @@
       catch (_error) {}
     }
 
-    _handleMessage(message) {
+    _handleMessage(message: any): void {
       if (message?.id != null && !message.method) {
         const pending = this.pending.get(message.id);
         if (!pending) return;
@@ -358,14 +438,14 @@
       }
     }
 
-    request(method, params = {}, timeout = REQUEST_TIMEOUT_MS) {
+    request(method: string, params: Record<string, unknown> = {}, timeout = REQUEST_TIMEOUT_MS): Promise<AppServerResult> {
       if (!this.process || this.closed) return Promise.reject(clientError(
         "zotero-codex-error-not-connected",
         null,
         "Codex App Server is not connected",
       ));
       const id = this.nextID++;
-      return new Promise((resolve, reject) => {
+      return new Promise<AppServerResult>((resolve, reject) => {
         const timer = global.setTimeout(() => {
           this.pending.delete(id);
           const seconds = Math.round(timeout / 1000);
@@ -377,7 +457,7 @@
         }, timeout);
         this.pending.set(id, { resolve, reject, timer });
         try {
-          this.process.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
+          this.process!.stdin.write(`${JSON.stringify({ id, method, params })}\n`);
         }
         catch (error) {
           global.clearTimeout(timer);
@@ -387,12 +467,12 @@
       });
     }
 
-    notify(method, params = {}) {
+    notify(method: string, params: Record<string, unknown> = {}): void {
       if (!this.process || this.closed) return;
       this.process.stdin.write(`${JSON.stringify({ method, params })}\n`);
     }
 
-    respond(id, result) {
+    respond(id: unknown, result: unknown): void {
       if (!this.process || this.closed) throw clientError(
         "zotero-codex-error-not-connected",
         null,
@@ -401,7 +481,7 @@
       this.process.stdin.write(`${JSON.stringify({ id, result })}\n`);
     }
 
-    respondError(id, message, code = -32601) {
+    respondError(id: unknown, message: unknown, code = -32601): void {
       if (!this.process || this.closed) throw clientError(
         "zotero-codex-error-not-connected",
         null,
@@ -413,10 +493,10 @@
       })}\n`);
     }
 
-    async listThreads(limit = 100, { cwd } = {}) {
+    async listThreads(limit = 100, { cwd }: { cwd?: string } = {}): Promise<ThreadSummary[]> {
       await this.connect();
-      const data = [];
-      let cursor = null;
+      const data: unknown[] = [];
+      let cursor: unknown = null;
       for (let pageIndex = 0; pageIndex < 20 && data.length < limit; pageIndex++) {
         const result = await this.request("thread/list", {
           limit: Math.min(100, limit - data.length),
@@ -433,22 +513,22 @@
       return Protocol.normalizeThreadList({ data });
     }
 
-    async archiveThread(threadID) {
+    async archiveThread(threadID: string): Promise<void> {
       await this.connect();
       await this.request("thread/archive", { threadId: threadID });
       this.loadedThreads.delete(threadID);
     }
 
-    async deleteThread(threadID) {
+    async deleteThread(threadID: string): Promise<void> {
       await this.connect();
       await this.request("thread/delete", { threadId: threadID });
       this.loadedThreads.delete(threadID);
     }
 
-    async listModels() {
+    async listModels(): Promise<NormalizedModel[]> {
       await this.connect();
-      const data = [];
-      let cursor = null;
+      const data: unknown[] = [];
+      let cursor: unknown = null;
       for (let pageIndex = 0; pageIndex < 10; pageIndex++) {
         const page = await this.request("model/list", {
           limit: 100,
@@ -462,7 +542,7 @@
       return Protocol.normalizeModelList({ data });
     }
 
-    async readThread(threadID) {
+    async readThread(threadID: unknown): Promise<ThreadSummary & { turns: unknown[] }> {
       await this.connect();
       const metadataResult = await this.request("thread/read", { threadId: threadID });
       const thread = Protocol.extractThread(metadataResult);
@@ -472,8 +552,8 @@
         "Codex App Server did not return task information",
       );
 
-      const turns = [];
-      let cursor = null;
+      const turns: unknown[] = [];
+      let cursor: unknown = null;
       for (let pageIndex = 0; pageIndex < 20; pageIndex++) {
         const page = await this.request("thread/turns/list", {
           threadId: threadID,
@@ -486,33 +566,33 @@
         cursor = page?.nextCursor || null;
         if (!cursor) break;
       }
-      return { ...thread, turns };
+      return { ...thread, turns } as ThreadSummary & { turns: unknown[] };
     }
 
-    permissionSettings() {
+    permissionSettings(): CodexPermissions {
       return Protocol.normalizePermissions(Object.fromEntries(
         ["approvalPolicy", "approvalsReviewer", "sandbox", "networkAccess"]
           .map((key) => [key, this.getPreference(key)]),
       ));
     }
 
-    threadPermissions() {
+    threadPermissions(): { approvalPolicy: ApprovalPolicy; approvalsReviewer: ApprovalsReviewer; sandbox: SandboxMode } {
       const { approvalPolicy, approvalsReviewer, sandbox } = this.permissionSettings();
       return { approvalPolicy, approvalsReviewer, sandbox };
     }
 
-    async listSkills({ cwd, forceReload = false } = {}) {
+    async listSkills({ cwd, forceReload = false }: { cwd?: string; forceReload?: boolean } = {}): Promise<NormalizedSkill[]> {
       await this.connect();
       const result = await this.request("skills/list", {
         cwds: [cwd || getHomeDirectory()], forceReload,
       });
       const skills = Protocol.normalizeSkillList(result);
-      const errors = (result?.data || []).flatMap((entry) => entry.errors || []);
-      if (!skills.length && errors.length) throw new Error(errors.map((error) => error.message).join("; "));
+      const errors = (result?.data || []).flatMap((entry: { errors?: { message?: string }[] }) => entry.errors || []);
+      if (!skills.length && errors.length) throw new Error(errors.map((error: { message?: string }) => error.message).join("; "));
       return skills;
     }
 
-    async startThread({ cwd, title, model } = {}) {
+    async startThread({ cwd, title, model }: { cwd?: string; title?: string; model?: string } = {}): Promise<ThreadSummary> {
       await this.connect();
       if (cwd && this.getPreference("workingDirectory")) {
         await global.IOUtils.makeDirectory(cwd, { createAncestors: true, permissions: 0o700 });
@@ -536,10 +616,10 @@
         await this.request("thread/name/set", { threadId: thread.id, name: title }).catch(() => null);
         thread.name = title;
       }
-      return thread;
+      return thread as ThreadSummary;
     }
 
-    async setThreadName(threadID, name) {
+    async setThreadName(threadID: string, name: string): Promise<AppServerResult> {
       await this.connect();
       const result = await this.request("thread/name/set", {
         threadId: threadID,
@@ -548,7 +628,7 @@
       return result;
     }
 
-    async generateThreadTitle({ text, context, answer, model, effort } = {}) {
+    async generateThreadTitle({ text, context, answer, model, effort }: ThreadTitleRequest = {}): Promise<string> {
       await this.connect();
       const started = await this.request("thread/start", {
         cwd: this.getPreference("workingDirectory") || getHomeDirectory(),
@@ -580,8 +660,8 @@
       ].join("\n");
       let output = "";
       let unsubscribe = () => {};
-      let timeout;
-      const completed = new Promise((resolve, reject) => {
+      let timeout: number | undefined;
+      const completed = new Promise<string>((resolve, reject) => {
         timeout = global.setTimeout(() => {
           unsubscribe();
           reject(new Error("Title generation timed out"));
@@ -630,7 +710,7 @@
       }
     }
 
-    async ensureThreadLoaded(threadID) {
+    async ensureThreadLoaded(threadID: unknown): Promise<void> {
       if (this.loadedThreads.has(threadID)) {
         this.markThreadLoaded(threadID);
         return;
@@ -644,7 +724,7 @@
       this.markThreadLoaded(threadID);
     }
 
-    markThreadLoaded(threadID) {
+    markThreadLoaded(threadID: unknown): void {
       if (!threadID) return;
       this.loadedThreads.delete(threadID);
       this.loadedThreads.add(threadID);
@@ -653,7 +733,7 @@
       }
     }
 
-    async forkThreadBeforeTurn({ threadID, beforeTurnID, model } = {}) {
+    async forkThreadBeforeTurn({ threadID, beforeTurnID, model }: { threadID?: string; beforeTurnID?: string; model?: string } = {}) {
       await this.connect();
       const result = await this.request("thread/fork", {
         threadId: threadID,
@@ -671,10 +751,10 @@
         "Codex App Server did not return an edited task ID",
       );
       this.markThreadLoaded(thread.id);
-      return thread;
+      return thread as ThreadSummary;
     }
 
-    async revertThreadBeforeTurn({ threadID, beforeTurnID } = {}) {
+    async revertThreadBeforeTurn({ threadID, beforeTurnID }: { threadID?: string; beforeTurnID?: string } = {}) {
       await this.ensureThreadLoaded(threadID);
       const result = await this.request("thread/revert", {
         threadId: threadID,
@@ -686,7 +766,7 @@
         null,
         "Codex App Server did not return the edited task",
       );
-      return thread;
+      return thread as ThreadSummary;
     }
 
     async startTurn({
@@ -698,7 +778,7 @@
       effort,
       cwd,
       useOfficialZoteroSkill = false,
-    }) {
+    }: TurnRequest): Promise<JsonRecord> {
       const { approvalPolicy, approvalsReviewer, sandbox, networkAccess } = this.permissionSettings();
       await this.ensureThreadLoaded(threadID);
       const input = Protocol.buildTurnInput(text, images);
@@ -746,17 +826,17 @@
       return turn;
     }
 
-    async interruptTurn(threadID, turnID) {
+    async interruptTurn(threadID: string, turnID: string): Promise<void> {
       if (!threadID || !turnID) return;
       await this.request("turn/interrupt", { threadId: threadID, turnId: turnID }, 10_000);
     }
 
-    async reconnect() {
+    async reconnect(): Promise<CodexAppServerClient | undefined> {
       await this.disconnect();
       return this.connect();
     }
 
-    _fail(error) {
+    _fail(error: unknown): void {
       for (const pending of this.pending.values()) {
         global.clearTimeout(pending.timer);
         pending.reject(error);
@@ -767,7 +847,7 @@
       this.emit({ type: "disconnected", error });
     }
 
-    async disconnect() {
+    async disconnect(): Promise<void> {
       this.closed = true;
       const process = this.process;
       this.process = null;

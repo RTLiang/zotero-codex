@@ -1,24 +1,27 @@
 interface CodexClientOptions {
-  getPreference: (name: string) => unknown;
-  log: (message: string, error?: unknown) => void;
+  getPreference?: (name: string) => any;
+  log?: (message: string, error?: unknown) => void;
 }
 
 interface CodexClientInstance {
   process?: unknown;
   binaryPath?: string;
   account?: unknown;
-  connecting?: boolean;
+  connecting?: unknown;
   pending: { size: number };
-  reconnect(): Promise<void>;
-  disconnect(): Promise<void>;
-  connect(): Promise<void>;
-  subscribe(listener: () => void): () => void;
+  reconnect(): Promise<unknown>;
+  disconnect(): Promise<unknown>;
+  connect(): Promise<unknown>;
+  subscribe(listener: (event: unknown) => void): () => void;
 }
 
 interface CodexClientModule {
-  CodexAppServerClient: new (options: CodexClientOptions) => CodexClientInstance;
-  resolveCodexPath(path: string): Promise<unknown>;
+  CodexAppServerClient: new (options?: CodexClientOptions) => CodexClientInstance;
+  resolveCodexPath(configuredPath?: string): Promise<string>;
+  clientError(l10nID: string, l10nArgs: unknown, fallback: string): LocalizedError;
+  publicError(error: unknown): string;
   getHomeDirectory(): string;
+  processPath(binaryPath: string): string;
 }
 
 interface PreferencesApi {
@@ -71,7 +74,7 @@ interface SidebarModule {
 interface CodexSidebarHost {
   readonly connected: boolean;
   readonly binaryPath: string;
-  reconnect(): Promise<void>;
+  reconnect(): Promise<unknown>;
   settings: PreferencesApi & { mount(root: Element): void };
 }
 

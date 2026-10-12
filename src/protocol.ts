@@ -68,7 +68,8 @@ type InputImage =
 type TurnInput =
   | { type: "text"; text: string }
   | { type: "image"; url: string; detail: unknown }
-  | { type: "localImage"; path: string; detail: unknown };
+  | { type: "localImage"; path: string; detail: unknown }
+  | { type: "skill"; name: string; path: string };
 
 interface ActivityDescriptor {
   l10nID: string;
@@ -113,7 +114,7 @@ interface ProtocolModule {
   firstLine(value: unknown, maxLength?: number): string;
   normalizePermissions(value?: JsonRecord): CodexPermissions;
   normalizeSkillList(result: { data?: unknown } | null | undefined): NormalizedSkill[];
-  referencedSkills(text: string, skills: { name: string }[]): { name: string }[];
+  referencedSkills<T extends { name: string }>(text: string, skills: T[]): T[];
   parseSlashCommand(text: unknown, skills?: { name: string }[]): SlashCommand | null;
   threadLabel(thread: unknown, fallback?: string): string;
   normalizeThreadList(result: { data?: unknown } | null | undefined): ThreadSummary[];
@@ -193,7 +194,7 @@ interface ProtocolModule {
     return [...unique.values()];
   }
 
-  function referencedSkills(text: string, skills: { name: string }[]): { name: string }[] {
+  function referencedSkills<T extends { name: string }>(text: string, skills: T[]): T[] {
     return skills.filter((skill) => {
       const escaped = skill.name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
       return new RegExp(`(?:^|\\s)\\$${escaped}(?=\\s|$)`, "iu").test(text);

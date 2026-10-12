@@ -3,6 +3,8 @@ interface IOUtilsHost {
   stat(path: string): Promise<{ type: string }>;
   copy(source: string, target: string, options?: { noOverwrite?: boolean }): Promise<void>;
   setPermissions(path: string, permissions: number): Promise<void>;
+  exists?(path: string): Promise<boolean>;
+  getChildren?(directory: string): Promise<string[]>;
 }
 
 interface PathUtilsHost {
@@ -13,10 +15,19 @@ interface ServicesHost {
   env: { get(name: string): string };
   locale?: { appLocaleAsBCP47?: string };
   prefs: { savePrefFile(file: unknown): void };
+  dirsvc: { get(name: string, interfaceID: unknown): { path: string } };
+}
+
+interface LocalFile {
+  initWithPath(path: string): void;
+  exists(): boolean;
+  isFile(): boolean;
 }
 
 interface ZoteroHost {
   isWin: boolean;
+  isMac?: boolean;
+  isLinux?: boolean;
   getMainWindow?(): Window | null;
   getMainWindows(): Window[];
   debug(message: string): void;
@@ -50,5 +61,8 @@ declare var IOUtils: IOUtilsHost;
 declare var PathUtils: PathUtilsHost;
 declare var Services: ServicesHost;
 declare var Zotero: ZoteroHost;
+declare var Ci: { nsIFile: unknown };
+declare var Cc: Record<string, { createInstance(interfaceID: unknown): LocalFile } | undefined>;
+declare var ChromeUtils: { importESModule(url: string): any };
 
 declare var module: { exports?: unknown } | undefined;

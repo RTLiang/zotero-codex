@@ -48,7 +48,6 @@ for (const script of ["scripts/compile.mjs", "scripts/check-emit-equivalence.mjs
 
 for (const file of [
   "bootstrap.js",
-  "content/codex-client.js",
   "content/preferences.js",
   "content/markdown.js",
   "content/sidebar.js",
@@ -77,7 +76,7 @@ const localeKeySets = localeFiles.map((file) => {
 
 const referenceSource = [
   "src/protocol.ts",
-  "content/codex-client.js",
+  "src/codex-client.ts",
   "content/markdown.js",
   "content/sidebar.js",
 ].map((file) => readFileSync(resolve(projectRoot, file), "utf8")).join("\n");
