@@ -115,7 +115,7 @@ interface InteractiveFrameModule {
           void writeTask?.then(() => resolve?.());
         }
       } else if (data.type === "resize" && "height" in data && typeof data.height === "number" && Number.isFinite(data.height)) {
-        frame.style.height = `${Math.max(180, Math.min(900, Math.ceil(data.height)))}px`;
+        frame.style.height = `${Math.max(180, Math.min(6000, Math.ceil(data.height)))}px`;
       }
     };
     ports.port1.onmessage = receive;
@@ -152,7 +152,12 @@ interface InteractiveFrameModule {
           else dispatchEvent(new CustomEvent('zotero-ui-state', {detail: state}));
         };
         send('ready');
-        new ResizeObserver(() => send('resize', {height: document.documentElement.scrollHeight})).observe(document.body);
+        new ResizeObserver(() => {
+          const body = document.body, style = getComputedStyle(body);
+          const height = body.getBoundingClientRect().height
+            + (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
+          send('resize', {height});
+        }).observe(document.body);
         document.addEventListener('click', e => { if(e.target.closest?.('a')) e.preventDefault(); });
         document.addEventListener('submit', e => e.preventDefault());
       });

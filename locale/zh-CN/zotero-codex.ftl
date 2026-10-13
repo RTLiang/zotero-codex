@@ -145,6 +145,9 @@ zotero-codex-processed-steps =
        *[other] 已处理 { $count } 个步骤
     }
 zotero-codex-working = 正在处理…
+zotero-codex-ui-generating = 正在生成交互页面…
+zotero-codex-waiting-elapsed = 已等待 { $seconds } 秒
+zotero-codex-waiting-hint = 仍在处理中，可随时停止本次回复。
 zotero-codex-work-process = 执行详情
 zotero-codex-you = 你
 zotero-codex-copy-message = 复制

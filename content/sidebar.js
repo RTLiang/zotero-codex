@@ -323,11 +323,13 @@
     const sectionTitle = /(?:方法部分|方法章节|\bmethod(?:s|ology)?\b|\bapproach\b)/iu.test(label)
       ? "method" : null;
     const titleLink = /^(?:本文|原文|论文|全文|paper|full text)$/iu.test(String(label).trim());
-    if (!samePaper) return { kind: "text" };
+    const webLink = /^https?:\/\//iu.test(value);
+    if (!samePaper) return webLink ? null : { kind: "text" };
     if (page) return { kind: "pdf", reference: { pageNumber: Number(page[1]) } };
     if (sectionNumber) return { kind: "pdf", reference: { sectionNumber } };
     if (sectionTitle) return { kind: "pdf", reference: { sectionTitle } };
-    return titleLink ? { kind: "pdf", reference: { pageNumber: 1 } } : { kind: "text" };
+    if (titleLink) return { kind: "pdf", reference: { pageNumber: 1 } };
+    return webLink ? null : { kind: "text" };
   }
 
   function getField(item, field) {
@@ -986,7 +988,9 @@
       resizeHandle.title = "Drag to resize chat height";
       setL10n(resizeHandle, "zotero-codex-resize-height");
 
-      chatView.append(transcript, requestArea, composer, quickControls);
+      const waitingArea = create(doc, "div", "zcs-waiting-area");
+      waitingArea.hidden = true;
+      chatView.append(transcript, requestArea, waitingArea, composer, quickControls);
       workspace.append(chatView, settingsView);
       root.append(
         topbar,
@@ -1004,6 +1008,7 @@
         root,
         topbar,
         chatView,
+        waitingArea,
         connectionState,
         headerNewButton,
         permissionsButton,
@@ -3195,6 +3200,7 @@
       if (entry.role === "interactiveUI") {
         const threadID = this.threadID;
         const article = create(this.doc, "article", "zcs-message zcs-assistant zcs-interactive");
+        article.dataset.interactiveId = entry.id;
         article.append(create(this.doc, "h3", "zcs-interactive-title", entry.document.title));
         const body = create(this.doc, "div", "zcs-interactive-body");
         const status = create(this.doc, "div", "zcs-interactive-status");
@@ -3360,25 +3366,41 @@
       this.streamingNode = null;
     }
 
-    showPendingResponse() {
+    showPendingResponse(phase = "working") {
+      const startedAt = this.pendingResponseStartedAt
+        ?? this.manager.runningTurns?.get(this.threadID)?.startedAt ?? Date.now();
       this.hidePendingResponse();
+      this.pendingResponseStartedAt = startedAt;
       const pending = create(this.doc, "div", "zcs-pending-response");
-      pending.setAttribute("role", "status");
-      pending.setAttribute("aria-live", "polite");
-      pending.append(createL10n(
-        this.doc,
-        "span",
-        "zcs-pending-response-label",
-        "zotero-codex-working",
-        "Working…",
-      ));
-      this.elements.transcript.append(pending);
+      const label = createL10n(this.doc, "span", "zcs-pending-response-label",
+        phase === "interactive" ? "zotero-codex-ui-generating" : "zotero-codex-working",
+        phase === "interactive" ? "Generating interactive view…" : "Working…");
+      label.setAttribute("role", "status");
+      const elapsed = create(this.doc, "span", "zcs-pending-response-elapsed");
+      elapsed.setAttribute("aria-hidden", "true");
+      const hint = createL10n(this.doc, "span", "zcs-pending-response-hint",
+        "zotero-codex-waiting-hint", "Still working. You can stop this reply.");
+      const update = () => {
+        const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+        setLocalizedText(elapsed, "zotero-codex-waiting-elapsed", `${seconds}s`, { seconds });
+        hint.hidden = seconds < 20;
+      };
+      update();
+      pending.append(label, elapsed, hint);
+      this.elements.waitingArea.append(pending);
+      this.elements.waitingArea.hidden = false;
       this.pendingResponseNode = pending;
+      this.pendingResponseClock = this.doc.defaultView || global;
+      this.pendingResponseTimer = this.pendingResponseClock.setInterval(update, 1000);
     }
 
     hidePendingResponse() {
+      if (this.pendingResponseTimer != null) this.pendingResponseClock.clearInterval(this.pendingResponseTimer);
+      this.pendingResponseTimer = null;
+      this.pendingResponseStartedAt = null;
       this.pendingResponseNode?.remove();
       this.pendingResponseNode = null;
+      if (this.elements?.waitingArea) this.elements.waitingArea.hidden = true;
     }
 
     renderStreamingDelta(delta, itemID = "") {
@@ -3817,7 +3839,23 @@
       else if (event.method === "item/agentMessage/delta") {
         this.renderStreamingDelta(String(params.delta || ""), String(params.itemId || ""));
       }
+      else if (event.method === "item/completed") {
+        if (params.turnId && this.activeTurnID && params.turnId !== this.activeTurnID) return;
+        const ui = modules.InteractiveUI?.parseItem(params.item);
+        if (ui && !this.elements.transcript.querySelector(`[data-interactive-id="${ui.id}"]`)) {
+          this.hidePendingResponse();
+          this.streamingText = "";
+          this.streamingNode = null;
+          this.streamingItemID = "";
+          this.streamingPhase = "final";
+          this.appendEntry({ role: "interactiveUI", ...ui });
+        }
+      }
       else if (event.method === "item/started") {
+        if (params.turnId && this.activeTurnID && params.turnId !== this.activeTurnID) return;
+        if (params.item?.type === "dynamicToolCall" && params.item.tool === "render_interactive_ui") {
+          this.showPendingResponse("interactive");
+        }
         const type = params.item?.type;
         if (type === "agentMessage") this.beginStreamingMessage(params.item);
         if (type && !["agentMessage", "userMessage", "reasoning"].includes(type)) {
@@ -4080,7 +4118,7 @@
     }
 
     trackTurn(threadID, { turnID = "", label, context, doc, titleRequest = null } = {}) {
-      const run = { threadID, turnID, label, context: { ...context }, doc, titleRequest };
+      const run = { threadID, turnID, label, context: { ...context }, doc, titleRequest, startedAt: Date.now() };
       this.runningTurns.set(threadID, run);
       for (const view of this.views.values()) {
         if (view.threadID === threadID) {

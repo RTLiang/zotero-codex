@@ -68,6 +68,8 @@ interface InteractiveUIModule {
 
   const instructions = [
     "When render_interactive_ui is available and the user requests an interactive explanation, visualization, calculator, or simulation, use it to display the UI directly in the conversation.",
+    "For self-contained teaching demos, call the tool directly without inspecting the environment, running commands, or writing files just to produce HTML. Give one short progress sentence, then generate a compact, useful first version. Keep any text after the tool brief. Consult paper context when the requested content depends on it.",
+    "Use the available sidebar width and natural content height. Avoid fixed-width roots, viewport-height layouts, and nested scrolling unless the interaction requires it.",
     "Supply a concise title and self-contained HTML with inline CSS and JavaScript. Keep HTML below 128 KiB UTF-8. Use accessible controls, a responsive layout, and readable contrast.",
     "The UI runs in an isolated sandbox. Network requests, external scripts/styles/images, navigation, downloads, forms, popups, Zotero APIs, and local file access are unavailable. Use inline SVG or canvas for visuals.",
     "The host supplies window.zoteroUI.ready, getState(), and setState(value). Await window.zoteroUI.ready before initializing controls, then restore saved values from window.zoteroUI.getState() when present. Save meaningful user changes with window.zoteroUI.setState(value); it returns no value and persists asynchronously. Never save defaults during initialization. State must be JSON, at most 16 KiB and 16 levels deep. Listen for the window event zotero-ui-state to receive updated state through event.detail; apply it to the controls without saving it back.",

@@ -2,7 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 global.ZoteroCodexModules = {
-  Protocol: require("../content/protocol.js"), CodexClient: { getHomeDirectory: () => "/tmp" }, Markdown: {},
+  InteractiveUI: require("../content/interactive-ui.js"), Protocol: require("../content/protocol.js"), CodexClient: { getHomeDirectory: () => "/tmp" }, Markdown: {},
 };
 require("../content/localization.js");
 require("../content/sidebar.js");
@@ -220,4 +220,35 @@ test("native notification uses the chat title and opens the corresponding chat o
     assert.equal(opened, run);
   }
   finally { Object.assign(global, previous); }
+});
+
+
+test("completed interactive tools appear before turn completion and only once", () => {
+  const { manager, client } = session();
+  const view = viewFor(manager);
+  manager.trackTurn("A", { turnID: "turn-A" });
+  const entries = [];
+  view.elements.transcript.querySelector = selector => entries.some(entry => selector.includes(entry.id));
+  view.appendEntry = entry => entries.push(entry);
+  view.scrollTranscript = () => {};
+  const item = { type: "dynamicToolCall", tool: "render_interactive_ui", id: "ui-one",
+    status: "completed", success: true, arguments: { title: "Demo", html: "<button>Run</button>" } };
+  client.emit("item/completed", { threadId: "A", turnId: "turn-A", item });
+  assert.equal(entries.length, 1);
+  assert.deepEqual(entries[0], { role: "interactiveUI", id: "ui-one", document: item.arguments });
+  assert.equal(view.running, true);
+  client.emit("item/completed", { threadId: "A", turnId: "turn-A", item });
+  client.emit("item/completed", { threadId: "B", turnId: "turn-B", item: {...item, id: "background"} });
+  client.emit("item/completed", { threadId: "A", turnId: "old-turn", item: {...item, id: "stale"} });
+  client.emit("item/completed", { threadId: "A", turnId: "turn-A", item: {...item, id: "failed", success: false} });
+  assert.equal(entries.length, 1);
+});
+
+test("starting an interactive tool shows a visible generation status", () => {
+  const { manager, client } = session();
+  const view = viewFor(manager);
+  let phase;
+  view.showPendingResponse = value => { phase = value; };
+  client.emit("item/started", { threadId: "A", item: { type: "dynamicToolCall", tool: "render_interactive_ui" } });
+  assert.equal(phase, "interactive");
 });

@@ -55,7 +55,7 @@ test("delayed localization cannot restore an expired PDF error", async t => {
   assert.equal(view.elements.pathStatus.textContent, "");
 });
 
-test("same-paper links use explicit PDF locations and do not invent a page-one target", () => {
+test("same-paper links use explicit PDF locations and otherwise keep their web target", () => {
   const context = {
     attachmentID: 42,
     pdfPath: "/tmp/paper.pdf",
@@ -65,8 +65,8 @@ test("same-paper links use explicit PDF locations and do not invent a page-one t
     "论文第 4 节"), { kind: "pdf", reference: { sectionNumber: "4" } });
   assert.deepEqual(resolvePaperLink("https://arxiv.org/html/2008.07873", context,
     "论文方法部分"), { kind: "pdf", reference: { sectionTitle: "method" } });
-  assert.deepEqual(resolvePaperLink("https://arxiv.org/html/2008.07873", context,
-    "更多信息"), { kind: "text" });
+  assert.equal(resolvePaperLink("https://arxiv.org/html/2008.07873", context,
+    "更多信息"), null);
 });
 
 function documentStub() {
@@ -81,6 +81,35 @@ function documentStub() {
     createTextNode(text) { return { tag: "#text", text }; },
   };
 }
+
+test("external sources remain clickable links in a PDF chat", () => {
+  const doc = documentStub(), root = doc.createElement("div");
+  const urls = [
+    "https://github.com/example/research/blob/main/model.py#L42",
+    "https://example.com/documentation",
+  ];
+  const opened = [], pdfOpened = [];
+  const previousZotero = global.Zotero;
+  global.Zotero = { launchURL: url => opened.push(url) };
+  try {
+    appendMarkdown(doc, root,
+      `[模型代码](${urls[0]}) [文档](${urls[1]}) [论文](#page=1)`,
+      reference => pdfOpened.push(reference), {
+        attachmentID: 42, pdfPath: "/tmp/paper.pdf", url: "https://example.com/paper",
+      });
+    const links = root.children[0].children.filter(node => node.tag === "a");
+    assert.equal(links.length, 3);
+    assert.deepEqual(links.slice(0, 2).map(link => link.href), urls);
+    assert.ok(links.every(link => link.className.includes("zcs-link")));
+    for (const link of links) link.listeners.click({ preventDefault() {} });
+    assert.deepEqual(opened, urls);
+    assert.deepEqual(pdfOpened, [{ pageNumber: 1 }]);
+  }
+  finally {
+    if (previousZotero === undefined) delete global.Zotero;
+    else global.Zotero = previousZotero;
+  }
+});
 
 test("harness citation targets navigate by their explicit locator regardless of label", () => {
   const doc = documentStub();

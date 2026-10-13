@@ -145,6 +145,9 @@ zotero-codex-processed-steps =
        *[other] Processed { $count } steps
     }
 zotero-codex-working = Working…
+zotero-codex-ui-generating = Generating interactive view…
+zotero-codex-waiting-elapsed = { $seconds }s
+zotero-codex-waiting-hint = Still working. You can stop this reply.
 zotero-codex-work-process = Activity details
 zotero-codex-you = You
 zotero-codex-copy-message = Copy

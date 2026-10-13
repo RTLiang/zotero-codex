@@ -34,6 +34,7 @@ function mountedView() {
           for (const child of children) { child.parentNode = this; this.children.push(child); }
         },
         replaceChildren(...children) { this.children = []; this.append(...children); },
+        remove() { this.parentNode.children = this.parentNode.children.filter(child => child !== this); },
         contains(target) {
           for (let node = target; node; node = node.parentNode) if (node === this) return true;
           return false;
@@ -217,4 +218,34 @@ test("only one permission list opens at a time and full access keeps network acc
   assert.equal(view.elements.permissionInputs.networkAccess.checked, true);
   assert.equal(view.elements.permissionInputs.networkAccess.disabled, true);
   assert.equal(preferences.get("networkAccess"), true);
+});
+
+
+test("waiting feedback advances, preserves elapsed time across phases, and stops on dismissal", t => {
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 1000 });
+  const view = mountedView();
+  view.showPendingResponse();
+  t.after(() => view.hidePendingResponse());
+  const label = () => view.pendingResponseNode.children.find(child => child.className === "zcs-pending-response-label");
+  const elapsed = () => view.pendingResponseNode.children.find(child => child.className === "zcs-pending-response-elapsed");
+  const hint = () => view.pendingResponseNode.children.find(child => child.className === "zcs-pending-response-hint");
+  assert.equal(label().textContent, "Working…");
+  assert.equal(elapsed().textContent, "0s");
+  assert.equal(hint().hidden, true);
+  assert.equal(view.pendingResponseNode.parentNode, view.elements.waitingArea);
+  assert.equal(view.elements.waitingArea.hidden, false);
+  t.mock.timers.tick(21000);
+  assert.equal(elapsed().textContent, "21s");
+  assert.equal(hint().hidden, false);
+  view.showPendingResponse("interactive");
+  assert.equal(label().textContent, "Generating interactive view…");
+  assert.equal(elapsed().textContent, "21s");
+  const pending = view.pendingResponseNode;
+  view.hidePendingResponse();
+  t.mock.timers.tick(5000);
+  assert.equal(pending.children.find(child => child.className === "zcs-pending-response-elapsed").textContent, "21s");
+  assert.equal(view.elements.transcript.children.includes(pending), false);
+  assert.equal(view.elements.waitingArea.hidden, true);
+  view.showPendingResponse();
+  assert.equal(elapsed().textContent, "0s");
 });
