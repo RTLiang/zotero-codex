@@ -1979,7 +1979,51 @@
       return this.taggedPdfIndex.promise;
     }
 
-    async findPdfSectionLocation(pdfDocument, reference) {
+    async getNativePdfTextLines(pdfDocument, pageIndex, iframeWindow) {
+      const utils = global.Cu || global.Components?.utils;
+      const options = utils?.cloneInto && iframeWindow
+        ? utils.cloneInto({ pageIndex }, iframeWindow) : { pageIndex };
+      const { chars = [] } = await pdfDocument.getPageData(options);
+      const lines = [];
+      let line = [];
+      const finish = () => {
+        const rects = line.map(char => char.rect).filter(rect =>
+          Array.isArray(rect) && rect.length === 4 && rect.every(Number.isFinite));
+        if (rects.length) lines.push({
+          text: line.map(char => `${char.u || char.c || ""}${char.spaceAfter ? " " : ""}`).join(""),
+          bold: Boolean(line[0].bold || /bold|medi|demi|black/iu.test(line[0].fontName || "")),
+          fontSize: line[0].fontSize || 0,
+          rect: [Math.min(...rects.map(rect => rect[0])), Math.min(...rects.map(rect => rect[1])),
+            Math.max(...rects.map(rect => rect[2])), Math.max(...rects.map(rect => rect[3]))],
+        });
+        line = [];
+      };
+      for (const char of chars) {
+        line.push(char);
+        if (char.lineBreakAfter || char.paragraphBreakAfter) finish();
+      }
+      if (line.length) finish();
+      return lines;
+    }
+
+    async findPdfCaptionLocation(pdfDocument, kind, number, iframeWindow) {
+      const marker = kind === "figure" ? "(?:fig(?:ure)?\\.?|图)" : "(?:table|表)";
+      const caption = new RegExp(`^\\s*${marker}\\s*${number}(?![\\dA-Za-z])(?:\\s|[.:：、]|$)`, "iu");
+      let best = null;
+      for (let pageIndex = 0; pageIndex < pdfDocument.numPages; pageIndex++) {
+        const lines = await this.getNativePdfTextLines(pdfDocument, pageIndex, iframeWindow);
+        for (const line of lines) {
+          if (!caption.test(line.text)) continue;
+          const score = line.bold ? 1 : 0;
+          if (!best || score > best.score) {
+            best = { score, position: { pageIndex, rects: [line.rect] } };
+          }
+        }
+      }
+      return best ? { position: best.position } : null;
+    }
+
+    async findPdfSectionLocation(pdfDocument, reference, iframeWindow) {
       if (!pdfDocument?.getPage) return null;
       const escaped = reference.sectionNumber?.replace(/\./gu, "\\.");
       const heading = escaped
@@ -2012,9 +2056,21 @@
           return { dest: entry.dest };
         }
       }
+      let nativeHeading = null;
       for (let pageIndex = 0; pageIndex < pdfDocument.numPages; pageIndex++) {
         let items;
         try {
+          if (typeof pdfDocument.getPageData === "function") {
+            const lines = await this.getNativePdfTextLines(pdfDocument, pageIndex, iframeWindow);
+            for (const line of lines) {
+              if (!heading.test(line.text) || !/\p{L}/u.test(line.text)) continue;
+              const score = (line.bold ? 1000 : 0) + line.fontSize;
+              if (!nativeHeading || score > nativeHeading.score) {
+                nativeHeading = { score, position: { pageIndex, rects: [line.rect] } };
+              }
+            }
+            continue;
+          }
           const page = await pdfDocument.getPage(pageIndex + 1);
           items = (await page.getTextContent()).items || [];
         }
@@ -2035,7 +2091,7 @@
             Math.max(x + 1, right), baseline + Math.max(8, item.height || 0)]] } };
         }
       }
-      return null;
+      return nativeHeading ? { position: nativeHeading.position } : null;
     }
 
     async openPdfReference(reference) {
@@ -2057,7 +2113,8 @@
           if (reference.sectionNumber || reference.sectionTitle) {
             const pdfDocument = internal?._primaryView?._iframeWindow
               ?.PDFViewerApplication?.pdfDocument;
-            const location = await this.findPdfSectionLocation(pdfDocument, reference);
+            const location = await this.findPdfSectionLocation(pdfDocument, reference,
+              internal?._primaryView?._iframeWindow);
             if (!location) throw new Error(`Section ${reference.sectionNumber || reference.sectionTitle} was not found in this PDF`);
             await reader.navigate(location);
             return;
@@ -2147,6 +2204,15 @@
               await reader.navigate({
                 position: { pageIndex: region.pageIndex, rects: [region.bbox] },
               });
+              return;
+            }
+            const iframeWindow = internal._primaryView?._iframeWindow;
+            const pdfDocument = iframeWindow?.PDFViewerApplication?.pdfDocument;
+            if (typeof pdfDocument?.getPageData === "function") {
+              const location = await this.findPdfCaptionLocation(pdfDocument,
+                figure ? "figure" : "table", number, iframeWindow);
+              if (!location) throw new Error(`Could not locate ${reference.label || reference.query} in the PDF`);
+              await reader.navigate(location);
               return;
             }
           }

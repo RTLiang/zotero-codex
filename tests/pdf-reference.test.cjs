@@ -303,6 +303,37 @@ test("an untagged figure uses its caption and clears Find", async () => {
   ]);
 });
 
+test("native figure links use the caption rather than a punctuated prose mention", async () => {
+  const pdfDocument = {
+    numPages: 8,
+    async getPage() { return { async getStructTree() { return null; } }; },
+    async getPageData({ pageIndex }) {
+      return { chars: nativeTextLine(pageIndex === 0 ? "Fig. 10 Another figure"
+        : pageIndex === 1 ? "Fig. 1 Frequency patterns"
+          : "The components shown in Fig. 1. The next sentence follows.") };
+    },
+  };
+  for (const label of ["Figure 1", "图 1"]) {
+    const { navigation, findStates } = await withReader(pdfDocument,
+      view => view.openPdfReference({ query: "Figure 1", label }), {
+        foundQuery: "Fig. 1.", positions: [{ pageIndex: 7, rects: [[40, 100, 100, 120]] }],
+      });
+    assert.deepEqual(navigation, [{ position: { pageIndex: 1, rects: [[108, 184, 258, 196]] } }]);
+    assert.deepEqual(findStates, []);
+  }
+});
+
+test("a native document without the requested caption never falls back to prose search", async () => {
+  const pdfDocument = {
+    numPages: 1,
+    async getPage() { return { async getStructTree() { return null; } }; },
+    async getPageData() { return { chars: nativeTextLine("The result is in Fig. 1.") }; },
+  };
+  await assert.rejects(withReader(pdfDocument,
+    view => view.openPdfReference({ query: "Figure 1" }), { foundQuery: "Fig. 1." }),
+  /Could not locate Figure 1/u);
+});
+
 test("repeated figure, table and equation jumps leave no active search highlight", async () => {
   const pdfDocument = {
     numPages: 1,
@@ -365,6 +396,30 @@ test("a section outline destination uses the public reader navigation boundary",
   const { navigation } = await withReader(pdfDocument,
     (view) => view.openPdfReference({ sectionNumber: "4.3" }));
   assert.deepEqual(navigation, [{ dest: "section.4.3" }]);
+});
+
+function nativeTextLine(text, { x = 108, y = 184, size = 12, font = "Fixture-Medi" } = {}) {
+  return Array.from(text, (c, index) => ({
+    c, u: c, rect: [x + index * 6, y, x + (index + 1) * 6, y + size],
+    fontSize: size, fontName: font, baseline: y + 2,
+    lineBreakAfter: index === text.length - 1,
+  }));
+}
+
+test("sections without bookmarks use Zotero page data and skip chart labels", async () => {
+  const pdfDocument = {
+    numPages: 6,
+    async getOutline() { return null; },
+    async getPage() { return {}; },
+    async getPageData({ pageIndex }) {
+      return { chars: pageIndex === 3
+        ? nativeTextLine("4 layers", { size: 9, font: "Fixture-Regular" })
+        : pageIndex === 5 ? nativeTextLine("4 Feature suppression") : [] };
+    },
+  };
+  const { navigation } = await withReader(pdfDocument,
+    view => view.openPdfReference({ sectionNumber: "4" }));
+  assert.deepEqual(navigation, [{ position: { pageIndex: 5, rects: [[108, 184, 234, 196]] } }]);
 });
 
 test("a section with bookmark coordinates centers its heading using PDF metadata", async () => {
