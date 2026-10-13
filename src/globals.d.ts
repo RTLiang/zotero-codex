@@ -3,6 +3,8 @@ interface IOUtilsHost {
   stat(path: string): Promise<{ type: string }>;
   copy(source: string, target: string, options?: { noOverwrite?: boolean }): Promise<void>;
   setPermissions(path: string, permissions: number): Promise<void>;
+  readJSON(path: string): Promise<unknown>;
+  writeJSON(path: string, value: unknown, options?: { tmpPath?: string; mode?: "overwrite"; flush?: boolean }): Promise<void>;
   exists?(path: string): Promise<boolean>;
   getChildren?(directory: string): Promise<string[]>;
 }
@@ -12,6 +14,10 @@ interface PathUtilsHost {
 }
 
 interface ServicesHost {
+  obs: {
+    addObserver(observer: { observe(subject: NetworkSubject): void }, topic: string): void;
+    removeObserver(observer: { observe(subject: NetworkSubject): void }, topic: string): void;
+  };
   env: { get(name: string): string };
   locale?: { appLocaleAsBCP47?: string };
   prefs: { savePrefFile(file: unknown): void };
@@ -61,7 +67,7 @@ declare var IOUtils: IOUtilsHost;
 declare var PathUtils: PathUtilsHost;
 declare var Services: ServicesHost;
 declare var Zotero: ZoteroHost;
-declare var Ci: { nsIFile: unknown };
+declare var Ci: { nsIFile: unknown; nsIHttpChannel: unknown };
 declare var Cc: Record<string, { createInstance(interfaceID: unknown): LocalFile } | undefined>;
 declare var ChromeUtils: { importESModule(url: string): any };
 

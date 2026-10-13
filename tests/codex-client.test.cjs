@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const Protocol = require("../content/protocol.js");
 
 global.ZoteroCodexModules = { Protocol };
+require("../content/interactive-ui.js");
 require("../content/codex-client.js");
 
 const { CodexAppServerClient } = global.ZoteroCodexModules.CodexClient;
@@ -302,4 +303,47 @@ test("loads the official Zotero skill when available to the sidebar", async () =
     { type: "text", text: "Find the saved paper and export its citation" },
     { type: "skill", name: "Zotero", path: "/tmp/openai-zotero/SKILL.md" },
   ]);
+});
+
+test("registers the UI tool on new chats and centrally answers tool calls once for every view", async () => {
+  const client = new CodexAppServerClient();
+  client.connect = async () => {};
+  let startParams;
+  client.request = async (method, params) => {
+    assert.equal(method, "thread/start");
+    startParams = params;
+    return { thread: { id: "ui-chat" } };
+  };
+  await client.startThread({ cwd: "/papers" });
+  assert.equal(startParams.dynamicTools.length, 1);
+  assert.equal(startParams.dynamicTools[0].name, "render_interactive_ui");
+  assert.deepEqual(startParams.dynamicTools[0].inputSchema.required, ["title", "html"]);
+  assert.match(startParams.developerInstructions, /render_interactive_ui/u);
+
+  const events = [];
+  client.subscribe((event) => events.push({ view: "first", event }));
+  client.subscribe((event) => events.push({ view: "second", event }));
+  const written = [];
+  client.process = { stdin: { write: (line) => written.push(JSON.parse(line)) } };
+  client._handleMessage({ id: 101, method: "item/tool/call", params: {
+    threadId: "ui-chat", callId: "ui-call", tool: "render_interactive_ui",
+    arguments: { title: "Slider", html: '<input type="range">' },
+  } });
+  assert.equal(written.length, 1);
+  assert.equal(written[0].id, 101);
+  assert.equal(written[0].result.success, true);
+  assert.deepEqual(events, []);
+
+  for (const [id, params] of [
+    [102, { tool: "render_interactive_ui", arguments: { title: "Slider", html: "" } }],
+    [103, { tool: "unsupported_tool", arguments: {} }],
+  ]) {
+    client._handleMessage({ id, method: "item/tool/call", params });
+    const response = written.at(-1);
+    assert.equal(response.id, id);
+    assert.equal(response.result.success, false);
+    assert.match(response.result.contentItems[0].text, /not rendered/u);
+  }
+  assert.equal(written.length, 3);
+  assert.deepEqual(events, []);
 });

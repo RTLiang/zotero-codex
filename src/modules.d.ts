@@ -4,6 +4,7 @@ interface CodexClientOptions {
 }
 
 interface CodexClientInstance {
+  interactiveUIStore(): InteractiveUIStore;
   process?: unknown;
   binaryPath?: string;
   account?: unknown;
@@ -79,6 +80,8 @@ interface CodexSidebarHost {
 }
 
 interface ZoteroCodexModuleRegistry {
+  InteractiveUI: InteractiveUIModule;
+  InteractiveFrame: InteractiveFrameModule;
   CodexClient: CodexClientModule;
   Localization: LocalizationModule;
   Preferences: PreferencesModule;

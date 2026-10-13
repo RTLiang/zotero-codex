@@ -76,6 +76,89 @@ test("sending a PDF location question supplies Zotero-extracted page evidence", 
   }
 });
 
+test("this page uses the reader position captured before async chat creation", async t => {
+  const viewer = { currentPageNumber: 2 };
+  const reader = {
+    itemID: 2,
+    _internalReader: {
+      _primaryView: { _iframeWindow: { PDFViewerApplication: { pdfViewer: { currentPageNumber: 1 } } } },
+      _lastView: { _pageLabels: ["i", "1", "2"], _iframeWindow: { PDFViewerApplication: { pdfViewer: viewer } } },
+    },
+  };
+  const previousZotero = global.Zotero;
+  t.after(() => { global.Zotero = previousZotero; });
+  global.Zotero = {
+    Reader: { getByTabID: id => id === "active-pdf" ? reader : null },
+    PDFWorker: { getFullText: async () => ({
+      text: "Introduction\fThe visible page explains the synthetic experiment.\fConclusion",
+      extractedPages: 3,
+    }) },
+  };
+  const view = titleSendView();
+  view.context.tabType = "reader";
+  view.doc = { defaultView: { Zotero_Tabs: { selectedID: "active-pdf" } } };
+  view.elements.input.value = "解释这一页";
+  view.client.startThread = async () => {
+    viewer.currentPageNumber = 3;
+    return { id: "paper-thread" };
+  };
+  let sent;
+  view.client.startTurn = async args => { sent = args; return { id: "first-turn" }; };
+  await SidebarView.prototype.send.call(view);
+  assert.match(sent.context.zotero.value, /Currently viewed page at send time: physical PDF page 2; printed label 1/u);
+  assert.match(sent.context.zotero.value, /Current page text:\nThe visible page explains/u);
+  assert.ok(sent.context.zotero.value.indexOf("Current page text") < sent.context.zotero.value.indexOf("Opening text"));
+
+  view.manager.runningTurns.clear();
+  view.elements.input.value = "解释这一页";
+  await SidebarView.prototype.send.call(view);
+  assert.match(sent.context.zotero.value, /Currently viewed page at send time: physical PDF page 3/u);
+  assert.match(sent.context.zotero.value, /Current page text:\nConclusion/u);
+});
+
+test("current reader page never leaks through library, another attachment, or disabled context", async t => {
+  const reader = { itemID: 2, _internalReader: { _primaryView: {
+    _iframeWindow: { PDFViewerApplication: { pdfViewer: { currentPageNumber: 2 } } },
+  } } };
+  const previousZotero = global.Zotero;
+  t.after(() => { global.Zotero = previousZotero; });
+  global.Zotero = {
+    Reader: { getByTabID: () => reader },
+    PDFWorker: { getFullText: async () => ({ text: "First\fSecond", extractedPages: 2 }) },
+  };
+  for (const mode of ["library", "other-attachment", "disabled", "uninitialized"]) {
+    const view = titleSendView(mode !== "disabled");
+    view.context.tabType = mode === "library" ? "library" : "reader";
+    view.doc = { defaultView: { Zotero_Tabs: { selectedID: "active-pdf" } } };
+    reader.itemID = mode === "other-attachment" ? 99 : 2;
+    reader._internalReader._primaryView._iframeWindow.PDFViewerApplication.pdfViewer.currentPageNumber =
+      mode === "uninitialized" ? 0 : 2;
+    let sent;
+    view.client.startTurn = async args => { sent = args; return { id: "first-turn" }; };
+    await SidebarView.prototype.send.call(view);
+    assert.doesNotMatch(sent.context?.zotero.value || "", /Currently viewed page|Current page text/u, mode);
+    if (mode === "disabled") assert.equal(sent.context, null);
+  }
+});
+
+test("current page survives unavailable PDF text and bounds long page evidence", async t => {
+  const { pdfEvidenceForQuestion } = global.ZoteroCodexModules.Sidebar;
+  const context = { attachmentID: 2, pdfPath: "/papers/disposable.pdf" };
+  const currentPage = { pageNumber: 2, pageLabel: "ii" };
+  const previousZotero = global.Zotero;
+  t.after(() => { global.Zotero = previousZotero; });
+  global.Zotero = {
+    PDFWorker: { getFullText: async () => { throw new Error("Unreadable fixture"); } },
+  };
+  assert.match(await pdfEvidenceForQuestion(context, "this page", currentPage), /physical PDF page 2; printed label ii/u);
+  global.Zotero.PDFWorker.getFullText = async () => ({ text: `First\f${"Visible page. ".repeat(500)}`, extractedPages: 2 });
+  const evidence = await pdfEvidenceForQuestion(context, "this page", currentPage);
+  assert.match(evidence, /Current page text \(opening excerpt\):\nVisible page/u);
+  assert.ok(evidence.length <= 3000);
+  global.Zotero.PDFWorker.getFullText = async () => ({ text: "No reliable page boundaries", extractedPages: 2 });
+  assert.doesNotMatch(await pdfEvidenceForQuestion(context, "this page", currentPage), /Current page text/u);
+});
+
 test("MCP access prompts explain the requested access when the server provides a message", () => {
   const description = SidebarView.prototype.requestDescription.call({}, {
     method: "mcpServer/elicitation/request",

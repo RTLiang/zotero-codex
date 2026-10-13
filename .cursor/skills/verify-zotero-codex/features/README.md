@@ -13,6 +13,7 @@ Before any recipe, follow [contributor privacy](../SKILL.md#contributor-privacy)
 | [Conversations](conversations.md) | Header +, picker New chat, `/new`, picker rows/search/filter, message controls | Source-mapped; authenticated reply/history paths are untested by the smoke |
 | [Images and message rendering](images-rendering.md) | + menu, paste, drag/drop, image click, message transcript | Source-mapped; requires image input or real reply evidence |
 | [Connection and storage](connection-storage.md) | Sidebar Settings, its Zotero settings link, Zotero Settings → Codex | Source-mapped; preferences and reconnect need their own proof |
+| [Interactive UI](interactive-ui.md) | New chat prompt, generated controls, normal follow-up, chat picker reopen | Requires real tool history, native interaction/state/context and isolation proof |
 | [Interface language](interface-language.md) | Sidebar Settings → Language, Zotero Settings → Codex → Language, library and PDF-reader sidebars | Source-mapped; verify immediate switching and saved preference in an isolated profile |
 
 Every feature entry uses exactly four H2 sections. Keep entry points explicit as the app changes. A full feature claim requires every relevant mapped entry; report exclusions individually. The initial skill creation needs one feature proof, not a blanket claim about the entire plugin.

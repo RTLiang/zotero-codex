@@ -24,6 +24,7 @@ By default, conversations use your existing Codex sign-in and remain available a
 - Switch chats or start a new one while a reply runs in the background. Returning to a running chat restores its progress and Stop button. Background replies show a desktop notification when ready; click it to return to the chat.
 - Start a conversation from a paper or return to one you already started.
 - Render Markdown headings, blockquotes, lists, task lists, tables, emphasis, strikethrough, links, code blocks, and common LaTeX expressions.
+- Ask for interactive explanations, sliders or calculators in a new chat. Generated views run locally in isolated frames; saved control state from the latest four views is automatically included with ordinary follow-up questions. This requires a Codex CLI with experimental dynamic-tool support. Existing chats without that tool need a new chat.
 - A new conversation is created when you send the first message. With item context enabled, its initial title uses the paper title; after the first reply, Codex uses the paper context, request, and answer to generate a short title identifying the paper's method or topic. Manually changed titles are preserved.
 - Each paper remembers its conversation. Switching papers returns you to the conversation you used for that paper.
 - Search recent conversations or filter the list to the current paper.
@@ -114,7 +115,7 @@ This is a local integration. It does not embed the ChatGPT website. The `codex a
 
 ## Development and troubleshooting
 
-`npm run check` compiles and type-checks the TypeScript sources, validates the manifest, checks script syntax, and compares the emitted JavaScript with the pre-migration build. `npm test` covers chat history, Zotero context conversion, and CLI discovery. If the sidebar cannot find Codex, check the executable and authentication in your terminal:
+`npm run check` compiles and type-checks the TypeScript sources, validates the manifest, and checks script syntax. The historical pre-migration equivalence check is available separately as `npm run check:migration`. `npm test` covers chat history, Zotero context conversion, interactive UI state, and CLI discovery. If the sidebar cannot find Codex, check the executable and authentication in your terminal:
 
 ```bash
 # macOS / Linux

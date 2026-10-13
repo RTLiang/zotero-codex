@@ -412,12 +412,51 @@
     };
   }
 
-  async function pdfEvidenceForQuestion(context, question) {
+  function currentPdfPage(context, doc) {
+    if (context?.tabType !== "reader" || !context.attachmentID) return null;
+    const win = doc?.defaultView;
+    if (!win) return null;
+    const readers = global.Zotero?.Reader;
+    const reader = win?.Zotero_Tabs
+      ? readers?.getByTabID?.(win.Zotero_Tabs.selectedID)
+      : readers?._readers?.find(candidate => candidate._window === win &&
+        candidate.itemID === context.attachmentID && !candidate._isTabClosed);
+    if (!reader || reader.itemID !== context.attachmentID) return null;
+    const internal = reader._internalReader;
+    const view = internal?._lastView || internal?._primaryView;
+    const viewer = view?._iframeWindow?.PDFViewerApplication?.pdfViewer;
+    const pageNumber = viewer?.currentPageNumber;
+    if (!Number.isInteger(pageNumber) || pageNumber < 1) return null;
+    return {
+      pageNumber,
+      pageLabel: String(view._pageLabels?.[pageNumber - 1] || ""),
+    };
+  }
+
+  async function pdfEvidenceForQuestion(context, question, currentPage = null) {
     if (!context?.attachmentID || !context.pdfPath || !String(question || "").trim()) return "";
+    let pageEvidence = currentPage
+      ? `Currently viewed page at send time: physical PDF page ${currentPage.pageNumber}${currentPage.pageLabel ? `; printed label ${currentPage.pageLabel}` : ""}. This is the reading position for references to \"this page\".\n`
+      : "";
     const worker = global.Zotero?.PDFWorker;
-    if (typeof worker?.getFullText !== "function") return "";
-    const result = await worker.getFullText(context.attachmentID, null, true);
-    return Protocol.buildPdfEvidence(result?.text, result?.extractedPages, question);
+    if (typeof worker?.getFullText !== "function") return pageEvidence;
+    let result;
+    try {
+      result = await worker.getFullText(context.attachmentID, null, true);
+    }
+    catch (error) {
+      if (currentPage) return pageEvidence;
+      throw error;
+    }
+    if (currentPage && typeof result?.text === "string") {
+      const pages = result.text.split("\f");
+      if (pages.length === result.extractedPages && currentPage.pageNumber <= pages.length) {
+        const text = pages[currentPage.pageNumber - 1].trim();
+        if (text) pageEvidence += `Current page text${text.length > 2200 ? " (opening excerpt)" : ""}:\n${text.slice(0, 2200)}\n\n`;
+      }
+    }
+    const evidence = Protocol.buildPdfEvidence(result?.text, result?.extractedPages, question);
+    return (pageEvidence + evidence).slice(0, 3000);
   }
 
   function appendMarkdown(doc, parent, value, openPdfReference = null, paperContext = null) {
@@ -2938,6 +2977,7 @@
     }
 
     renderTranscript(entries) {
+      this.disposeInteractiveViews();
       const transcript = this.elements.transcript;
       this.clearResponseScrollSpace();
       transcript.replaceChildren();
@@ -2998,6 +3038,7 @@
     }
 
     renderEmpty(title, copy, { busy = false } = {}) {
+      this.disposeInteractiveViews();
       const transcript = this.elements.transcript;
       transcript.replaceChildren();
       const empty = create(this.doc, "div", `zcs-empty${busy ? " zcs-empty-busy" : ""}`);
@@ -3143,9 +3184,36 @@
       parent.append(gallery);
     }
 
+    disposeInteractiveViews() {
+      for (const view of this.interactiveViews || []) view.dispose();
+      this.interactiveViews = [];
+    }
+
     appendEntry(entry, { streaming = false, editMode = "fork" } = {}) {
       const transcript = this.elements.transcript;
       if (entry.role === "process") return this.appendProcessGroup(entry.entries || []);
+      if (entry.role === "interactiveUI") {
+        const threadID = this.threadID;
+        const article = create(this.doc, "article", "zcs-message zcs-assistant zcs-interactive");
+        article.append(create(this.doc, "h3", "zcs-interactive-title", entry.document.title));
+        const body = create(this.doc, "div", "zcs-interactive-body");
+        const status = create(this.doc, "div", "zcs-interactive-status");
+        article.append(body, status);
+        transcript.append(article);
+        try {
+          this.interactiveViews ||= [];
+          const view = modules.InteractiveFrame.mount(body, {
+            document: entry.document, threadID, itemID: entry.id,
+            store: this.client.interactiveUIStore(),
+            onError: () => setLocalizedText(status, "zotero-codex-ui-error", "This interactive view could not load or save its state."),
+          });
+          this.interactiveViews.push(view);
+
+        } catch (_) {
+          setLocalizedText(status, "zotero-codex-ui-error", "This interactive view could not load or save its state.");
+        }
+        return article;
+      }
       if (entry.role === "generatedImage") {
         const article = create(this.doc, "article", "zcs-message zcs-assistant zcs-generated-image");
         this.appendMessageImages(article, entry.images);
@@ -3449,6 +3517,7 @@
         let paperContext = this.context;
         if (!paperContext) paperContext = await this.refreshContext();
         if (!paperContext || !this.isCurrentContext(contextEpoch, paperContext)) return;
+        const currentPage = currentPdfPage(paperContext, this.doc);
         if (this.editingMessage) {
           const prepared = await this.prepareEditedThread(this.editingMessage, {
             epoch: contextEpoch,
@@ -3472,16 +3541,24 @@
         let pdfEvidence = "";
         if (includeItem) {
           try {
-            pdfEvidence = await pdfEvidenceForQuestion(paperContext, text);
+            pdfEvidence = await pdfEvidenceForQuestion(paperContext, text, currentPage);
           }
           catch (error) {
             this.manager.log("Could not extract current PDF text", error);
           }
           if (!this.isCurrentContext(contextEpoch, paperContext)) return;
         }
-        const additionalContext = includeItem || selections.length
+        let additionalContext = includeItem || selections.length
           ? Protocol.buildZoteroContext(paperContext, selections, { includeItem, pdfEvidence })
           : null;
+        if (this.interactiveViews?.length) {
+          const interactive = await Promise.all(this.interactiveViews.slice(-4).map(view => view.context()));
+          if (!this.isCurrentContext(contextEpoch, paperContext) || this.threadID !== threadID) return;
+          additionalContext = {
+            ...(additionalContext || {}),
+            interactiveUI: { kind: "untrusted", value: JSON.stringify(interactive) },
+          };
+        }
         this.elements.input.value = "";
         this.hideCommandMenu?.();
         this.images = [];
@@ -3913,6 +3990,7 @@
 
     destroy() {
       if (this.destroyed) return;
+      this.disposeInteractiveViews();
       this.destroyed = true;
       if (this.transientStatusTimer != null) global.clearTimeout(this.transientStatusTimer);
       this.transientStatusTimer = null;
@@ -4624,6 +4702,7 @@
     SidebarView,
     resolveItemContext,
     pdfEvidenceForQuestion,
+    currentPdfPage,
     resolvePaperLink,
     appendMarkdown,
     copyMessageText,

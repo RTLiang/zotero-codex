@@ -38,7 +38,7 @@ for (const locale of ["en_US", "zh_CN"]) {
   }
 }
 
-for (const script of ["scripts/compile.mjs", "scripts/check-emit-equivalence.mjs"]) {
+for (const script of ["scripts/compile.mjs"]) {
   const result = spawnSync(process.execPath, [resolve(projectRoot, script)], {
     cwd: projectRoot,
     stdio: "inherit",

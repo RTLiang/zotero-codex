@@ -2076,3 +2076,8 @@ display: flex;
 }
 .zcs-settings-navigation:hover { background: var(--zcs-hover, color-mix(in srgb, CanvasText 5%, transparent)); }
 .zcs-settings-navigation:focus-visible { outline: 2px solid CanvasText; outline-offset: -3px; }
+.zcs-interactive { border: 1px solid var(--fill-quinary, #ddd); border-radius: 12px; overflow: hidden; }
+.zcs-interactive-title { font-size: 14px; margin: 12px; }
+.zcs-interactive-frame { display: block; width: 100%; height: 320px; border: 0; background: transparent; }
+.zcs-interactive-status:empty { display: none; }
+.zcs-interactive-status { padding: 12px; color: var(--color-red, #b22); }

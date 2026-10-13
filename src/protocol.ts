@@ -91,6 +91,7 @@ interface Creator {
 }
 
 type TranscriptEntry =
+  | { id: string; turnID: string; role: "interactiveUI"; document: InteractiveUIDocument }
   | { id: unknown; turnID: string; role: "user"; text: string; images: InputImage[] }
   | { id: unknown; turnID: string; role: "assistant"; phase: string | null; text: string }
   | { id: unknown; turnID: string; role: "generatedImage"; images: { url: string; name: string }[] }
@@ -472,6 +473,11 @@ interface ProtocolModule {
           }
         }
         if (item.type === "hookPrompt" || item.type === "contextCompaction") continue;
+        const interactive = modules.InteractiveUI?.parseItem(item);
+        if (interactive) {
+          output.push({ ...interactive, turnID, role: "interactiveUI" });
+          continue;
+        }
         output.push({
           id: item.id || `${turnID}-${output.length}`,
           turnID,

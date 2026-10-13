@@ -13,6 +13,8 @@ async function startup({ id, version, rootURI }) {
   await Zotero.uiReadyPromise;
 
   for (const script of [
+    "content/interactive-ui.js",
+    "content/interactive-frame.js",
     "content/protocol.js",
     "content/runtime-settings.js",
     "content/codex-client.js",

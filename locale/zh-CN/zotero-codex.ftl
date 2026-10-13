@@ -262,3 +262,4 @@ zotero-codex-runtime-settings = 代理与存储
 zotero-codex-task-isolation = 独立存储的对话
 zotero-codex-task-isolation-copy = 这些对话保存在所选 Codex 目录中。其他 Codex 应用需要使用同一个目录才能查看它们。
 zotero-codex-section-summary-isolated = Zotero 独立对话
+zotero-codex-ui-error = 交互界面无法加载或保存操作状态。

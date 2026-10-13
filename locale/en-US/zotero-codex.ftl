@@ -262,3 +262,4 @@ zotero-codex-runtime-settings = Proxy and storage
 zotero-codex-task-isolation = Dedicated conversations
 zotero-codex-task-isolation-copy = These conversations live in the selected Codex storage directory. Other Codex apps must use that directory to see them.
 zotero-codex-section-summary-isolated = Dedicated Zotero conversations
+zotero-codex-ui-error = This interactive view could not load or save its state.

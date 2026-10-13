@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 global.ZoteroCodexModules = { Protocol: require("../content/protocol.js") };
+require("../content/interactive-ui.js");
 require("../content/runtime-settings.js");
 require("../content/codex-client.js");
 const Settings = global.ZoteroCodexModules.RuntimeSettings;

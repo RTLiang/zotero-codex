@@ -21,7 +21,7 @@ These rules apply to everyone running this skill, feature recipes, unit tests, o
 
 Run from the repository root. Prerequisites are Node 20 or later, npm, `zip`, macOS, and Zotero 10.0.x. The helper defaults to `/Applications/Zotero.app/Contents/MacOS/zotero`; set `ZOTERO_BIN` to another installation's executable if necessary. `VERIFY_CODEX_BIN` can select the actual Codex executable. Otherwise the helper uses `which codex`, and the plugin retains its normal auto-detection fallback.
 
-The check step compiles the TypeScript sources and compares the result with the pre-migration build, so the clone needs `node_modules` and the full git history. `launch` runs `npm ci` when `node_modules/typescript` is absent and `git fetch --unshallow` when the clone is shallow, writing both to `check.log`.
+The check step compiles TypeScript and validates packaging and locales. `launch` runs `npm ci` when TypeScript is absent, recording it in `check.log`. The historical migration equivalence check is separate (`npm run check:migration`); intentional runtime changes require behavioral verification instead of equality with the pre-migration build. Frame controls can be addressed with `iframe-selector >>> control-selector`, using the same actual input events and pointer actions.
 
 ```sh
 verify_control="$PWD/.cursor/skills/verify-zotero-codex/scripts/control.mjs"

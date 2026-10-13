@@ -6,6 +6,7 @@
   "scripts": {
     "check": "node scripts/check.mjs",
     "compile": "node scripts/compile.mjs",
+    "check:migration": "npm run compile && node scripts/check-emit-equivalence.mjs",
     "pretest": "node scripts/compile.mjs",
     "test": "node --test tests/*.test.cjs",
     "build": "node scripts/build.mjs",

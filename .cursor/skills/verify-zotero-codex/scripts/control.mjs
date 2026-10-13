@@ -38,7 +38,7 @@ function record(action, result) {
 }
 function fingerprint() {
   const hash = crypto.createHash("sha256");
-  const tracked = spawnSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" });
+  const tracked = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: root, encoding: "utf8" });
   assert.equal(tracked.status, 0, "git ls-files failed");
   // Built JavaScript is not tracked, so the fingerprint stays stable across check and build runs.
   for (const relative of tracked.stdout.split("\0").filter(Boolean).sort()) {
@@ -165,12 +165,6 @@ async function launch() {
     setupLog.push(`$ npm ci\n${(install.stdout || "") + (install.stderr || "")}`);
     assert.equal(install.status, 0, `npm ci failed; see ${run}/check.log`);
   }
-  const shallow = spawnSync("git", ["rev-parse", "--is-shallow-repository"], { cwd: root, encoding: "utf8" });
-  if ((shallow.stdout || "").trim() === "true") {
-    const fetch = spawnSync("git", ["fetch", "--unshallow"], { cwd: root, encoding: "utf8" });
-    setupLog.push(`$ git fetch --unshallow\n${(fetch.stdout || "") + (fetch.stderr || "")}`);
-    assert.equal(fetch.status, 0, `git fetch --unshallow failed; see ${run}/check.log`);
-  }
   assert.equal(fingerprint(), sourceHash, "Source changed while preparing the build; retry with a fresh run");
   for (const name of ["check", "build"]) {
     const result = spawnSync("npm", ["run", name], { cwd: root, encoding: "utf8" });
@@ -225,7 +219,14 @@ async function launch() {
 }
 
 const elementScript = `
-  const e = document.querySelector(arguments[0]);
+  const parts = arguments[0].split(' >>> ');
+  let scope = document;
+  let e;
+  for (let i = 0; i < parts.length; i++) {
+    e = scope.querySelector(parts[i]);
+    if (!e) throw new Error("Missing selector: " + parts[i]);
+    if (i < parts.length - 1) { scope = e.contentDocument; if (!scope) throw new Error('Frame has no document'); }
+  }
   if (!e) throw new Error("Missing selector: " + arguments[0]);
   if (!e.getClientRects().length || e.closest('[hidden],[collapsed="true"]') || !e.getBoundingClientRect().width) throw new Error("Hidden element: " + arguments[0]);
   if (e.disabled) throw new Error("Disabled element: " + arguments[0]);
@@ -234,21 +235,23 @@ async function drive(client, action, selector, value = "") {
   const scripts = {
     click: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
     dblclick: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
-    fill: `${elementScript} e.focus(); e.value = arguments[1]; e.dispatchEvent(new Event('input', {bubbles:true})); return e.value;`,
-    select: `${elementScript} if (![...e.options].some(o=>o.value===arguments[1])) throw new Error('Unknown option'); e.value=arguments[1]; e.dispatchEvent(new Event('change',{bubbles:true})); return e.value;`,
-    key: `${elementScript} e.focus(); e.dispatchEvent(new KeyboardEvent('keydown',{key:arguments[1],bubbles:true,cancelable:true})); return true;`,
+    fill: `${elementScript} e.focus(); e.value = arguments[1]; e.dispatchEvent(new e.ownerDocument.defaultView.Event('input', {bubbles:true})); return e.value;`,
+    select: `${elementScript} if (![...e.options].some(o=>o.value===arguments[1])) throw new Error('Unknown option'); e.value=arguments[1]; e.dispatchEvent(new e.ownerDocument.defaultView.Event('change',{bubbles:true})); return e.value;`,
+    key: `${elementScript} e.focus(); e.dispatchEvent(new e.ownerDocument.defaultView.KeyboardEvent('keydown',{key:arguments[1],bubbles:true,cancelable:true})); return true;`,
     check: `${elementScript} if(e.checked !== (arguments[1]==='true')) e.click(); return e.checked;`,
   };
   assert.ok(scripts[action], `Unknown action ${action}`);
   record("action", { action, selector, value });
   let result = await client.evaluate(scripts[action], [selector, value]);
   if (action === "click" || action === "dblclick") {
-    const element = await client.call("WebDriver:FindElement", { using: "css selector", value: selector });
-    const id = element.value["element-6066-11e4-a52e-4f735466cecf"];
-    assert.ok(id, "Marionette did not return an element reference");
+    const point = await client.evaluate(`${elementScript}
+      const r=e.getBoundingClientRect(); let x=r.left+r.width/2, y=r.top+r.height/2;
+      let w=e.ownerDocument.defaultView;
+      while (w.frameElement) {const f=w.frameElement, r=f.getBoundingClientRect(); x+=r.left+f.clientLeft; y+=r.top+f.clientTop; w=f.ownerDocument.defaultView;}
+      return {x:Math.round(x), y:Math.round(y)};`, [selector]);
     await client.call("WebDriver:PerformActions", { actions: [{ type: "pointer", id: "verification-mouse",
       parameters: { pointerType: "mouse" }, actions: [
-        { type: "pointerMove", origin: element.value, x: 0, y: 0, duration: 0 },
+        { type: "pointerMove", origin: "viewport", x: point.x, y: point.y, duration: 0 },
         ...Array.from({length:action === "dblclick" ? 2 : 1},()=>[
           { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 },
         ]).flat(),
