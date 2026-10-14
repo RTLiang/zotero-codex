@@ -152,6 +152,29 @@ test("text and images stay with their document and return when that document is 
   assert.equal(view.images.length, 0);
 });
 
+test("ordinary paper switching restores each paper's unsent draft", async () => {
+  const f = fixture();
+  const body = f.body();
+  const view = await f.open(body);
+
+  view.elements.input.value = "Question for A";
+  view.images = [imageA];
+  f.select(body, itemB);
+  await settle();
+  assert.equal(view.elements.input.value, "");
+  assert.equal(view.images.length, 0);
+
+  view.elements.input.value = "Question for B";
+  f.select(body, itemA);
+  await settle();
+  assert.equal(view.elements.input.value, "Question for A");
+  assert.deepEqual({ ...view.images[0] }, imageA);
+
+  f.select(body, itemB);
+  await settle();
+  assert.equal(view.elements.input.value, "Question for B");
+});
+
 test("draft restoration preserves text entered while initialization is pending", async () => {
   const f = fixture();
   const body = f.body();

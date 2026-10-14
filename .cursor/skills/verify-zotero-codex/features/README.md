@@ -10,7 +10,7 @@ Before any recipe, follow [contributor privacy](../SKILL.md#contributor-privacy)
 | --- | --- | --- |
 | [Commands and permissions](commands-permissions.md) | Bottom permission button, `/approvals`, slash menu, model button, `/model` | Permission button and `/approvals` are the generated smoke; other branches require separate proofs |
 | [Paper context](paper-context.md) | Library item pane, PDF reader sidebar, Item/+ menu, selection popup | Source-mapped; native paper selection supplies the smoke fixture |
-| [Conversations](conversations.md) | Header +, picker New chat, `/new`, picker rows/search/filter, message controls | Source-mapped; authenticated reply/history paths are untested by the smoke |
+| [Conversations](conversations.md) | Header +, picker New chat, `/new`, picker rows/search/filter, message controls, paper-switch drafts | Paper-scoped draft switching and reconnect preservation have native proof; authenticated reply/history paths remain untested |
 | [Images and message rendering](images-rendering.md) | + menu, paste, drag/drop, image click, message transcript | Source-mapped; requires image input or real reply evidence |
 | [Connection and storage](connection-storage.md) | Sidebar Settings, its Zotero settings link, Zotero Settings → Codex | Source-mapped; preferences and reconnect need their own proof |
 | [Interactive UI](interactive-ui.md) | New chat prompt, generated controls, normal follow-up, chat picker reopen | Requires real tool history, native interaction/state/context and isolation proof |

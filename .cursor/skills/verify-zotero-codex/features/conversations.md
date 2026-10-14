@@ -7,6 +7,7 @@ Users create, search, resume and manage chats while replies stream. Chats can co
 - `new-chat` opens a blank composer and creates a stored chat only on the first message.
 - `send-stop` streams a response and interrupts an active reply.
 - `picker` searches recent chats, filters to a paper, and loads further rows on scroll.
+- `paper-drafts` preserves unsent text and image attachments independently while switching between library papers.
 - `background` keeps a reply running while users switch chats and restores its Stop button.
 - `history-edit` copies messages, edits the latest turn, or branches an earlier turn.
 - `manage` archives/deletes a chat and clears its paper bindings after success.
@@ -16,6 +17,7 @@ Users create, search, resume and manage chats while replies stream. Chats can co
 
 - Open Codex for a library paper or a PDF.
 - Start through the header +, New chat in the chat picker, or `/new`.
+- For paper-scoped drafts, open Codex on fixture paper A, enter disposable text and attach a fixture image, select paper B and confirm its composer is independent, then return to A and verify both text and image are restored. Enter a B draft and repeat in the other direction. Capture each switch and inspect the resulting composer state.
 - Send through the arrow button or Enter; Shift+Enter adds a line. Stop uses the same button while running.
 - Click the chat title to open the picker, search, toggle Current paper, and select a row.
 - Hover a message for Copy/Edit controls. Right-click a chat row or the current title to archive/delete.
@@ -37,6 +39,7 @@ Preconditions:
 ## Gotchas
 
 - Blank new-chat UI is not a stored chat. A streaming activity line is not a completed answer.
+- Paper-switch drafts are held in memory. Confirm each paper's text and image return after A→B→A; the blank composer on B is expected until a B draft is entered.
 - Automatic title generation can create an extra model request. Record the final name after completion, and preserve a manual name if that path is under test.
 - Background reply, OS notification delivery and notification-click navigation are separate claims.
 - Picker search depends on the actual loaded chat title/text, not necessarily the literal prompt. Use the displayed title when the prompt term is absent.
