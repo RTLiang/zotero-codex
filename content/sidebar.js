@@ -2071,7 +2071,7 @@
       if (!pdfDocument?.getPage) return null;
       const escaped = reference.sectionNumber?.replace(/\./gu, "\\.");
       const heading = escaped
-        ? new RegExp(`^\\s*(?:section\\s+)?${escaped}(?![\\d.])(?:\\s|[.):：、-]|$)`, "iu")
+        ? new RegExp(`^\\s*(?:section\\s+)?${escaped}(?!\\d|\\.\\d)(?:\\s|[.):：、-]|$)`, "iu")
         : /^\s*(?:(?:\d+(?:\.\d+)*|[IVX]+)[.、]?\s+)?(?:approach|methods?|methodology|方法)(?:\s|$|[:：])/iu;
       let outline = null;
       try { outline = await pdfDocument.getOutline?.(); }
@@ -2237,34 +2237,42 @@
           const number = reference.query.match(/\d{1,4}[A-Za-z]?/u)?.[0];
           const figure = Boolean(number && /^Figure /i.test(reference.query));
           const table = Boolean(number && /^Table /i.test(reference.query));
+          const figureNumbers = figure && /[A-Za-z]$/u.test(number)
+            ? [number, number.slice(0, -1)] : [number];
           if (figure || table) {
             const regions = await this.getTaggedPdfRegions(internal);
             const marker = figure ? "(?:fig(?:ure)?\\.?|图)" : "(?:table|表)";
-            const labelPattern = new RegExp(`(?:^|\\W)${marker}\\s*${number}(?![\\dA-Za-z])`, "iu");
-            const region = regions.find((candidate) =>
-              candidate.role === (figure ? "figure" : "table") &&
-              labelPattern.test(candidate.label));
-            if (region) {
-              await reader.navigate({
-                position: { pageIndex: region.pageIndex, rects: [region.bbox] },
-              });
-              return;
-            }
             const iframeWindow = internal._primaryView?._iframeWindow;
             const pdfDocument = iframeWindow?.PDFViewerApplication?.pdfDocument;
+            for (const candidateNumber of figureNumbers) {
+              const labelPattern = new RegExp(`(?:^|\\W)${marker}\\s*${candidateNumber}(?![\\dA-Za-z])`, "iu");
+              const region = regions.find((candidate) =>
+                candidate.role === (figure ? "figure" : "table") &&
+                labelPattern.test(candidate.label));
+              if (region) {
+                await reader.navigate({
+                  position: { pageIndex: region.pageIndex, rects: [region.bbox] },
+                });
+                return;
+              }
+              if (typeof pdfDocument?.getPageData === "function") {
+                const location = await this.findPdfCaptionLocation(pdfDocument,
+                  figure ? "figure" : "table", candidateNumber, iframeWindow);
+                if (location) {
+                  await reader.navigate(location);
+                  return;
+                }
+              }
+            }
             if (typeof pdfDocument?.getPageData === "function") {
-              const location = await this.findPdfCaptionLocation(pdfDocument,
-                figure ? "figure" : "table", number, iframeWindow);
-              if (!location) throw new Error(`Could not locate ${reference.label || reference.query} in the PDF`);
-              await reader.navigate(location);
-              return;
+              throw new Error(`Could not locate ${reference.label || reference.query} in the PDF`);
             }
           }
           let queries = [reference.query];
           if (figure) {
-            queries = /^图/u.test(reference.label || "")
-              ? [`图 ${number}：`, `图${number}：`, `图 ${number}:`, `图${number}:`, `Figure ${number}:`]
-              : [`Figure ${number}:`, `Figure ${number}.`, `Fig. ${number}:`, `Fig. ${number}.`];
+            queries = figureNumbers.flatMap(candidateNumber => /^图/u.test(reference.label || "")
+              ? [`图 ${candidateNumber}：`, `图${candidateNumber}：`, `图 ${candidateNumber}:`, `图${candidateNumber}:`, `Figure ${candidateNumber}:`]
+              : [`Figure ${candidateNumber}:`, `Figure ${candidateNumber}.`, `Fig. ${candidateNumber}:`, `Fig. ${candidateNumber}.`]);
           }
           else if (table) {
             queries = /^表/u.test(reference.label || "")

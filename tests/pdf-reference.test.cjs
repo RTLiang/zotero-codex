@@ -171,6 +171,16 @@ test("Chinese and English references in a reply open the matching PDF target", (
   ]);
 });
 
+test("figure links leave surrounding parentheses outside the clickable label", () => {
+  const segments = Markdown.pdfReferenceSegments("时域增强（Fig. 3a），另见 (Fig. 3b) 和式(10)。");
+  assert.deepEqual(segments.filter(segment => segment.reference), [
+    { text: "Fig. 3a", reference: { query: "Figure 3a" } },
+    { text: "Fig. 3b", reference: { query: "Figure 3b" } },
+    { text: "式(10)", reference: { query: "(10)" } },
+  ]);
+  assert.equal(segments.map(segment => segment.text).join(""), "时域增强（Fig. 3a），另见 (Fig. 3b) 和式(10)。");
+});
+
 test("a Chinese paraphrase beside a section number jumps to that section", () => {
   const doc = documentStub();
   const root = doc.createElement("div");
@@ -352,6 +362,52 @@ test("native figure links use the caption rather than a punctuated prose mention
   }
 });
 
+test("subfigure references fall back to the parent caption without matching another figure", async () => {
+  const pdfDocument = {
+    numPages: 3,
+    async getPage() { return { async getStructTree() { return null; } }; },
+    async getPageData({ pageIndex }) {
+      return { chars: nativeTextLine([
+        "Fig. 30 Other data", "The example is shown in Fig. 3a.", "Fig. 3 Data augmentation",
+      ][pageIndex]) };
+    },
+  };
+  for (const query of ["Figure 3a", "Figure 3b"]) {
+    const { navigation, findStates } = await withReader(pdfDocument,
+      view => view.openPdfReference({ query }));
+    assert.equal(navigation[0].position.pageIndex, 2);
+    assert.deepEqual(findStates, []);
+  }
+});
+
+test("an exact subfigure caption takes precedence over the parent structure tag", async () => {
+  const pdfDocument = {
+    numPages: 2,
+    async getPage(pageNumber) { return { async getStructTree() {
+      return pageNumber === 1 ? { role: "Figure", alt: "Fig. 3", bbox: [40, 100, 100, 120] } : null;
+    } }; },
+    async getPageData({ pageIndex }) {
+      return { chars: nativeTextLine(pageIndex === 0 ? "Fig. 3 Overview" : "Fig. 3a Detailed view") };
+    },
+  };
+  const { navigation } = await withReader(pdfDocument,
+    view => view.openPdfReference({ query: "Figure 3a" }));
+  assert.equal(navigation[0].position.pageIndex, 1);
+});
+
+test("a subfigure without an exact caption can use the parent structure bounds", async () => {
+  const pdfDocument = {
+    numPages: 1,
+    async getPage() { return { async getStructTree() {
+      return { role: "Figure", alt: "Fig. 3", bbox: [40, 100, 100, 120] };
+    } }; },
+    async getPageData() { return { chars: nativeTextLine("Fig. 3 Data augmentation") }; },
+  };
+  const { navigation } = await withReader(pdfDocument,
+    view => view.openPdfReference({ query: "Figure 3a" }));
+  assert.deepEqual(navigation, [{ position: { pageIndex: 0, rects: [[40, 100, 100, 120]] } }]);
+});
+
 test("a native document without the requested caption never falls back to prose search", async () => {
   const pdfDocument = {
     numPages: 1,
@@ -465,4 +521,36 @@ test("a section with bookmark coordinates centers its heading using PDF metadata
   const { navigation } = await withReader(pdfDocument,
     (view) => view.openPdfReference({ sectionNumber: "4.3" }));
   assert.deepEqual(navigation, [{ position: { pageIndex: 3, rects: [[317.955, 213.846, 318.955, 227.846]] } }]);
+});
+
+test("a section heading may end its number with a period without matching a child or sibling", async () => {
+  const pdfDocument = {
+    numPages: 4,
+    async getOutline() { return null; },
+    async getPage() { return {}; },
+    async getPageData({ pageIndex }) {
+      return { chars: nativeTextLine([
+        "4.6.10. Other section", "4.6.1.2. Child section",
+        "4.6.1. High-frequency intent contrastive learning", "4.6.2. Next section",
+      ][pageIndex]) };
+    },
+  };
+  const { navigation } = await withReader(pdfDocument,
+    view => view.openPdfReference({ sectionNumber: "4.6.1" }));
+  assert.equal(navigation[0].position.pageIndex, 2);
+});
+
+test("a section bookmark may end its number with a period", async () => {
+  const pdfDocument = {
+    numPages: 4,
+    async getOutline() { return [
+      { title: "4.6.10. Other section", dest: "wrong-sibling" },
+      { title: "4.6.1.2. Child section", dest: "wrong-child" },
+      { title: "4.6.1. High-frequency intent contrastive learning", dest: "section.4.6.1" },
+    ]; },
+    async getPage() { throw new Error("Bookmark metadata is sufficient"); },
+  };
+  const { navigation } = await withReader(pdfDocument,
+    view => view.openPdfReference({ sectionNumber: "4.6.1" }));
+  assert.deepEqual(navigation, [{ dest: "section.4.6.1" }]);
 });

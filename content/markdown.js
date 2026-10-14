@@ -725,7 +725,7 @@
 
   function pdfReferenceSegments(value) {
     const source = String(value || "");
-    const references = /(?<![A-Za-z0-9])(?:Figure|Fig\.?|Table|Eq(?:uation)?\.?)\s*[（(]?\d{1,4}[A-Za-z]?[）)]?|(?:图|表|公式|式)\s*[（(]?\d{1,4}[A-Za-z]?[）)]?|第\s*\d{1,3}(?:\.\d{1,3})*\s*节|(?:Section|Sec\.?)\s*\d{1,3}(?:\.\d{1,3})*|第\s*\d{1,4}(?:\s*[-–至]\s*\d{1,4})?\s*页|(?:pages?|pp?\.)\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?|“[^”\n]{20,160}”|"[^"\n]{20,160}"/giu;
+    const references = /(?<![A-Za-z0-9])(?:Figure|Fig\.?|Table|Eq(?:uation)?\.?)\s*(?:[（(]\d{1,4}[A-Za-z]?[）)]|\d{1,4}[A-Za-z]?)|(?:图|表|公式|式)\s*(?:[（(]\d{1,4}[A-Za-z]?[）)]|\d{1,4}[A-Za-z]?)|第\s*\d{1,3}(?:\.\d{1,3})*\s*节|(?:Section|Sec\.?)\s*\d{1,3}(?:\.\d{1,3})*|第\s*\d{1,4}(?:\s*[-–至]\s*\d{1,4})?\s*页|(?:pages?|pp?\.)\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?|“[^”\n]{20,160}”|"[^"\n]{20,160}"/giu;
     const segments = [];
     let offset = 0;
     let nearbySection = null;
