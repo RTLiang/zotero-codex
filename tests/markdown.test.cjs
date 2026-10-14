@@ -5,20 +5,20 @@ const path = require("node:path");
 const Markdown = require("../content/markdown.js");
 const KaTeX = require("../content/vendor/katex/katex.min.js");
 
-test("parses the Markdown structures used in Codex paper explanations", () => {
+test("parses the Markdown structures used in Codex document explanations", () => {
   const blocks = Markdown.parseBlocks(`
-#### MultiDigits 数据集
+#### 示例项目清单
 
-> SimCLR 比较的是整张图像的全局表示。
+> 这是一段用于测试引用格式的示例文字。
 
 ---
 
 - 1、2、4 个数字
 - [x] 允许重叠
 
-| 方法 | 结果 |
+| 项目 | 数值 |
 | :--- | ---: |
-| SimCLR | 0.91 |
+| 示例项目 | 0.91 |
 `);
 
   assert.deepEqual(blocks.map((block) => block.type), [
@@ -32,7 +32,7 @@ test("parses the Markdown structures used in Codex paper explanations", () => {
 
 test("renders inline emphasis, links, code, and math as typed tokens", () => {
   const tokens = Markdown.parseInlines(
-    "**粗体**、*斜体*、~~删除~~、`code`、[paper](https://example.com) 与 \\(112 \\times 112\\)",
+    "**粗体**、*斜体*、~~删除~~、`code`、[document](https://example.com) 与 \\(112 \\times 112\\)",
   );
   assert.deepEqual(tokens.map((token) => token.type), [
     "strong", "text", "em", "text", "del", "text", "code", "text", "link", "text", "math",
@@ -52,16 +52,16 @@ test("keeps escaped Markdown punctuation literal", () => {
   assert.deepEqual(Markdown.parseInlines("\\*literal\\*"), [{ type: "text", text: "*literal*" }]);
 });
 
-test("parses the reported InfoMin formulas as structured math", () => {
-  const objective = Markdown.parseLatex(String.raw`\min I(v_1;v_2)`);
+test("parses named operators and scripted function arguments as structured math", () => {
+  const objective = Markdown.parseLatex(String.raw`\min F(x_1;x_2)`);
   assert.equal(objective.children[0].type, "namedOperator");
   assert.equal(objective.children[0].text, "min");
   assert.equal(objective.children[3].type, "script");
   assert.equal(objective.children[3].subscript.text, "1");
-  assert.equal(Markdown.latexToText(String.raw`\min I(v_1;v_2)`), "min I(v₁;v₂)");
+  assert.equal(Markdown.latexToText(String.raw`\min F(x_1;x_2)`), "min F(x₁;x₂)");
   assert.equal(
-    Markdown.latexToText(String.raw`I(v_1;y)=I(v_2;y)=I(x;y)`),
-    "I(v₁;y) = I(v₂;y) = I(x;y)",
+    Markdown.latexToText(String.raw`F(x_1;y)=F(x_2;y)=F(z;y)`),
+    "F(x₁;y) = F(x₂;y) = F(z;y)",
   );
 });
 
@@ -95,7 +95,7 @@ test("parses common roots, accents, limits, relations, and token sized macro arg
   assert.equal(Markdown.parseLatex(String.raw`\sum\limits_{i=1}^n`).children[0].base.text, "∑");
   assert.equal(Markdown.latexToText(String.raw`a\leqslant b`), "a ⩽ b");
   assert.equal(Markdown.latexToText(String.raw`\unknown{x}`), String.raw`\unknown{x}`);
-  assert.equal(Markdown.latexToText(String.raw`\text{A_BC}+x_NCE`), "A_BC + x₍NCE₎");
+  assert.equal(Markdown.latexToText(String.raw`\text{A_BC}+x_ABC`), "A_BC + x₍ABC₎");
   assert.equal(Markdown.normalizeLatex(String.raw`\operatorname{loss_A_BC}`), String.raw`\operatorname{loss_A_BC}`);
 });
 
@@ -138,10 +138,10 @@ test("renders matrix and aligned environments as structured MathML", () => {
   for (const tag of ["math", "mroot", "mover", "mtable", "mtr", "mtd"]) assert.ok(tags.includes(tag), tag);
 });
 
-test("renders the reported bare SASRec arrow formula with KaTeX", () => {
+test("renders a bare labeled arrow formula with KaTeX", () => {
   const source = [
     "对于 [A,B,C] → D，输入为：",
-    String.raw`[E_A,E_B,E_C]\xrightarrow{\mathrm{SASRec}}h.`,
+    String.raw`[E_A,E_B,E_C]\xrightarrow{\mathrm{Example}}h.`,
   ].join("\n");
   const blocks = Markdown.parseBlocks(source);
   assert.deepEqual(blocks.map((block) => block.type), ["paragraph", "math"]);
@@ -166,7 +166,7 @@ test("renders the reported bare SASRec arrow formula with KaTeX", () => {
     const rendered = root.children[0].innerHTML;
     assert.match(rendered, /class="katex"/u);
     assert.match(rendered, /<mover/u);
-    assert.match(rendered, /SASRec/u);
+    assert.match(rendered, /Example/u);
     assert.doesNotMatch(rendered, /katex-error/u);
   }
   finally {
@@ -191,26 +191,26 @@ test("ships KaTeX with only its referenced WOFF2 font files", () => {
 });
 
 test("renders bare model-generated LaTeX and repairs common missing braces", () => {
-  const blocks = Markdown.parseBlocks(String.raw`论文提出的损失是：
+  const blocks = Markdown.parseBlocks(String.raw`示例表达式如下：
 
-\mathcalL_NCE = -\mathbbE[ \log \frac{\exp h(v_1,i,v_2,i)} {\sum_j=1^K\exp h(v_1,i,v_2,j)} ]
+\mathcalQ_ABC = \mathbbE[ \log \frac{\exp x_1 + 2} {\sum_j=1^K (x_j + 1)} ]
 
 并且有：
 
-I(v_1;v_2) ≥ \log K-\mathcalL_NCE`);
+x_1 + x_2 ≥ K-\mathcalQ_ABC`);
 
   assert.deepEqual(blocks.map((block) => block.type), ["paragraph", "math", "paragraph", "math"]);
   assert.equal(blocks[1].inferred, true);
-  assert.match(blocks[1].text, /^\\mathcal\{L\}_\{NCE\}/u);
+  assert.match(blocks[1].text, /^\\mathcal\{Q\}_\{ABC\}/u);
   assert.match(blocks[1].text, /\\mathbb\{E\}/u);
   assert.match(blocks[1].text, /\\sum\{j=1\}\^\{K\}/u);
-  assert.match(Markdown.latexToText(blocks[1].text), /^L₍NCE₎ = - E\[/u);
+  assert.match(Markdown.latexToText(blocks[1].text), /^Q₍ABC₎ = E\[/u);
 
-  const styled = Markdown.parseLatex(String.raw`\mathcalL_NCE`).children[0];
+  const styled = Markdown.parseLatex(String.raw`\mathcalQ_ABC`).children[0];
   assert.equal(styled.type, "script");
   assert.equal(styled.base.type, "style");
   assert.equal(styled.base.variant, "script");
-  assert.equal(Markdown.latexToText(String.raw`\mathcalL_NCE`), "L₍NCE₎");
+  assert.equal(Markdown.latexToText(String.raw`\mathcalQ_ABC`), "Q₍ABC₎");
 });
 
 test("does not mistake ordinary backslash text for display math", () => {

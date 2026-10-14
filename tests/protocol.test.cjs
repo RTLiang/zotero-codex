@@ -15,24 +15,24 @@ test("uses the default permission policy and preserves explicit access settings"
 
 test("lists enabled skills once and uses their public descriptions", () => {
   const skills = Protocol.normalizeSkillList({ data: [{ skills: [
-    { name: "pdf", path: "/skills/pdf/SKILL.md", enabled: true, interface: { displayName: "Read PDFs", shortDescription: "Inspect papers" } },
+    { name: "pdf", path: "/skills/pdf/SKILL.md", enabled: true, interface: { displayName: "Read PDFs", shortDescription: "Inspect documents" } },
     { name: "PDF", path: "/other/pdf/SKILL.md", enabled: true },
     { name: "disabled", path: "/skills/disabled/SKILL.md", enabled: false },
     { name: "missing-path", enabled: true },
   ] }] });
   assert.equal(skills.length, 1);
   assert.equal(skills[0].displayName, "Read PDFs");
-  assert.equal(skills[0].description, "Inspect papers");
+  assert.equal(skills[0].description, "Inspect documents");
 });
 
 test("parses local slash commands and exact skill names without consuming file paths", () => {
   const skills = [{ name: "pdf" }, { name: "Make Bot UI" }];
   assert.deepEqual(Protocol.parseSlashCommand(" /SKILLS pdf ", skills), { kind: "command", name: "skills", argument: "pdf" });
   assert.deepEqual(Protocol.parseSlashCommand("/approvals"), { kind: "command", name: "approvals", argument: "" });
-  assert.deepEqual(Protocol.parseSlashCommand("/PDF Explain this paper", skills), { kind: "skill", text: "$pdf Explain this paper" });
+  assert.deepEqual(Protocol.parseSlashCommand("/PDF Explain this document", skills), { kind: "skill", text: "$pdf Explain this document" });
   assert.deepEqual(Protocol.parseSlashCommand("/Make Bot UI Build this", skills), { kind: "skill", text: "$Make Bot UI Build this" });
   assert.deepEqual(Protocol.parseSlashCommand("/pdf-extra", skills), { kind: "unknown" });
-  assert.equal(Protocol.parseSlashCommand("/Users/research/paper.pdf", skills), null);
+  assert.equal(Protocol.parseSlashCommand("/Users/fixture/document.pdf", skills), null);
   assert.equal(Protocol.parseSlashCommand("Explain /pdf", skills), null);
   assert.deepEqual(Protocol.referencedSkills("Use $pdf and $Make Bot UI today; $pdf-extra is separate", skills), skills);
   assert.deepEqual(Protocol.referencedSkills("$pdf-extra", skills), []);
@@ -52,7 +52,7 @@ test("normalizes and orders shared Codex tasks", () => {
 
 test("filters the recent-task picker and formats relative time by locale", () => {
   const threads = [
-    { id: "a", label: "Zotero 文献总结", cwd: "/papers" },
+    { id: "a", label: "Zotero 文档摘要", cwd: "/fixtures" },
     { id: "b", label: "修复 Swift 项目", cwd: "/code" },
   ];
   assert.deepEqual(Protocol.filterThreads(threads, "zotero").map((row) => row.id), ["a"]);
@@ -123,10 +123,10 @@ test("flattens full turn history for the sidebar", () => {
     {
       id: "turn-1",
       items: [
-        { id: "u1", type: "userMessage", content: [{ type: "text", text: "解释这篇论文" }] },
+        { id: "u1", type: "userMessage", content: [{ type: "text", text: "解释这个文档" }] },
         { id: "a1", type: "agentMessage", phase: "commentary", text: "正在读取。" },
-        { id: "t1", type: "webSearch", query: "paper DOI" },
-        { id: "a2", type: "agentMessage", phase: "final", text: "核心贡献如下。" },
+        { id: "t1", type: "webSearch", query: "example document" },
+        { id: "a2", type: "agentMessage", phase: "final", text: "内容摘要如下。" },
       ],
     },
   ]);
@@ -138,7 +138,7 @@ test("flattens full turn history for the sidebar", () => {
   ]);
   assert.equal(entries[1].phase, "commentary");
   assert.match(entries[2].text, /Web search/u);
-  assert.equal(entries[2].item.query, "paper DOI");
+  assert.equal(entries[2].item.query, "example document");
   assert.equal(
     Protocol.activityDescriptor(entries[2].item).l10nID,
     "zotero-codex-activity-web-search",
@@ -223,8 +223,8 @@ test("collapses adjacent progress and tool activity into one transcript group", 
 test("creates untrusted Zotero context only when requested", () => {
   const context = Protocol.buildZoteroContext(
     {
-      title: "Example Paper",
-      creators: "Ada Lovelace",
+      title: "Example Document",
+      creators: "Fixture Author",
       doi: "10.1000/example",
       pdfPath: "/tmp/example.pdf",
     },
@@ -232,7 +232,7 @@ test("creates untrusted Zotero context only when requested", () => {
   );
   assert.equal(context.zotero.kind, "untrusted");
   assert.match(context.zotero.value, /untrusted source material/u);
-  assert.match(context.zotero.value, /Example Paper/u);
+  assert.match(context.zotero.value, /Example Document/u);
   assert.match(context.zotero.value, /Selected text \(printed page label 3; physical PDF page unknown\)/u);
 });
 
@@ -250,43 +250,43 @@ test("keeps an explicitly added PDF selection when item metadata is disabled", (
 });
 
 test("PDF citation context distinguishes physical pages from printed page labels", () => {
-  const context = Protocol.buildZoteroContext({ pdfPath: "/tmp/paper.pdf" }, [
+  const context = Protocol.buildZoteroContext({ pdfPath: "/tmp/document.pdf" }, [
     { text: "Introduction", pageNumber: 4, pageLabel: "14823" },
   ]);
   assert.match(context.zotero.value, /physical PDF page 4; printed label 14823/u);
 });
 
-test("a paper-location question receives the matching PDF section and physical page", () => {
+test("a document-location question receives the matching PDF section and physical page", () => {
   const pdf = [
-    "1 Introduction\nWe present the model.",
-    "Sec. 5 presents the ablation study.\n2 Related work",
-    "3 Method\nWe train two encoders.",
-    "4 Experiments\nResults follow.",
-    "4.2 Results\nComparison follows.",
-    "5 Ablation study\nWe ablate the graph size and warm-up epochs.\n5.1 Graph size",
-    "The Barlow Twins loss is also ablated.",
+    "1 Introduction\nThis document describes a sample workflow.",
+    "Sec. 5 presents the method steps.\n2 Overview",
+    "3 Setup\nPrepare the sample inputs.",
+    "4 Usage\nInstructions follow.",
+    "4.2 Examples\nExamples follow.",
+    "5 Method\nFollow the sample procedure and review its options.\n5.1 Options",
+    "The sample procedure includes optional checks.",
   ].join("\f");
-  const evidence = Protocol.buildPdfEvidence(pdf, 7, "where is ablation");
-  assert.match(evidence, /Excerpt, physical PDF page 6:\n5 Ablation study/u);
+  const evidence = Protocol.buildPdfEvidence(pdf, 7, "where is method");
+  assert.match(evidence, /Excerpt, physical PDF page 6:\n5 Method/u);
   assert.ok(evidence.indexOf("Excerpt, physical PDF page 6") < evidence.indexOf("Excerpt, physical PDF page 2"));
-  const context = Protocol.buildZoteroContext({ title: "Paper", pdfPath: "/paper.pdf", abstract: "Unrelated abstract" }, [], {
+  const context = Protocol.buildZoteroContext({ title: "Document", pdfPath: "/document.pdf", abstract: "Unrelated abstract" }, [], {
     pdfEvidence: evidence,
   });
-  assert.match(context.zotero.value, /Excerpt, physical PDF page 6:\n5 Ablation study/u);
+  assert.match(context.zotero.value, /Excerpt, physical PDF page 6:\n5 Method/u);
   assert.ok(context.zotero.value.length < 4_000);
   assert.doesNotMatch(context.zotero.value, /Unrelated abstract/u);
 });
 
-test("a Chinese paper-location question selects English PDF text", () => {
-  const evidence = Protocol.buildPdfEvidence("1 Introduction\f5 Ablation study\nGraph size matters.", 2, "这篇论文如何做消融实验？");
-  assert.match(evidence, /Excerpt, physical PDF page 2:\n5 Ablation study\nGraph size matters/u);
+test("a Chinese document-location question selects English PDF text", () => {
+  const evidence = Protocol.buildPdfEvidence("1 Introduction\f5 Method\nFollow the sample steps.", 2, "这个文档的方法步骤在哪？");
+  assert.match(evidence, /Excerpt, physical PDF page 2:\n5 Method\nFollow the sample steps/u);
   assert.equal(Protocol.buildPdfEvidence("one page", 2, "where"), "");
 });
 
 test("long PDFs put a matched later section before the context limit", () => {
-  const pdf = `${"unrelated text. ".repeat(5500)}\f5 Ablation study\nGraph size matters.`;
-  const evidence = Protocol.buildPdfEvidence(pdf, 2, "where is ablation");
-  assert.match(evidence, /Excerpt, physical PDF page 2:\n5 Ablation study/u);
+  const pdf = `${"unrelated text. ".repeat(5500)}\f5 Method\nFollow the sample steps.`;
+  const evidence = Protocol.buildPdfEvidence(pdf, 2, "where is method");
+  assert.match(evidence, /Excerpt, physical PDF page 2:\n5 Method/u);
   assert.ok(evidence.length <= 3_000);
 });
 
@@ -307,34 +307,34 @@ test("merges the live PDF selection with pinned selections without duplicates", 
   );
 });
 
-test("keeps a separate Codex task binding for each Zotero paper", () => {
-  const first = { libraryID: 1, itemKey: "PAPER-A", itemID: 10 };
-  const second = { libraryID: 1, itemKey: "PAPER-B", itemID: 11 };
-  assert.equal(Protocol.paperContextKey(first), "1:PAPER-A");
-  assert.equal(Protocol.paperContextKey(second), "1:PAPER-B");
+test("keeps a separate Codex task binding for each Zotero document", () => {
+  const first = { libraryID: 1, itemKey: "ITEM-A", itemID: 10 };
+  const second = { libraryID: 1, itemKey: "ITEM-B", itemID: 11 };
+  assert.equal(Protocol.paperContextKey(first), "1:ITEM-A");
+  assert.equal(Protocol.paperContextKey(second), "1:ITEM-B");
 
   let stored = Protocol.updatePaperThreadBindings("{}", Protocol.paperContextKey(first), "thread-a");
   stored = Protocol.updatePaperThreadBindings(stored, Protocol.paperContextKey(second), "thread-b");
   assert.deepEqual(Protocol.normalizePaperThreadBindings(stored), {
-    "1:PAPER-A": "thread-a",
-    "1:PAPER-B": "thread-b",
+    "1:ITEM-A": "thread-a",
+    "1:ITEM-B": "thread-b",
   });
 
   stored = Protocol.updatePaperThreadBindings(stored, Protocol.paperContextKey(first), "");
   assert.deepEqual(Protocol.normalizePaperThreadBindings(stored), {
-    "1:PAPER-B": "thread-b",
+    "1:ITEM-B": "thread-b",
   });
 });
 
-test("uses a paper's working directory, or its bindings when no PDF exists", () => {
+test("uses a document's working directory, or its bindings when no PDF exists", () => {
   const threads = [
-    { id: "same-directory", cwd: "/papers/a" },
+    { id: "same-directory", cwd: "/fixtures/a" },
     { id: "bound-elsewhere", cwd: "/other" },
-    { id: "other-paper", cwd: "/papers/b" },
+    { id: "other-paper", cwd: "/fixtures/b" },
     { id: "unrelated-home", cwd: "/home" },
   ];
   assert.deepEqual(
-    Protocol.filterThreadsForPaper(threads, "/papers/a", "bound-elsewhere")
+    Protocol.filterThreadsForPaper(threads, "/fixtures/a", "bound-elsewhere")
       .map((thread) => thread.id),
     ["same-directory"],
   );

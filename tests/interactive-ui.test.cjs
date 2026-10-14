@@ -38,7 +38,7 @@ async function storageFixture(t) {
 }
 
 const { InteractiveUI, Protocol } = loadModules();
-const document = { title: "Frequency demo", html: '<input type="range"><output>2</output>' };
+const document = { title: "Slider demo", html: '<input type="range"><output>2</output>' };
 const completedItem = (changes = {}) => ({
   id: "call-demo", type: "dynamicToolCall", tool: "render_interactive_ui",
   status: "completed", success: true, arguments: document, ...changes,
@@ -98,8 +98,8 @@ test("persists selections atomically and restores them in a fresh module instanc
   const store = ui.createStore(fixture.root);
   assert.equal(ui.createStore(fixture.root), store);
   assert.deepEqual(plain(await store.read("thread-a", "call-a")), { revision: 0, value: null });
-  const changed = await store.write("thread-a", "call-a", 0, { frequency: 7, mode: "masked" });
-  assert.deepEqual(plain(changed), { revision: 1, value: { frequency: 7, mode: "masked" } });
+  const changed = await store.write("thread-a", "call-a", 0, { slider: 7, mode: "compact" });
+  assert.deepEqual(plain(changed), { revision: 1, value: { slider: 7, mode: "compact" } });
   const reopened = fixture.reload().createStore(fixture.root);
   assert.deepEqual(plain(await reopened.read("thread-a", "call-a")), plain(changed));
   assert.equal(fixture.writes[0].options.tmpPath, `${fixture.writes[0].target}.tmp`);

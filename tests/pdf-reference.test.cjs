@@ -55,17 +55,17 @@ test("delayed localization cannot restore an expired PDF error", async t => {
   assert.equal(view.elements.pathStatus.textContent, "");
 });
 
-test("same-paper links use explicit PDF locations and otherwise keep their web target", () => {
+test("same-item links use explicit PDF locations and otherwise keep their web target", () => {
   const context = {
     attachmentID: 42,
-    pdfPath: "/tmp/paper.pdf",
-    url: "https://arxiv.org/abs/2008.07873",
+    pdfPath: "/tmp/document.pdf",
+    url: "https://arxiv.org/abs/0000.00000",
   };
-  assert.deepEqual(resolvePaperLink("https://arxiv.org/html/2008.07873#S4", context,
-    "论文第 4 节"), { kind: "pdf", reference: { sectionNumber: "4" } });
-  assert.deepEqual(resolvePaperLink("https://arxiv.org/html/2008.07873", context,
-    "论文方法部分"), { kind: "pdf", reference: { sectionTitle: "method" } });
-  assert.equal(resolvePaperLink("https://arxiv.org/html/2008.07873", context,
+  assert.deepEqual(resolvePaperLink("https://arxiv.org/html/0000.00000#S4", context,
+    "第 4 节"), { kind: "pdf", reference: { sectionNumber: "4" } });
+  assert.deepEqual(resolvePaperLink("https://arxiv.org/html/0000.00000", context,
+    "方法部分"), { kind: "pdf", reference: { sectionTitle: "method" } });
+  assert.equal(resolvePaperLink("https://arxiv.org/html/0000.00000", context,
     "更多信息"), null);
 });
 
@@ -85,7 +85,7 @@ function documentStub() {
 test("external sources remain clickable links in a PDF chat", () => {
   const doc = documentStub(), root = doc.createElement("div");
   const urls = [
-    "https://github.com/example/research/blob/main/model.py#L42",
+    "https://github.com/example/project/blob/main/example.py#L42",
     "https://example.com/documentation",
   ];
   const opened = [], pdfOpened = [];
@@ -93,9 +93,9 @@ test("external sources remain clickable links in a PDF chat", () => {
   global.Zotero = { launchURL: url => opened.push(url) };
   try {
     appendMarkdown(doc, root,
-      `[模型代码](${urls[0]}) [文档](${urls[1]}) [论文](#page=1)`,
+      `[示例代码](${urls[0]}) [文档](${urls[1]}) [文档](#page=1)`,
       reference => pdfOpened.push(reference), {
-        attachmentID: 42, pdfPath: "/tmp/paper.pdf", url: "https://example.com/paper",
+        attachmentID: 42, pdfPath: "/tmp/document.pdf", url: "https://example.com/paper",
       });
     const links = root.children[0].children.filter(node => node.tag === "a");
     assert.equal(links.length, 3);
@@ -116,8 +116,8 @@ test("harness citation targets navigate by their explicit locator regardless of 
   const root = doc.createElement("div");
   const opened = [];
   appendMarkdown(doc, root,
-    "[原文](#page=4) [方法出处](#section=4.3) [模型结构](#figure=1) [实验结果](#table=2) [目标函数](#equation=10) [无效页](#page=0)",
-    (reference) => opened.push(reference), { attachmentID: 42, pdfPath: "/tmp/paper.pdf" });
+    "[原文](#page=4) [章节](#section=4.3) [图示](#figure=1) [表格](#table=2) [公式](#equation=10) [无效页](#page=0)",
+    (reference) => opened.push(reference), { attachmentID: 42, pdfPath: "/tmp/document.pdf" });
   const links = [];
   const visit = (node) => {
     if (node.tag === "a") links.push(node);
@@ -135,9 +135,9 @@ test("harness citation targets navigate by their explicit locator regardless of 
 
 test("an original-passage citation carries its physical page and decoded text", () => {
   const doc = documentStub(), root = doc.createElement("div"), opened = [];
-  const quote = "We adopt a pre-training way to construct different loss functions.";
+  const quote = "This synthetic sentence tests navigation to a quoted passage.";
   appendMarkdown(doc, root, `[原文](#page=4&quote=${encodeURIComponent(quote)})`,
-    reference => opened.push(reference), { attachmentID: 42, pdfPath: "/tmp/paper.pdf" });
+    reference => opened.push(reference), { attachmentID: 42, pdfPath: "/tmp/document.pdf" });
   const links = [];
   const visit = node => { if (node.tag === "a") links.push(node); for (const child of node.children || []) visit(child); };
   visit(root);
@@ -145,7 +145,7 @@ test("an original-passage citation carries its physical page and decoded text", 
   links[0].listeners.click({ preventDefault() {} });
   assert.deepEqual(opened, [{ pageNumber: 4, quote }]);
   for (const target of ["#page=4&quote=%XX", "#page=4&quote=%20", "#page=0&quote=original", "#quote=original"]) {
-    assert.deepEqual(resolvePaperLink(target, { attachmentID: 42, pdfPath: "/tmp/paper.pdf" }), { kind: "text" });
+    assert.deepEqual(resolvePaperLink(target, { attachmentID: 42, pdfPath: "/tmp/document.pdf" }), { kind: "text" });
   }
 });
 
@@ -172,13 +172,13 @@ test("Chinese and English references in a reply open the matching PDF target", (
 });
 
 test("figure links leave surrounding parentheses outside the clickable label", () => {
-  const segments = Markdown.pdfReferenceSegments("时域增强（Fig. 3a），另见 (Fig. 3b) 和式(10)。");
+  const segments = Markdown.pdfReferenceSegments("示例面板（Fig. 3a），另见 (Fig. 3b) 和式(10)。");
   assert.deepEqual(segments.filter(segment => segment.reference), [
     { text: "Fig. 3a", reference: { query: "Figure 3a" } },
     { text: "Fig. 3b", reference: { query: "Figure 3b" } },
     { text: "式(10)", reference: { query: "(10)" } },
   ]);
-  assert.equal(segments.map(segment => segment.text).join(""), "时域增强（Fig. 3a），另见 (Fig. 3b) 和式(10)。");
+  assert.equal(segments.map(segment => segment.text).join(""), "示例面板（Fig. 3a），另见 (Fig. 3b) 和式(10)。");
 });
 
 test("a Chinese paraphrase beside a section number jumps to that section", () => {
@@ -186,7 +186,7 @@ test("a Chinese paraphrase beside a section number jumps to that section", () =>
   const root = doc.createElement("div");
   const opened = [];
   Markdown.appendMarkdown(doc, root,
-    "第 3 节回答原理，第 4.3 节回答“如何把它用于 S³-Rec 的四种关联学习”。", {
+    "第 3 节回答原理，第 4.3 节回答“如何按照示例文档里的步骤完成一次测试操作”。", {
       openPdfReference: (reference) => opened.push(reference),
     });
   const links = [];
@@ -196,13 +196,13 @@ test("a Chinese paraphrase beside a section number jumps to that section", () =>
   };
   visit(root);
   assert.deepEqual(links.map((link) => link.textContent), [
-    "第 3 节", "第 4.3 节", "“如何把它用于 S³-Rec 的四种关联学习”",
+    "第 3 节", "第 4.3 节", "“如何按照示例文档里的步骤完成一次测试操作”",
   ]);
   for (const link of links) link.listeners.click({ preventDefault() {} });
   assert.deepEqual(opened, [
     { sectionNumber: "3", label: "第 3 节" },
     { sectionNumber: "4.3", label: "第 4.3 节" },
-    { sectionNumber: "4.3", label: "“如何把它用于 S³-Rec 的四种关联学习”" },
+    { sectionNumber: "4.3", label: "“如何按照示例文档里的步骤完成一次测试操作”" },
   ]);
   assert.deepEqual(Markdown.pdfReferenceSegments("“这是一段并非 PDF 原文的中文概括，不能假装可以逐字定位”")
     .filter((segment) => segment.reference), []);
@@ -348,7 +348,7 @@ test("native figure links use the caption rather than a punctuated prose mention
     async getPage() { return { async getStructTree() { return null; } }; },
     async getPageData({ pageIndex }) {
       return { chars: nativeTextLine(pageIndex === 0 ? "Fig. 10 Another figure"
-        : pageIndex === 1 ? "Fig. 1 Frequency patterns"
+        : pageIndex === 1 ? "Fig. 1 Example diagram"
           : "The components shown in Fig. 1. The next sentence follows.") };
     },
   };
@@ -357,7 +357,7 @@ test("native figure links use the caption rather than a punctuated prose mention
       view => view.openPdfReference({ query: "Figure 1", label }), {
         foundQuery: "Fig. 1.", positions: [{ pageIndex: 7, rects: [[40, 100, 100, 120]] }],
       });
-    assert.deepEqual(navigation, [{ position: { pageIndex: 1, rects: [[108, 184, 258, 196]] } }]);
+    assert.deepEqual(navigation, [{ position: { pageIndex: 1, rects: [[108, 184, 240, 196]] } }]);
     assert.deepEqual(findStates, []);
   }
 });
@@ -473,7 +473,7 @@ test("a section outline destination uses the public reader navigation boundary",
     numPages: 10,
     async getOutline() {
       return [{ title: "4 APPROACH", dest: "section.4", items: [
-        { title: "4.3 Self-supervised Learning with MIM", dest: "section.4.3", items: [] },
+        { title: "4.3 Example instructions", dest: "section.4.3", items: [] },
       ] }];
     },
     async getPage() { throw new Error("Outline should locate this section"); },
@@ -499,18 +499,18 @@ test("sections without bookmarks use Zotero page data and skip chart labels", as
     async getPageData({ pageIndex }) {
       return { chars: pageIndex === 3
         ? nativeTextLine("4 layers", { size: 9, font: "Fixture-Regular" })
-        : pageIndex === 5 ? nativeTextLine("4 Feature suppression") : [] };
+        : pageIndex === 5 ? nativeTextLine("4 Example subsection") : [] };
     },
   };
   const { navigation } = await withReader(pdfDocument,
     view => view.openPdfReference({ sectionNumber: "4" }));
-  assert.deepEqual(navigation, [{ position: { pageIndex: 5, rects: [[108, 184, 234, 196]] } }]);
+  assert.deepEqual(navigation, [{ position: { pageIndex: 5, rects: [[108, 184, 228, 196]] } }]);
 });
 
 test("a section with bookmark coordinates centers its heading using PDF metadata", async () => {
   const pdfDocument = {
     numPages: 10,
-    async getOutline() { return [{ title: "4.3 Self-supervised Learning with MIM", dest: "section.4.3" }]; },
+    async getOutline() { return [{ title: "4.3 Example instructions", dest: "section.4.3" }]; },
     async getDestination(name) {
       assert.equal(name, "section.4.3");
       return [{ num: 235, gen: 0 }, { name: "XYZ" }, 317.955, 215.846, null];
@@ -531,7 +531,7 @@ test("a section heading may end its number with a period without matching a chil
     async getPageData({ pageIndex }) {
       return { chars: nativeTextLine([
         "4.6.10. Other section", "4.6.1.2. Child section",
-        "4.6.1. High-frequency intent contrastive learning", "4.6.2. Next section",
+        "4.6.1. Example instructions", "4.6.2. Next section",
       ][pageIndex]) };
     },
   };
@@ -546,7 +546,7 @@ test("a section bookmark may end its number with a period", async () => {
     async getOutline() { return [
       { title: "4.6.10. Other section", dest: "wrong-sibling" },
       { title: "4.6.1.2. Child section", dest: "wrong-child" },
-      { title: "4.6.1. High-frequency intent contrastive learning", dest: "section.4.6.1" },
+      { title: "4.6.1. Example instructions", dest: "section.4.6.1" },
     ]; },
     async getPage() { throw new Error("Bookmark metadata is sufficient"); },
   };

@@ -14,11 +14,11 @@ test("new and resumed chats receive the same trusted PDF citation contract", asy
   const calls = [];
   client.request = async (method, params) => {
     calls.push({ method, params });
-    return method === "turn/start" ? { turn: { id: "paper-turn" } } : { thread: { id: "paper-chat" } };
+    return method === "turn/start" ? { turn: { id: "fixture-turn" } } : { thread: { id: "fixture-chat" } };
   };
-  await client.startThread({ cwd: "/papers" });
+  await client.startThread({ cwd: "/fixtures" });
   client.loadedThreads.clear();
-  await client.ensureThreadLoaded("paper-chat");
+  await client.ensureThreadLoaded("fixture-chat");
   assert.deepEqual(calls.map((call) => call.method), ["thread/start", "thread/resume"]);
   const instructions = calls[0].params.developerInstructions;
   assert.equal(calls[1].params.developerInstructions, instructions);
@@ -30,8 +30,8 @@ test("new and resumed chats receive the same trusted PDF citation contract", asy
   assert.match(instructions, /no additional file access is required for those citations/u);
   assert.match(instructions, /#page=4&quote=/u);
   assert.match(instructions, /Never put a paraphrase or translation in quote/u);
-  const context = Protocol.buildZoteroContext({ title: "Paper", pdfPath: "/papers/paper.pdf" });
-  await client.startTurn({ threadID: "paper-chat", text: "Explain the method", context });
+  const context = Protocol.buildZoteroContext({ title: "Document", pdfPath: "/fixtures/document.pdf" });
+  await client.startTurn({ threadID: "fixture-chat", text: "Explain the method", context });
   assert.deepEqual(calls[2].params.additionalContext, context);
   assert.equal(calls[2].params.developerInstructions, undefined);
   assert.equal(context.zoteroCitationContract, undefined);
@@ -49,12 +49,12 @@ test("discovers skills for the current working directory and sends native skill 
       { name: "disabled", enabled: false, path: "/skills/disabled/SKILL.md" },
     ] }] } : { turn: { id: "skills-turn" } };
   };
-  const skills = await client.listSkills({ cwd: "/papers", forceReload: true });
+  const skills = await client.listSkills({ cwd: "/fixtures", forceReload: true });
   assert.deepEqual(skills.map((skill) => skill.name), ["pdf"]);
-  assert.deepEqual(calls[0].params, { cwds: ["/papers"], forceReload: true });
+  assert.deepEqual(calls[0].params, { cwds: ["/fixtures"], forceReload: true });
   calls.length = 0;
-  await client.startTurn({ threadID: "skills-task", text: "$pdf Explain $pdf", cwd: "/papers" });
-  assert.deepEqual(calls[0].params, { cwds: ["/papers"], forceReload: false });
+  await client.startTurn({ threadID: "skills-task", text: "$pdf Explain $pdf", cwd: "/fixtures" });
+  assert.deepEqual(calls[0].params, { cwds: ["/fixtures"], forceReload: false });
   assert.deepEqual(calls[1].params.input, [
     { type: "text", text: "$pdf Explain $pdf" },
     { type: "skill", name: "pdf", path: "/skills/pdf/SKILL.md" },
@@ -67,17 +67,17 @@ test("applies changed permissions to the next turn of an existing chat", async (
   client.loadedThreads.add("existing");
   let params;
   client.request = async (_method, value) => { params = value; return { turn: { id: "turn" } }; };
-  await client.startTurn({ threadID: "existing", text: "Explain", cwd: "/papers" });
+  await client.startTurn({ threadID: "existing", text: "Explain", cwd: "/fixtures" });
   assert.equal(params.approvalPolicy, "on-request");
   assert.equal(params.approvalsReviewer, "auto_review");
   assert.deepEqual(params.sandboxPolicy, { type: "readOnly", networkAccess: true });
   Object.assign(preferences, { approvalPolicy: "never", approvalsReviewer: "auto_review", sandbox: "workspace-write", networkAccess: true });
-  await client.startTurn({ threadID: "existing", text: "Edit", cwd: "/papers" });
+  await client.startTurn({ threadID: "existing", text: "Edit", cwd: "/fixtures" });
   assert.equal(params.approvalPolicy, "never");
   assert.equal(params.approvalsReviewer, "auto_review");
-  assert.deepEqual(params.sandboxPolicy, { type: "workspaceWrite", writableRoots: ["/papers"], networkAccess: true });
+  assert.deepEqual(params.sandboxPolicy, { type: "workspaceWrite", writableRoots: ["/fixtures"], networkAccess: true });
   preferences.sandbox = "danger-full-access";
-  await client.startTurn({ threadID: "existing", text: "Edit", cwd: "/papers" });
+  await client.startTurn({ threadID: "existing", text: "Edit", cwd: "/fixtures" });
   assert.deepEqual(params.sandboxPolicy, { type: "dangerFullAccess" });
 });
 
@@ -88,11 +88,11 @@ test("permission edits during skill loading only affect later turns", async () =
   client.listSkills = async () => { preferences.sandbox = "danger-full-access"; return []; };
   let params;
   client.request = async (_method, value) => { params = value; return { turn: { id: "turn" } }; };
-  await client.startTurn({ threadID: "existing", text: "$pdf Explain", cwd: "/papers" });
+  await client.startTurn({ threadID: "existing", text: "$pdf Explain", cwd: "/fixtures" });
   assert.deepEqual(params.sandboxPolicy, { type: "readOnly", networkAccess: true });
 });
 
-test("generates a paper title from metadata, a generic request, and the answer", async () => {
+test("generates a document title from metadata, a generic request, and the answer", async () => {
   const client = new CodexAppServerClient();
   const calls = [];
   let notify;
@@ -104,33 +104,33 @@ test("generates a paper title from metadata, a generic request, and the answer",
     notify({ type: "notification", method: "item/agentMessage/delta",
       params: { threadId: "other-thread", delta: "Ignore me" } });
     notify({ type: "notification", method: "item/agentMessage/delta",
-      params: { threadId: "title-helper", delta: "CREATE：跨表示知识迁移" } });
+      params: { threadId: "title-helper", delta: "示例文档：操作步骤" } });
     notify({ type: "notification", method: "turn/completed",
       params: { threadId: "title-helper", turn: { status: "completed" } } });
     return { turn: { id: "title-turn" } };
   };
   const context = Protocol.buildZoteroContext({
-    title: "Cross-Representation Knowledge Transfer for Improved Sequential Recommendations",
-    abstract: "CREATE aligns sequential and graph representations.",
+    title: "Sample document for title generation",
+    abstract: "This synthetic document describes a sample workflow.",
   });
   const title = await client.generateThreadTitle({
-    text: "这是什么", context, answer: "作者提出 CREATE，让图模型教给序列模型。",
+    text: "这是什么", context, answer: "这份示例文档介绍了几项操作步骤。",
     model: "test-model", effort: "low",
   });
-  assert.equal(title, "CREATE：跨表示知识迁移");
+  assert.equal(title, "示例文档：操作步骤");
   assert.equal(calls[0].params.ephemeral, true);
   assert.equal(calls[0].params.sandbox, "read-only");
   const prompt = calls[1].params.input[0].text;
   const data = JSON.parse(prompt.split("Untrusted conversation data (JSON):\n")[1]);
   assert.equal(data.request, "这是什么");
   assert.equal(data.paperContext, context.zotero.value);
-  assert.match(data.assistantReply, /CREATE/);
+  assert.match(data.assistantReply, /操作步骤/);
   assert.equal(calls[1].params.effort, "low");
 });
 
 test("resolves Windows npm shims to native binaries and preserves semicolon PATH", async () => {
   const previous = { Zotero: global.Zotero, Services: global.Services, IOUtils: global.IOUtils };
-  const prefix = "C:\\Users\\Research User\\AppData\\Roaming\\npm";
+  const prefix = "C:\\Users\\Fixture User\\AppData\\Roaming\\npm";
   const packageRoot = `${prefix}\\node_modules\\@openai`;
   const binary = `${packageRoot}\\codex-win32-x64\\vendor\\x86_64-pc-windows-msvc\\codex\\codex.exe`;
   const tree = {
@@ -273,7 +273,7 @@ test("passes the imagegen skill item only for explicit image-generation turns", 
   ]);
 
   calls.length = 0;
-  await client.startTurn({ threadID: "task-imagegen", text: "Explain this paper" });
+  await client.startTurn({ threadID: "task-imagegen", text: "Explain this document" });
   assert.deepEqual(calls.map(({ method }) => method), ["turn/start"]);
 });
 
@@ -294,13 +294,13 @@ test("loads the official Zotero skill when available to the sidebar", async () =
 
   await client.startTurn({
     threadID: "task-zotero",
-    text: "Find the saved paper and export its citation",
+    text: "Find the saved item and export its citation",
     useOfficialZoteroSkill: true,
   });
 
   assert.deepEqual(calls.map(({ method }) => method), ["skills/list", "turn/start"]);
   assert.deepEqual(calls[1].params.input, [
-    { type: "text", text: "Find the saved paper and export its citation" },
+    { type: "text", text: "Find the saved item and export its citation" },
     { type: "skill", name: "Zotero", path: "/tmp/openai-zotero/SKILL.md" },
   ]);
 });
@@ -314,7 +314,7 @@ test("registers the UI tool on new chats and centrally answers tool calls once f
     startParams = params;
     return { thread: { id: "ui-chat" } };
   };
-  await client.startThread({ cwd: "/papers" });
+  await client.startThread({ cwd: "/fixtures" });
   assert.equal(startParams.dynamicTools.length, 1);
   assert.equal(startParams.dynamicTools[0].name, "render_interactive_ui");
   assert.deepEqual(startParams.dynamicTools[0].inputSchema.required, ["title", "html"]);

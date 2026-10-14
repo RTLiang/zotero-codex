@@ -50,7 +50,7 @@ function viewFor(manager, id = "A") {
   ].map((name) => [name, element()]));
   const view = {
     manager, client: manager.client, elements, threadID: id, thread: { id, name: `Chat ${id}` },
-    context: { itemID: 1, attachmentID: 2, title: "Test paper" }, contextEpoch: 1,
+    context: { itemID: 1, attachmentID: 2, title: "Test document" }, contextEpoch: 1,
     loadSerial: 0, threadRefreshSerial: 0, models: [], images: [], pendingRequests: new Map(),
     threads: [], selectedEffort: "low", running: false, activeTurnID: "", destroyed: false,
     creatingTask: false, contextTransitioning: false,
@@ -120,12 +120,12 @@ test("a new chat has a send button while the previous reply keeps running", () =
 test("switches between concurrent replies and notifies once without disturbing the foreground chat", async () => {
   const { manager, client, calls, notifications } = session();
   const view = viewFor(manager);
-  view.elements.input.value = "Explain paper A";
+  view.elements.input.value = "Explain document A";
   await SidebarView.prototype.send.call(view);
   await view.selectThread("B");
   assert.equal(view.running, false);
   assert.equal(manager.runningTurns.has("A"), true);
-  view.elements.input.value = "Explain paper B";
+  view.elements.input.value = "Explain document B";
   await SidebarView.prototype.send.call(view);
   assert.equal(manager.runningTurns.size, 2);
   await view.selectThread("A");
@@ -205,7 +205,7 @@ test("native notification uses the chat title and opens the corresponding chat o
   const previous = { Cc: global.Cc, Ci: global.Ci };
   let args;
   let opened;
-  const run = { threadID: "A", label: "CREATE：知识迁移", context: {} };
+  const run = { threadID: "A", label: "示例文档：步骤说明", context: {} };
   manager.openTurnNotification = async (value) => { opened = value; };
   try {
     global.Ci = { nsIAlertsService: {} };
@@ -214,7 +214,7 @@ test("native notification uses the chat title and opens the corresponding chat o
     } };
     await SidebarManager.prototype.notifyTurnCompleted.call(manager, run, "completed");
     assert.equal(args[1], "Codex reply ready");
-    assert.equal(args[2], "CREATE：知识迁移");
+    assert.equal(args[2], "示例文档：步骤说明");
     assert.equal(args[3], true);
     args[5].observe(null, "alertclickcallback");
     assert.equal(opened, run);

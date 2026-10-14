@@ -15,15 +15,15 @@ const { SidebarManager, SidebarView } = global.ZoteroCodexModules.Sidebar;
 
 function titleSendView(includeItem = true) {
   const context = {
-    itemID: 1, attachmentID: 2, title: "Cross-Representation Knowledge Transfer",
-    abstract: "CREATE aligns graph and sequential representations.", pdfPath: "/papers/paper.pdf",
+    itemID: 1, attachmentID: 2, title: "Sample document",
+    abstract: "This synthetic document describes a sample workflow.", pdfPath: "/fixtures/document.pdf",
   };
   const view = {
     context, contextEpoch: 1, models: [], images: [], threads: [],
     elements: { input: { value: "这是什么" }, newThreadButton: {}, threadButton: {} },
     manager: createManager(),
     client: {
-      startThread: async ({ title }) => ({ id: "paper-thread", name: title }),
+      startThread: async ({ title }) => ({ id: "fixture-thread", name: title }),
       startTurn: async () => ({ id: "first-turn" }),
     },
     isCurrentContext: () => true,
@@ -36,16 +36,16 @@ function titleSendView(includeItem = true) {
   return view;
 }
 
-test("new paper chats start with the paper title and capture its context for naming", async () => {
+test("new document chats start with the document title and capture its context for naming", async () => {
   const view = titleSendView();
   await SidebarView.prototype.send.call(view);
   assert.equal(view.thread.name, view.context.title);
   const titleRequest = view.manager.runningTurns.get(view.threadID).titleRequest;
   assert.equal(titleRequest.initialName, view.thread.name);
-  view.context = { title: "A different paper" };
-  assert.match(titleRequest.context.zotero.value, /Cross-Representation/);
-  assert.match(titleRequest.context.zotero.value, /CREATE/);
-  assert.doesNotMatch(titleRequest.context.zotero.value, /different paper|\/papers/);
+  view.context = { title: "A different document" };
+  assert.match(titleRequest.context.zotero.value, /Sample document/);
+  assert.match(titleRequest.context.zotero.value, /synthetic document/);
+  assert.doesNotMatch(titleRequest.context.zotero.value, /different document|\/fixtures/);
 });
 
 test("sending a PDF location question supplies Zotero-extracted page evidence", async () => {
@@ -56,7 +56,7 @@ test("sending a PDF location question supplies Zotero-extracted page evidence", 
       getFullText: async (...args) => {
         calls.push(args);
         return {
-          text: "1 Introduction\nThe paper cites ablation later.\f5 Ablation study\nWe test graph size.",
+          text: "1 Introduction\nThe document mentions method steps later.\f5 Method\nFollow the sample steps.",
           extractedPages: 2,
         };
       },
@@ -64,12 +64,12 @@ test("sending a PDF location question supplies Zotero-extracted page evidence", 
   };
   try {
     const view = titleSendView();
-    view.elements.input.value = "where is ablation";
+    view.elements.input.value = "where is method";
     let sent;
     view.client.startTurn = async (args) => { sent = args; return { id: "first-turn" }; };
     await SidebarView.prototype.send.call(view);
     assert.deepEqual(calls, [[2, null, true]]);
-    assert.match(sent.context.zotero.value, /Excerpt, physical PDF page 2:\n5 Ablation study/u);
+    assert.match(sent.context.zotero.value, /Excerpt, physical PDF page 2:\n5 Method/u);
   }
   finally {
     global.Zotero = previousZotero;
@@ -90,7 +90,7 @@ test("this page uses the reader position captured before async chat creation", a
   global.Zotero = {
     Reader: { getByTabID: id => id === "active-pdf" ? reader : null },
     PDFWorker: { getFullText: async () => ({
-      text: "Introduction\fThe visible page explains the synthetic experiment.\fConclusion",
+      text: "Introduction\fThe visible page explains the sample workflow.\fConclusion",
       extractedPages: 3,
     }) },
   };
@@ -100,7 +100,7 @@ test("this page uses the reader position captured before async chat creation", a
   view.elements.input.value = "解释这一页";
   view.client.startThread = async () => {
     viewer.currentPageNumber = 3;
-    return { id: "paper-thread" };
+    return { id: "fixture-thread" };
   };
   let sent;
   view.client.startTurn = async args => { sent = args; return { id: "first-turn" }; };
@@ -143,7 +143,7 @@ test("current reader page never leaks through library, another attachment, or di
 
 test("current page survives unavailable PDF text and bounds long page evidence", async t => {
   const { pdfEvidenceForQuestion } = global.ZoteroCodexModules.Sidebar;
-  const context = { attachmentID: 2, pdfPath: "/papers/disposable.pdf" };
+  const context = { attachmentID: 2, pdfPath: "/fixtures/disposable.pdf" };
   const currentPage = { pageNumber: 2, pageLabel: "ii" };
   const previousZotero = global.Zotero;
   t.after(() => { global.Zotero = previousZotero; });
@@ -176,27 +176,27 @@ test("title generation respects disabled item context", async () => {
 
 test("auto naming uses the first final answer and preserves manual renames during generation", async () => {
   for (const manuallyRenamed of [false, true]) {
-    const request = { threadID: "paper-thread", text: "这是什么", initialName: "Paper title" };
+    const request = { threadID: "fixture-thread", text: "这是什么", initialName: "Document title" };
     const renamed = [];
     let reads = 0;
     const view = {
-      threads: [{ id: "paper-thread", name: "Paper title" }],
-      thread: { id: "paper-thread", name: "Paper title" },
+      threads: [{ id: "fixture-thread", name: "Document title" }],
+      thread: { id: "fixture-thread", name: "Document title" },
       updateThreadHeader() {}, renderThreadPicker() {},
       client: {
         readThread: async () => ({
-          name: ++reads === 2 && manuallyRenamed ? "My custom title" : "Paper title",
+          name: ++reads === 2 && manuallyRenamed ? "My custom title" : "Document title",
           turns: [
             { items: [
-              { type: "agentMessage", phase: "commentary", text: "I will read the paper." },
-              { type: "agentMessage", phase: "final", text: "CREATE transfers graph knowledge." },
+              { type: "agentMessage", phase: "commentary", text: "I will read the document." },
+              { type: "agentMessage", phase: "final", text: "The sample document describes a workflow." },
             ] },
             { items: [{ type: "agentMessage", text: "Later unrelated discussion" }] },
           ],
         }),
         generateThreadTitle: async (input) => {
-          assert.equal(input.answer, "CREATE transfers graph knowledge.");
-          return "CREATE：知识迁移";
+          assert.equal(input.answer, "The sample document describes a workflow.");
+          return "示例文档：步骤说明";
         },
         setThreadName: async (id, title) => renamed.push([id, title]),
       },
@@ -206,8 +206,8 @@ test("auto naming uses the first final answer and preserves manual renames durin
     manager.views.set("test", view);
     manager.log = (message, error) => { throw error; };
     await manager.autoNameThread(request);
-    assert.deepEqual(renamed, manuallyRenamed ? [] : [["paper-thread", "CREATE：知识迁移"]]);
-    assert.equal(view.thread.name, manuallyRenamed ? "Paper title" : "CREATE：知识迁移");
+    assert.deepEqual(renamed, manuallyRenamed ? [] : [["fixture-thread", "示例文档：步骤说明"]]);
+    assert.equal(view.thread.name, manuallyRenamed ? "Document title" : "示例文档：步骤说明");
   }
 });
 
@@ -232,7 +232,7 @@ test("does not let a closed stale popup clear a newer live selection", () => {
   assert.equal(manager.getLiveSelection(7), null);
 });
 
-test("removing a task clears every paper binding and updates open views", () => {
+test("removing a task clears every document binding and updates open views", () => {
   const manager = createManager();
   manager.setPaperThread("paper-a", "removed-task");
   manager.setPaperThread("paper-b", "removed-task");
@@ -409,7 +409,7 @@ test("disconnects tracked reader popup observers during shutdown", async () => {
   assert.equal(manager.selectionPopupCleanups.size, 0);
 });
 
-test("invalidates every paper-scoped UI state before loading a new item", () => {
+test("invalidates every document-scoped UI state before loading a new item", () => {
   const calls = [];
   const view = {
     contextEpoch: 4,
@@ -497,7 +497,7 @@ test("removes every persistent sidebar event handler during view destruction", (
   assert.deepEqual(mounted.filter((handler) => !removed.has(handler)), []);
 });
 
-test("custom working directories keep each paper's chat filter separate", () => {
+test("custom working directories keep each document's chat filter separate", () => {
   const previous = global.PathUtils;
   global.PathUtils = path.posix;
   try {

@@ -37,7 +37,7 @@ function fixture() {
   return { plugin, preferences, calls, context };
 }
 
-test("switching storage preserves shared and isolated paper bindings independently", async () => {
+test("switching storage preserves shared and isolated document bindings independently", async () => {
   const { plugin, calls } = fixture();
   plugin.setPreference("paperThreads", '{"paper":"shared"}');
   await plugin.applySettings({ codexHome: "/zotero/runtime" });
@@ -96,7 +96,7 @@ for (const phase of ["prepare", "importLogin"]) {
   });
 }
 
-test("an initializing or changing paper prevents replacement of its in-flight view", async () => {
+test("an initializing or changing document prevents replacement of its in-flight view", async () => {
   const { plugin, calls } = fixture();
   for (const state of ["initializing", "contextTransitioning", "creatingTask"]) {
     plugin.sidebar.views.set("reader", { initialized: true, [state]: true });

@@ -23,7 +23,7 @@ function viewFor() {
   const view = Object.create(SidebarView.prototype);
   Object.assign(view, {
     manager: new SidebarManager({ getPreference: () => "" }),
-    context: { pdfPath: "/papers/paper.pdf" }, skills: [], skillsCwd: "/papers",
+    context: { pdfPath: "/fixtures/document.pdf" }, skills: [], skillsCwd: "/fixtures",
     skillsLoaded: true, skillsLoading: false, skillsLoadSerial: 0, commandIndex: 0,
     doc: { createElement: () => element(), createElementNS: () => element(), l10n: { setAttributes() {} } },
     elements: {
@@ -39,8 +39,8 @@ function viewFor() {
 
 test("slash menu filters skills and supports keyboard selection and dismissal", () => {
   const view = viewFor();
-  view.skills = [{ name: "pdf", description: "Read papers" }, { name: "research", description: "Find papers" }];
-  view.elements.input.value = "/skills papers";
+  view.skills = [{ name: "pdf", description: "Read documents" }, { name: "research", description: "Find documents" }];
+  view.elements.input.value = "/skills documents";
   view.updateCommandMenu();
   assert.deepEqual(view.commandMatches.map((entry) => entry.name), ["pdf", "research"]);
   let prevented = 0;
@@ -87,7 +87,7 @@ test("local approval command opens the permission panel during a reply without s
 
 test("file paths and unmatched commands can reach normal send handling", () => {
   const view = viewFor();
-  view.elements.input.value = "/papers/paper.pdf";
+  view.elements.input.value = "/fixtures/document.pdf";
   view.updateCommandMenu();
   assert.equal(view.elements.commandMenu.hidden, true);
   view.elements.input.value = "/missing-command";
@@ -104,19 +104,19 @@ test("slash skill resolution uses the selected chat directory and rejects unknow
   view.skills = [{ name: "stale" }];
   const calls = [];
   view.client = { listSkills: async (params) => { calls.push(params); return [{ name: "pdf" }]; } };
-  assert.equal(await view.resolveSlashInput("/pdf Explain this paper"), "$pdf Explain this paper");
+  assert.equal(await view.resolveSlashInput("/pdf Explain this document"), "$pdf Explain this document");
   assert.deepEqual(calls, [{ cwd: "/other-paper", forceReload: false }]);
   await assert.rejects(view.resolveSlashInput("/stale Explain"), /Unknown command/);
-  assert.equal(await view.resolveSlashInput("/papers/paper.pdf"), "/papers/paper.pdf");
+  assert.equal(await view.resolveSlashInput("/fixtures/document.pdf"), "/fixtures/document.pdf");
 });
 
-test("late skill discovery cannot populate the next paper's menu", async () => {
+test("late skill discovery cannot populate the next document's menu", async () => {
   const view = viewFor();
   let finish;
   view.client = { listSkills: () => new Promise((resolve) => { finish = resolve; }) };
   const first = view.refreshSkills({ forceReload: true });
   const concurrent = view.refreshSkills();
-  view.context = { pdfPath: "/next/paper.pdf" };
+  view.context = { pdfPath: "/next/document.pdf" };
   finish([{ name: "old-paper-skill" }]);
   assert.deepEqual(await first, []);
   assert.deepEqual(await concurrent, []);

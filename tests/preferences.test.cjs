@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
 
-test("an unopened sidebar's pending paper does not block settings, while active work does", () => {
+test("an unopened sidebar's pending document does not block settings, while active work does", () => {
   const context = {};
   vm.runInNewContext(fs.readFileSync(require.resolve("../content/main.js"), "utf8"), context);
   const plugin = context.ZoteroCodexPlugin;

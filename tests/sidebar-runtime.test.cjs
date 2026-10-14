@@ -66,7 +66,7 @@ function fixture() {
   return { manager, hooks, client, body, render, select, open };
 }
 
-test("runtime replacement renders the latest selected paper", async () => {
+test("runtime replacement renders the latest selected document", async () => {
   const f = fixture();
   const body = f.body();
   const original = await f.open(body);
@@ -82,7 +82,7 @@ test("runtime replacement renders the latest selected paper", async () => {
   assert.equal(replacement.context.itemID, itemB.id);
 });
 
-test("item change alone updates the paper restored after reconnect", async () => {
+test("item change alone updates the document restored after reconnect", async () => {
   const f = fixture();
   const body = f.body();
   await f.open(body);
@@ -122,7 +122,7 @@ test("destroyed and disconnected panes are not resurrected", async () => {
   assert.equal(f.manager.views.has(disconnected), false);
 });
 
-test("text and images stay with their paper and return when that paper is selected again", async () => {
+test("text and images stay with their document and return when that document is selected again", async () => {
   const f = fixture();
   const body = f.body();
   const original = await f.open(body);
@@ -170,7 +170,7 @@ test("draft restoration preserves text entered while initialization is pending",
   assert.equal(view.images.length, 0);
 });
 
-test("failed initialization still restores the current paper's draft", async () => {
+test("failed initialization still restores the current document's draft", async () => {
   const f = fixture();
   const body = f.body();
   const original = await f.open(body);
@@ -186,7 +186,7 @@ test("failed initialization still restores the current paper's draft", async () 
   assert.deepEqual({ ...view.images[0] }, imageA);
 });
 
-test("selection changes during initialization cannot receive another paper's draft", async () => {
+test("selection changes during initialization cannot receive another document's draft", async () => {
   const f = fixture();
   const body = f.body();
   const original = await f.open(body);
