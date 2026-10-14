@@ -8,6 +8,7 @@ Users choose the CLI executable, proxy, Codex storage and working directory in Z
 - `proxy` enables manual fields only for manual mode and saves inherited/direct/manual configuration.
 - `storage` keeps Codex storage, working directories and paper bindings associated with the chosen configuration.
 - `reconnect-draft` preserves the current paper's unsent text/images across reconnection.
+- Reconnect drafts are kept in memory and keyed by paper/body while runtime views are detached and recreated; this does not promise durable draft storage across Zotero restarts.
 - `busy-save` prevents settings changes while a reply/request is active.
 - `login-import` optionally copies the existing local login once without overwrite.
 

@@ -1853,6 +1853,7 @@
 
     setItem(item, tabType) {
       const changed = item !== this.item || tabType !== this.tabType;
+      if (changed) this.manager.saveRuntimeDraft?.(this);
       this.item = item;
       this.tabType = tabType;
       if (changed) this.beginContextTransition();
@@ -4267,10 +4268,7 @@
       let drafts = this.runtimeDrafts.get(view.body);
       const text = view.elements.input.value;
       const images = view.images.map(image => ({ ...image }));
-      if (!text && !images.length) {
-        drafts?.delete(key);
-        return;
-      }
+      if (!text && !images.length) return;
       if (!drafts) this.runtimeDrafts.set(view.body, drafts = new Map());
       drafts.set(key, { text, images });
     }
