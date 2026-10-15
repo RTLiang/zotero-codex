@@ -47,12 +47,20 @@ interface ModelEntry extends JsonRecord {
   isHidden?: boolean;
   defaultReasoningEffort?: string;
   supportedReasoningEfforts?: unknown[];
+  serviceTiers?: unknown[];
+}
+
+interface ModelServiceTier {
+  id: string;
+  name: string;
+  description: string;
 }
 
 interface NormalizedModel extends ModelEntry {
   id: string;
   displayName: string;
   supportedReasoningEfforts: string[];
+  serviceTiers: ModelServiceTier[];
 }
 
 interface ModelSelection {
@@ -242,11 +250,18 @@ interface ProtocolModule {
           : []) as (string | { reasoningEffort?: unknown } | null)[])
           .map((option) => typeof option === "string" ? option : option?.reasoningEffort)
           .filter((effort) => typeof effort === "string" && effort) as string[];
+        const serviceTiers = (Array.isArray(entry.serviceTiers) ? entry.serviceTiers : [])
+          .filter((tier: unknown): tier is ModelServiceTier => {
+            const value = asRecord(tier);
+            return typeof value.id === "string" && !!value.id
+              && typeof value.name === "string" && typeof value.description === "string";
+          });
         return {
           ...entry,
           id: entry.id || entry.model,
           displayName: entry.displayName || entry.model,
           supportedReasoningEfforts: [...new Set(supportedReasoningEfforts)],
+          serviceTiers,
         };
       });
   }
@@ -597,9 +612,25 @@ interface ProtocolModule {
   }
 
   function buildPdfEvidence(text: unknown, extractedPages: unknown, question: unknown): string {
-    if (typeof text !== "string" || !text.trim()) return "";
-    const pages = text.split("\f");
-    if (!Number.isInteger(extractedPages) || (extractedPages as number) < 1 || pages.length !== extractedPages) return "";
+    const textValue = typeof text === "string" ? text.trim() : "";
+    const extractedWords = textValue.match(/[\p{L}]{3,}/gu) || [];
+    const cjkCharacters = textValue.match(/[\u3400-\u9fff]/gu) || [];
+    const pageCount = typeof extractedPages === "number" && Number.isInteger(extractedPages)
+      ? extractedPages
+      : 0;
+    // A handful of page numbers or headers is common in image-only scans. Do
+    // not present that as useful evidence or let it imply the paper is empty.
+    if (extractedWords.length + cjkCharacters.length < 4 || pageCount < 1) {
+      return [
+        "Zotero found no searchable PDF text (or only a tiny amount), so this may be a scanned/image-only document.",
+        "Do not infer that the paper lacks relevant content. The local PDF path is included in Zotero context: try reading it with available local PDF/OCR tools, preferably only the relevant pages. Do not upload the document to an external OCR service.",
+        "If local OCR is unavailable, explain this limitation and suggest adding a searchable text layer with a local OCR tool, then rebuilding Zotero's full-text index before retrying. Label OCR-derived claims and cite only verified physical PDF pages.",
+      ].join(" ");
+    }
+    const pages = textValue.split("\f");
+    if (pages.length !== extractedPages) {
+      return "Zotero extracted PDF text without reliable page boundaries. Use the local PDF path in Zotero context to inspect/OCR relevant pages locally; do not guess page citations or upload it to an external OCR service.";
+    }
 
     const stopWords = new Set([
       "about", "and", "are", "can", "does", "explain", "find", "for", "from", "how",

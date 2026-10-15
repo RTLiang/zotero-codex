@@ -950,7 +950,7 @@
         if (target.startsWith("/") || /^file:\/\//iu.test(target)) link.classList.add("zcs-local-link");
         link.addEventListener("click", (event) => {
           event.preventDefault();
-          options.openTarget?.(target);
+          return options.openTarget?.(target);
         });
         appendInlineTokens(doc, link, token.children,
           { ...options, openPdfReference: null, resolveLink: null });

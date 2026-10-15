@@ -58,6 +58,17 @@ function mountedView() {
   return view;
 }
 
+test("opening the chat picker loads history on demand", () => {
+  const view = mountedView();
+  let loads = 0;
+  view.renderThreadPicker = () => {};
+  view.refreshThreads = async () => { loads++; };
+  view.togglePopover("threads");
+  assert.equal(loads, 1);
+  view.togglePopover("threads");
+  assert.equal(loads, 1);
+});
+
 test("permission controls do not dismiss their panel on Zotero's retargeted click", () => {
   const view = mountedView();
   view.togglePopover("permissions");
@@ -145,13 +156,13 @@ test("destroying a sidebar removes its outside-pointer listener", () => {
   assert.equal(view.elements.permissionsCard.hidden, false);
 });
 
-test("clicking rendered model and effort options updates the controls and saved selection", () => {
+test("clicking model, reasoning and speed options saves supported choices", () => {
   const view = mountedView();
   const preferences = new Map();
   view.manager.setPreference = (key, value) => preferences.set(key, value);
   view.models = [
-    { model: "first", displayName: "First", supportedReasoningEfforts: ["low", "high"], defaultReasoningEffort: "high" },
-    { model: "second", displayName: "Second", supportedReasoningEfforts: ["low", "high"], defaultReasoningEffort: "high" },
+    { model: "first", displayName: "First", supportedReasoningEfforts: ["low", "high"], defaultReasoningEffort: "high", serviceTiers: [] },
+    { model: "second", displayName: "Second", supportedReasoningEfforts: ["low", "high"], defaultReasoningEffort: "high", serviceTiers: [{ id: "priority", name: "Fast", description: "Faster responses" }] },
   ];
   view.applyModelSelection("first", "high");
   view.togglePopover("model");
@@ -167,6 +178,16 @@ test("clicking rendered model and effort options updates the controls and saved 
   assert.equal(view.elements.effortChoiceText.textContent, "Low");
   assert.equal(view.elements.modelTriggerEffort.textContent, "Low");
   assert.equal(preferences.get("reasoningEffort"), "low");
+  const fastOption = view.elements.speedOptions.children[1];
+  assert.equal(fastOption.dataset.value, "priority");
+  fastOption.click();
+  assert.equal(preferences.get("serviceTier"), "priority");
+  assert.equal(view.selectedServiceTier, "priority");
+  assert.equal(view.elements.modelTriggerSpeed.hidden, false);
+  view.elements.modelOptions.children[0].click();
+  assert.equal(view.selectedServiceTier, "default");
+  assert.equal(view.elements.speedOptions.children.length, 1);
+  assert.equal(view.elements.modelTriggerSpeed.hidden, true);
   assert.equal(view.elements.modelPopover.hidden, false);
 });
 

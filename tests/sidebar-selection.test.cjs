@@ -150,7 +150,9 @@ test("current page survives unavailable PDF text and bounds long page evidence",
   global.Zotero = {
     PDFWorker: { getFullText: async () => { throw new Error("Unreadable fixture"); } },
   };
-  assert.match(await pdfEvidenceForQuestion(context, "this page", currentPage), /physical PDF page 2; printed label ii/u);
+  const failedExtraction = await pdfEvidenceForQuestion(context, "this page", currentPage);
+  assert.match(failedExtraction, /physical PDF page 2; printed label ii/u);
+  assert.match(failedExtraction, /local PDF\/OCR tools/u);
   global.Zotero.PDFWorker.getFullText = async () => ({ text: `First\f${"Visible page. ".repeat(500)}`, extractedPages: 2 });
   const evidence = await pdfEvidenceForQuestion(context, "this page", currentPage);
   assert.match(evidence, /Current page text \(opening excerpt\):\nVisible page/u);

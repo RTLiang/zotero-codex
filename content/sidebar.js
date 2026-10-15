@@ -248,9 +248,25 @@
     setL10n(button, l10nID);
   }
 
-  function openMarkdownTarget(target) {
+  async function openMarkdownTarget(target) {
     const value = String(target || "").trim();
     if (/^https?:\/\//iu.test(value)) {
+      try {
+        const item = await findLocalPaper(value);
+        if (item) {
+          const attachment = (item.getAttachments?.() || [])
+            .map((id) => global.Zotero.Items.get(id))
+            .find(isPDF);
+          if (attachment) {
+            await global.Zotero.Reader.open(attachment.id);
+            return;
+          }
+          if (await global.Zotero.getActiveZoteroPane?.()?.selectItem(item.id)) return;
+        }
+      }
+      catch (error) {
+        global.Zotero.logError?.(error);
+      }
       global.Zotero.launchURL(value);
       return;
     }
@@ -271,10 +287,51 @@
     const normalized = decoded.toLowerCase();
     const arxiv = normalized.match(/(?:^|\/)arxiv\.org\/(?:abs|pdf|html)\/([^?#]+)/u);
     if (arxiv) return `arxiv:${arxiv[1].replace(/\.pdf$/u, "").replace(/v\d+$/u, "")}`;
+    const arxivDOI = normalized.match(/10\.48550\/arxiv\.([^\s?#]+)/u);
+    if (arxivDOI) return `arxiv:${arxivDOI[1].replace(/v\d+$/u, "")}`;
+    const journalArticle = normalized.match(/^https?:\/\/([^/]+)\/(?:[^?#]*\/)?article\/(?:view|download)\/(\d+)(?:[/?#]|$)/u);
+    if (journalArticle) return `${journalArticle[1]}:article:${journalArticle[2]}`;
     const doi = normalized.match(/10\.\d{4,9}\/[^\s?#]+/u);
     if (doi) return `doi:${doi[0].replace(/\/+$/u, "")}`;
     return normalized.replace(/^https?:\/\//u, "").replace(/^www\./u, "")
       .replace(/[?#].*$/u, "").replace(/\/+$/u, "");
+  }
+
+  async function findLocalPaper(target) {
+    const zotero = global.Zotero;
+    if (!zotero?.Search || !zotero?.Libraries?.getAll) return null;
+    const identity = paperLinkIdentity(target);
+    const arxivID = identity.startsWith("arxiv:") ? identity.slice(6) : "";
+    const doi = identity.startsWith("doi:") ? identity.slice(4) : "";
+    const journalID = identity.match(/:article:(\d+)$/u)?.[1] || "";
+    const urlPart = arxivID || doi || journalID || identity;
+    if (!urlPart) return null;
+    const searches = doi
+      ? [["DOI", doi], ["url", doi]]
+      : arxivID
+        ? [["url", arxivID], ["DOI", arxivID], ["extra", arxivID]]
+        : [["url", urlPart]];
+    let matchWithoutPdf = null;
+    for (const library of zotero.Libraries.getAll()) {
+      for (const [field, value] of searches) {
+        const search = new zotero.Search();
+        search.libraryID = library.libraryID;
+        search.addCondition(field, "contains", value);
+        for (const id of await search.search()) {
+          const item = zotero.Items.get(id);
+          if (!item || !item.isRegularItem?.()) continue;
+          const candidates = [getField(item, "url"), getField(item, "DOI")];
+          if (candidates.some((candidate) => candidate && paperLinkIdentity(candidate) === identity)
+            || (arxivID && new RegExp(`(?:^|[^\\d])${arxivID.replace(/\./gu, "\\.")}(?:v\\d+)?(?:$|[^\\d])`, "iu")
+              .test(getField(item, "extra")))) {
+            if ((item.getAttachments?.() || []).some((attachmentID) =>
+              isPDF(zotero.Items.get(attachmentID)))) return item;
+            matchWithoutPdf ||= item;
+          }
+        }
+      }
+    }
+    return matchWithoutPdf;
   }
 
   function resolvePaperLink(target, context, label = "") {
@@ -441,14 +498,15 @@
       ? `Currently viewed page at send time: physical PDF page ${currentPage.pageNumber}${currentPage.pageLabel ? `; printed label ${currentPage.pageLabel}` : ""}. This is the reading position for references to \"this page\".\n`
       : "";
     const worker = global.Zotero?.PDFWorker;
-    if (typeof worker?.getFullText !== "function") return pageEvidence;
+    if (typeof worker?.getFullText !== "function") {
+      return (pageEvidence + Protocol.buildPdfEvidence("", 0, question)).slice(0, 3000);
+    }
     let result;
     try {
       result = await worker.getFullText(context.attachmentID, null, true);
     }
-    catch (error) {
-      if (currentPage) return pageEvidence;
-      throw error;
+    catch {
+      return (pageEvidence + Protocol.buildPdfEvidence("", 0, question)).slice(0, 3000);
     }
     if (currentPage && typeof result?.text === "string") {
       const pages = result.text.split("\f");
@@ -482,6 +540,7 @@
       this.threadID = "";
       this.thread = null;
       this.threads = [];
+      this.threadCatalogLoading = false;
       this.models = [];
       this.skills = [];
       this.skillsCwd = "";
@@ -491,6 +550,7 @@
       this.activePage = "chat";
       this.selectedModel = "";
       this.selectedEffort = "";
+      this.selectedServiceTier = "default";
       this.nextTurnSelectionPending = false;
       this.activeTurnID = "";
       this.running = false;
@@ -877,14 +937,16 @@
       modelTrigger.type = "button";
       modelTrigger.setAttribute("aria-haspopup", "dialog");
       modelTrigger.setAttribute("aria-expanded", "false");
-      modelTrigger.title = "Choose model and reasoning effort";
+      modelTrigger.title = "Choose model, reasoning effort and speed";
       modelTrigger.setAttribute("aria-label", modelTrigger.title);
       setL10n(modelTrigger, "zotero-codex-model-settings");
       const modelTriggerName = create(doc, "span", "zcs-model-trigger-name", "Codex");
       const modelTriggerEffort = create(doc, "span", "zcs-model-trigger-effort");
+      const modelTriggerSpeed = createL10n(doc, "span", "zcs-model-trigger-speed", "zotero-codex-speed-fast", "Fast");
+      modelTriggerSpeed.hidden = true;
       const modelChevron = create(doc, "span", "zcs-model-chevron");
       modelChevron.setAttribute("aria-hidden", "true");
-      modelTrigger.append(modelTriggerName, modelTriggerEffort, modelChevron);
+      modelTrigger.append(modelTriggerName, modelTriggerEffort, modelTriggerSpeed, modelChevron);
       const sendButton = create(doc, "button", "zcs-send-button", "↑");
       sendButton.type = "button";
       sendButton.title = "Send";
@@ -946,14 +1008,14 @@
       const modelPopover = create(doc, "section", "zcs-popover zcs-model-popover");
       modelPopover.hidden = true;
       modelPopover.setAttribute("role", "dialog");
-      modelPopover.setAttribute("aria-label", "Model and reasoning");
+      modelPopover.setAttribute("aria-label", "Model, reasoning and speed");
       setL10n(modelPopover, "zotero-codex-model-dialog");
       const modelPopoverTitle = createL10n(
         doc,
         "div",
         "zcs-model-popover-title",
         "zotero-codex-model-and-reasoning",
-        "Model and reasoning",
+        "Model, reasoning and speed",
       );
       const modelNextTurnHint = createL10n(
         doc,
@@ -965,11 +1027,13 @@
       modelNextTurnHint.hidden = true;
       const modelControl = createChoice(doc, "zotero-codex-model", "Model", "zotero-codex-model-choice");
       const effortControl = createChoice(doc, "zotero-codex-reasoning-effort", "Reasoning effort", "zotero-codex-effort-choice");
+      const speedControl = createChoice(doc, "zotero-codex-speed", "Speed", "zotero-codex-speed-choice");
       const { button: modelChoice, text: modelChoiceText, options: modelOptions } = modelControl;
       const { button: effortChoice, text: effortChoiceText, options: effortOptions } = effortControl;
+      const { button: speedChoice, text: speedChoiceText, options: speedOptions } = speedControl;
       effortOptions.classList.add("zcs-effort-options");
-      modelPopover.append(modelPopoverTitle, modelNextTurnHint, modelControl.field, effortControl.field);
-      const choices = { model: modelControl, effort: effortControl, ...permissionChoices };
+      modelPopover.append(modelPopoverTitle, modelNextTurnHint, modelControl.field, effortControl.field, speedControl.field);
+      const choices = { model: modelControl, effort: effortControl, speed: speedControl, ...permissionChoices };
       for (const [key, choice] of Object.entries(choices)) choice.field.dataset.choice = key;
 
       const status = create(doc, "div", "zcs-toast");
@@ -1054,6 +1118,7 @@
         modelTrigger,
         modelTriggerName,
         modelTriggerEffort,
+        modelTriggerSpeed,
         modelPopover,
         modelNextTurnHint,
         modelChoice,
@@ -1062,6 +1127,9 @@
         effortChoice,
         effortChoiceText,
         effortOptions,
+        speedChoice,
+        speedChoiceText,
+        speedOptions,
         sendButton,
         pathInput,
         pathStatus,
@@ -1406,6 +1474,7 @@
       if (willOpen && name === "threads") {
         this.threadListLimit = THREAD_LIST_BATCH_SIZE;
         this.renderThreadPicker();
+        void this.refreshThreads();
         global.setTimeout(() => this.elements.threadSearch.focus(), 0);
       }
     }
@@ -1447,6 +1516,7 @@
       this.elements.modelTrigger.disabled = unavailable || !this.models.length;
       this.elements.modelChoice.disabled = unavailable || !this.models.length;
       this.elements.effortChoice.disabled = unavailable || !this.selectedEffort;
+      if (this.elements.speedChoice) this.elements.speedChoice.disabled = unavailable || !this.models.length;
       this.elements.modelNextTurnHint.hidden = !this.running;
       if (this.contextTransitioning) {
         send.disabled = true;
@@ -1713,6 +1783,10 @@
       );
       this.selectedModel = selection.model;
       this.selectedEffort = selection.effort;
+      const requestedTier = String(this.manager.getPreference("serviceTier") || "default");
+      this.selectedServiceTier = requestedTier === "priority"
+        && selection.modelInfo?.serviceTiers?.some((tier) => tier.id === "priority")
+        ? "priority" : "default";
       if (persist) {
         this.manager.setPreference("model", this.selectedModel);
         this.manager.setPreference("reasoningEffort", this.selectedEffort);
@@ -1786,6 +1860,19 @@
       this.elements.effortChoice.focus();
     }
 
+    selectServiceTier(serviceTier) {
+      if (this.creatingTask) return;
+      const selected = this.models.find((model) => model.model === this.selectedModel);
+      if (serviceTier !== "default" && (serviceTier !== "priority"
+        || !selected?.serviceTiers?.some((tier) => tier.id === serviceTier))) return;
+      this.selectedServiceTier = serviceTier;
+      if (this.running) this.nextTurnSelectionPending = true;
+      this.manager.setPreference("serviceTier", serviceTier);
+      this.renderModelControls();
+      this.closeChoiceOptions();
+      this.elements.speedChoice.focus();
+    }
+
     renderModelControls() {
       if (!this.elements) return;
       const {
@@ -1795,11 +1882,16 @@
         effortChoice,
         effortChoiceText,
         effortOptions,
+        speedChoice,
+        speedChoiceText,
+        speedOptions,
         modelTriggerName,
         modelTriggerEffort,
+        modelTriggerSpeed,
       } = this.elements;
       modelOptions.replaceChildren();
       effortOptions.replaceChildren();
+      speedOptions.replaceChildren();
 
       if (!this.models.length) {
         setLocalizedText(
@@ -1810,9 +1902,12 @@
         setPlainText(effortChoiceText, "—");
         modelChoice.disabled = true;
         effortChoice.disabled = true;
+        speedChoice.disabled = true;
+        setPlainText(speedChoiceText, "—");
         modelTriggerName.textContent = "Codex";
         modelTriggerEffort.textContent = "";
         modelTriggerEffort.hidden = true;
+        modelTriggerSpeed.hidden = true;
         return;
       }
 
@@ -1823,6 +1918,22 @@
         }));
       }
       const selected = this.models.find((model) => model.model === this.selectedModel);
+      speedOptions.append(createChoiceOption(this.doc, {
+        value: "default", label: "Standard", l10nID: "zotero-codex-speed-standard",
+        selected: this.selectedServiceTier === "default",
+        onSelect: (value) => this.selectServiceTier(value),
+      }));
+      if (selected?.serviceTiers?.some((tier) => tier.id === "priority")) {
+        speedOptions.append(createChoiceOption(this.doc, {
+          value: "priority", label: "Fast", l10nID: "zotero-codex-speed-fast",
+          selected: this.selectedServiceTier === "priority",
+          onSelect: (value) => this.selectServiceTier(value),
+        }));
+      }
+      setLocalizedText(speedChoiceText,
+        this.selectedServiceTier === "priority" ? "zotero-codex-speed-fast" : "zotero-codex-speed-standard",
+        this.selectedServiceTier === "priority" ? "Fast" : "Standard");
+      modelTriggerSpeed.hidden = this.selectedServiceTier !== "priority";
       for (const effort of selected?.supportedReasoningEfforts || []) {
         const l10nID = EFFORT_L10N_IDS[effort];
         const fallback = effort === "xhigh"
@@ -1870,6 +1981,7 @@
       this.loadSerial++;
       this.threadRefreshSerial++;
       this.context = null;
+      this.threadCatalogLoading = false;
       this.threadID = "";
       this.thread = null;
       this.activePaperKey = "";
@@ -1929,7 +2041,7 @@
       let epoch = this.contextEpoch;
       try {
         this.setStatus("busy", "");
-        await this.client.connect();
+        const [, context] = await Promise.all([this.client.connect(), this.refreshContext()]);
         if (this.destroyed) return;
         if (this.client.binaryPath) setPlainText(this.elements.pathStatus, this.client.binaryPath);
         else setLocalizedText(
@@ -1937,15 +2049,21 @@
           "zotero-codex-auto-detected",
           "Connected using auto-detect.",
         );
-        await this.refreshModels();
-        if (this.destroyed) return;
         this.initialized = true;
-        epoch = this.contextEpoch;
-        const context = await this.refreshContext();
-        if (context && this.isCurrentContext(epoch, context)) await this.refreshThreads();
-        else if (!this.destroyed) await this.loadCurrentItem(this.contextEpoch);
+        const restoreConversation = async () => {
+          if (context && this.isCurrentContext(epoch, context)) {
+            if (Protocol.paperContextKey(context)) await this.activatePaperConversation(epoch);
+            else await this.refreshThreads();
+          }
+          else if (!this.destroyed) {
+            epoch = this.contextEpoch;
+            await this.loadCurrentItem(epoch);
+          }
+        };
+        await Promise.all([this.refreshModels(), restoreConversation()]);
       }
       catch (error) {
+        this.initialized = false;
         this.showError(error);
       }
       finally {
@@ -2632,6 +2750,8 @@
       const contextEpoch = this.contextEpoch;
       const previousID = this.threadID;
       this.setStatus("busy", "");
+      this.threadCatalogLoading = true;
+      this.renderThreadPicker();
       try {
         const paperKey = Protocol.paperContextKey(this.context);
         const paperCwd = this.manager.paperDirectory(this.context);
@@ -2645,6 +2765,7 @@
           refreshSerial !== this.threadRefreshSerial ||
           contextEpoch !== this.contextEpoch
         ) return;
+        this.threadCatalogLoading = false;
         this.threads = [...new Map([...inPaperDirectory, ...recent]
           .map((thread) => [thread.id, thread])).values()]
           .sort((left, right) => right.timestamp - left.timestamp);
@@ -2685,7 +2806,11 @@
           !this.destroyed &&
           refreshSerial === this.threadRefreshSerial &&
           contextEpoch === this.contextEpoch
-        ) this.showError(error);
+        ) {
+          this.threadCatalogLoading = false;
+          this.renderThreadPicker();
+          this.showError(error);
+        }
       }
     }
 
@@ -2735,10 +2860,10 @@
           this.doc,
           "div",
           "zcs-thread-empty",
-          noPaperChats
+          this.threadCatalogLoading ? "zotero-codex-chats-loading" : noPaperChats
             ? "zotero-codex-no-paper-chats"
             : visible.length ? "zotero-codex-no-matching-tasks" : "zotero-codex-no-tasks",
-          noPaperChats
+          this.threadCatalogLoading ? "Loading conversations…" : noPaperChats
             ? "No chats for this paper yet"
             : visible.length ? "No matching conversations" : "No conversations yet",
         ));
@@ -3642,6 +3767,7 @@
           context: additionalContext,
           model: this.selectedModel,
           effort: this.selectedEffort,
+          serviceTier: this.selectedServiceTier,
           cwd: this.thread?.cwd || this.manager.paperDirectory(paperContext) || ClientTools.getHomeDirectory(),
           useOfficialZoteroSkill: true,
         });
@@ -4458,6 +4584,9 @@
           if (!view) {
             view = new SidebarView(this, props);
             this.views.set(props.body, view);
+            void this.client.connect().catch(error => {
+              if (!view.destroyed) view.showError(error);
+            });
           }
           else {
             view.setItem(props.item, props.tabType);

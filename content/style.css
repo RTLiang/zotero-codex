@@ -1600,7 +1600,7 @@ display: flex;
 .zcs-model-trigger {
   display: flex;
   min-width: 0;
-  max-width: 132px;
+  max-width: 172px;
   height: 32px;
   flex: 0 1 auto;
   align-items: center;
@@ -1626,6 +1626,12 @@ display: flex;
 
 .zcs-model-trigger-effort::before {
   content: none;
+}
+
+.zcs-model-trigger-speed {
+  flex: 0 0 auto;
+  color: var(--zcs-accent);
+  font-weight: 650;
 }
 
 .zcs-model-chevron {

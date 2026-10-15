@@ -5,6 +5,7 @@ pref("extensions.zotero.codexSidebar.paperThreads", "{}");
 pref("extensions.zotero.codexSidebar.paperOnlyChats", true);
 pref("extensions.zotero.codexSidebar.model", "");
 pref("extensions.zotero.codexSidebar.reasoningEffort", "");
+pref("extensions.zotero.codexSidebar.serviceTier", "default");
 pref("extensions.zotero.codexSidebar.showWorkProcess", false);
 pref("extensions.zotero.codexSidebar.language", "auto");
 pref("extensions.zotero.codexSidebar.sidebarHeight", 0);

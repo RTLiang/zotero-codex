@@ -82,7 +82,7 @@ function documentStub() {
   };
 }
 
-test("external sources remain clickable links in a PDF chat", () => {
+test("external sources remain clickable links in a PDF chat", async () => {
   const doc = documentStub(), root = doc.createElement("div");
   const urls = [
     "https://github.com/example/project/blob/main/example.py#L42",
@@ -101,9 +101,107 @@ test("external sources remain clickable links in a PDF chat", () => {
     assert.equal(links.length, 3);
     assert.deepEqual(links.slice(0, 2).map(link => link.href), urls);
     assert.ok(links.every(link => link.className.includes("zcs-link")));
-    for (const link of links) link.listeners.click({ preventDefault() {} });
+    for (const link of links) await link.listeners.click({ preventDefault() {} });
     assert.deepEqual(opened, urls);
     assert.deepEqual(pdfOpened, [{ pageNumber: 1 }]);
+  }
+  finally {
+    if (previousZotero === undefined) delete global.Zotero;
+    else global.Zotero = previousZotero;
+  }
+});
+
+test("a link to another locally saved paper prefers its PDF copy in Zotero", async () => {
+  const doc = documentStub(), root = doc.createElement("div");
+  const target = "https://arxiv.org/pdf/0000.12345.pdf";
+  const local = {
+    id: 13,
+    isRegularItem: () => true,
+    getField: field => field === "url" ? "https://arxiv.org/abs/0000.12345" : "",
+    getAttachments: () => [12],
+  };
+  const opened = [], launched = [];
+  const previousZotero = global.Zotero;
+  global.Zotero = {
+    Search: class {
+      addCondition(field, operator, value) { this.condition = [field, operator, value]; }
+      async search() { return this.condition[0] === "url" ? [11, 13] : []; }
+    },
+    Libraries: { getAll: () => [{ libraryID: 1 }] },
+    Items: { get: id => id === 12 ? { id: 12, isPDFAttachment: () => true }
+      : id === 13 ? local : { id: 11, isRegularItem: () => true,
+        getField: local.getField, getAttachments: () => [] } },
+    Reader: { open: async id => opened.push(id) },
+    launchURL: url => launched.push(url),
+  };
+  try {
+    appendMarkdown(doc, root, `[另一本合成论文](${target})`, null,
+      { attachmentID: 99, pdfPath: "/tmp/current.pdf", url: "https://example.com/current" });
+    const link = root.children[0].children.find(node => node.tag === "a");
+    await link.listeners.click({ preventDefault() {} });
+    assert.deepEqual(opened, [12]);
+    assert.deepEqual(launched, []);
+  }
+  finally {
+    if (previousZotero === undefined) delete global.Zotero;
+    else global.Zotero = previousZotero;
+  }
+});
+
+test("a local paper without a PDF is selected and an unmatched link opens online", async () => {
+  const doc = documentStub(), root = doc.createElement("div");
+  const localURL = "https://doi.org/10.9999/synthetic-paper";
+  const remoteURL = "https://example.com/unmatched-paper";
+  const selected = [], launched = [];
+  const previousZotero = global.Zotero;
+  global.Zotero = {
+    Search: class {
+      addCondition(field, operator, value) { this.condition = [field, operator, value]; }
+      async search() { return this.condition[0] === "DOI" ? [21] : []; }
+    },
+    Libraries: { getAll: () => [{ libraryID: 1 }] },
+    Items: { get: () => ({ id: 21, isRegularItem: () => true,
+      getField: field => field === "DOI" ? "10.9999/synthetic-paper" : "",
+      getAttachments: () => [] }) },
+    getActiveZoteroPane: () => ({ selectItem: async id => { selected.push(id); return true; } }),
+    launchURL: url => launched.push(url),
+  };
+  try {
+    appendMarkdown(doc, root, `[本地合成论文](${localURL}) [未收藏论文](${remoteURL})`);
+    const links = root.children[0].children.filter(node => node.tag === "a");
+    for (const link of links) await link.listeners.click({ preventDefault() {} });
+    assert.deepEqual(selected, [21]);
+    assert.deepEqual(launched, [remoteURL]);
+  }
+  finally {
+    if (previousZotero === undefined) delete global.Zotero;
+    else global.Zotero = previousZotero;
+  }
+});
+
+test("a journal download link opens a saved article with the same article number", async () => {
+  const doc = documentStub(), root = doc.createElement("div");
+  const opened = [], launched = [];
+  const previousZotero = global.Zotero;
+  global.Zotero = {
+    Search: class {
+      addCondition(field, operator, value) { this.condition = [field, operator, value]; }
+      async search() { return this.condition[0] === "url" && this.condition[2] === "12345" ? [31] : []; }
+    },
+    Libraries: { getAll: () => [{ libraryID: 1 }] },
+    Items: { get: id => id === 31 ? { id, isRegularItem: () => true,
+      getField: field => field === "url" ? "https://journal.example/index.php/Synthetic/article/view/12345" : "",
+      getAttachments: () => [32] } : { id, isPDFAttachment: () => true } },
+    Reader: { open: async id => opened.push(id) },
+    launchURL: url => launched.push(url),
+  };
+  try {
+    appendMarkdown(doc, root,
+      "[合成期刊论文](https://journal.example/index.php/Synthetic/article/download/12345/67890)");
+    await root.children[0].children.find(node => node.tag === "a")
+      .listeners.click({ preventDefault() {} });
+    assert.deepEqual(opened, [32]);
+    assert.deepEqual(launched, []);
   }
   finally {
     if (previousZotero === undefined) delete global.Zotero;

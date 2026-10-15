@@ -7,6 +7,7 @@ Users create, search, resume and manage chats while replies stream. Chats can co
 - `new-chat` opens a blank composer and creates a stored chat only on the first message.
 - `send-stop` streams a response and interrupts an active reply.
 - `picker` searches recent chats, filters to a paper, and loads further rows on scroll.
+- `cold-start` starts the CLI while the native sidebar renders, resolves local context alongside the handshake, and restores the current paper's bound chat alongside model discovery. The full history catalog loads when the picker opens.
 - `paper-drafts` preserves unsent text and image attachments independently while switching between library papers.
 - `background` keeps a reply running while users switch chats and restores its Stop button.
 - `history-edit` copies messages, edits the latest turn, or branches an earlier turn.
@@ -30,6 +31,7 @@ Preconditions:
 - Preserve the isolated working directory when configuring login. Use disposable prompts and chats only.
 
 - Cover header entry with `click '[data-zcs-l10n-id="zotero-codex-new-chat-button"]'`, picker entry with `click '.zcs-thread-trigger'` then `click '.zcs-new-thread-row'`, and command entry with `fill '.zcs-input' /new` then `key '.zcs-input' Enter`. Add `--run "$verify_run"` to each. Capture each blank composer and confirm no new session appeared until sending.
+- For cold startup, capture the initial blank composer, send a disposable message and verify the stored paper binding. Restart only the owned isolated profile, reopen that paper's sidebar and confirm the saved conversation and enabled composer return. Open the picker and confirm history loads, then switch to a second fixture paper and back. Check library and reader entry points. A fresh profile without a stored chat proves only the blank startup path; do not claim saved-history restoration from it.
 - Send `fill '.zcs-input' 'Reply with exactly VERIFICATION_OK. Do not use tools.'` then `click '.zcs-send-button'`. Repeat the send entry through `key '.zcs-input' Enter` in a new disposable chat. Capture a user message, streaming activity and final `.zcs-assistant .zcs-message-content`. Read the new session file under scratch runtime and reopen the chat through the picker.
 - For interruption/background coverage, use a prompt that produces enough text to observe an active reply. While `.zcs-send-stop` is visible, switch through the picker or start a new chat. Return to the running row and confirm Stop is restored. Click `.zcs-send-button` to interrupt. Capture terminal state and the stored turn. Native notification delivery/click needs native app control and a genuinely background completion.
 - Open `click '.zcs-thread-trigger'`, then `fill '.zcs-thread-search' VERIFICATION_OK`. Capture matching and empty search states. Toggle `.zcs-paper-only-filter input`. Incremental list display requires at least 41 matching disposable sessions: confirm the first 40 rows, scroll the real list with native control and observe row 41. This expands the locally loaded list; it is not another backend page fetch. A short list cannot prove this branch.

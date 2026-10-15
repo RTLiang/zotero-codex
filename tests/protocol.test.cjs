@@ -88,6 +88,7 @@ test("normalizes the account model catalog and its reasoning efforts", () => {
           { reasoningEffort: "low", description: "Fast" },
           { reasoningEffort: "medium", description: "Balanced" },
         ],
+        serviceTiers: [{ id: "priority", name: "Fast", description: "Faster responses" }],
       },
       { model: "hidden", isHidden: true },
       { displayName: "invalid" },
@@ -95,6 +96,7 @@ test("normalizes the account model catalog and its reasoning efforts", () => {
   });
   assert.deepEqual(models.map((model) => model.model), ["gpt-6-astra"]);
   assert.deepEqual(models[0].supportedReasoningEfforts, ["low", "medium"]);
+  assert.deepEqual(models[0].serviceTiers, [{ id: "priority", name: "Fast", description: "Faster responses" }]);
 });
 
 test("resolves a valid model and falls back to its supported default effort", () => {
@@ -280,7 +282,16 @@ test("a document-location question receives the matching PDF section and physica
 test("a Chinese document-location question selects English PDF text", () => {
   const evidence = Protocol.buildPdfEvidence("1 Introduction\f5 Method\nFollow the sample steps.", 2, "这个文档的方法步骤在哪？");
   assert.match(evidence, /Excerpt, physical PDF page 2:\n5 Method\nFollow the sample steps/u);
-  assert.equal(Protocol.buildPdfEvidence("one page", 2, "where"), "");
+  assert.match(Protocol.buildPdfEvidence("one page", 2, "where"), /scanned\/image-only document/u);
+});
+
+test("image-only PDFs are identified without treating sparse OCR text as paper evidence", () => {
+  const evidence = Protocol.buildPdfEvidence("  1\n  2\n", 2, "总结核心方法");
+  assert.match(evidence, /no searchable PDF text/u);
+  assert.match(evidence, /local PDF\/OCR tools/u);
+  assert.match(evidence, /Do not upload the document to an external OCR service/u);
+  assert.match(evidence, /rebuilding Zotero's full-text index/u);
+  assert.doesNotMatch(evidence, /Excerpt, physical PDF page/u);
 });
 
 test("long PDFs put a matched later section before the context limit", () => {

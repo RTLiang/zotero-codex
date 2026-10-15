@@ -8,7 +8,7 @@ Users open permission or model controls from the composer footer or local slash 
 - `permission-command` opens that dialog through `/approvals` and consumes the command without sending a turn.
 - `permission-save` uses the same button/list control as Model and reasoning for approval policy, reviewer and file access. Choices persist and leave the permission panel open. Network access uses a checkbox.
 - `command-menu` filters commands/skills and supports ArrowUp, ArrowDown, Enter, Tab and Escape.
-- `model-choice` selects an account-supported model and reasoning effort through the bottom button or `/model`.
+- `model-choice` selects an account-supported model, reasoning effort and speed through the bottom button or `/model`. Fast is available only when the selected model advertises the `priority` service tier.
 
 ## How to get to it (user POV)
 
@@ -33,7 +33,7 @@ Preconditions:
 - Cover the composer entry with `fill '.zcs-input' /approvals`, then `key '.zcs-input' Enter`, each with `--run "$verify_run"`. Expect the same dialog and no sent user message.
 - Cover menu navigation with `fill '.zcs-input' /`, `key '.zcs-input' ArrowDown`, and `key '.zcs-input' Escape`. Capture `.zcs-command-menu` visibility and its option/active-descendant state before and after.
 - With the slash menu open, run `"$verify_control" read .cursor/skills/verify-zotero-codex/scripts/command-menu-layout.js --run "$verify_run"`. It rejects collapsed descriptions, text outside its row, overlapping rows, horizontal overflow and a menu clipped above the chat header. Include long skill names discovered by the real CLI in the scratch workspace, and capture the menu screenshot. Shrink the chat with its resize handle and repeat the check. Zotero's default button height and margins do not apply in the browser preview.
-- Open model controls with `click '.zcs-model-trigger'`, or `fill '.zcs-input' /model` then `key '.zcs-input' Enter`. The `.zcs-model-popover` appears. Click `[data-zcs-l10n-id="zotero-codex-model-choice"]` and choose an actually listed `[role="option"]`; repeat with `[data-zcs-l10n-id="zotero-codex-effort-choice"]`. Capture both the selected option and footer text. Use the current snapshot to scope an option uniquely.
+- Open model controls with `click '.zcs-model-trigger'`, or `fill '.zcs-input' /model` then `key '.zcs-input' Enter`. The `.zcs-model-popover` appears. Click `[data-zcs-l10n-id="zotero-codex-model-choice"]` and choose an actually listed `[role="option"]`; repeat with `[data-zcs-l10n-id="zotero-codex-effort-choice"]`. For a model with Fast, click `[data-zcs-l10n-id="zotero-codex-speed-choice"]`, then `[data-value="priority"]`; confirm the footer shows Fast, reopen the choice to verify the checkmark, and independently read the saved `serviceTier` preference. Choose `[data-value="default"]` and verify the next turn uses standard speed. Capture the selected options and footer text. Use the current snapshot to scope each option uniquely.
 - Capture `snapshot commands-after --run "$verify_run"`. Record which entry points were exercised, including library versus PDF when the changed behavior affects both.
 
 ## Gotchas
@@ -41,5 +41,6 @@ Preconditions:
 - `never` denies operations that require approval. It does not grant access. Full access forces network access and disables its checkbox.
 - Changing controls during a reply affects the next reply. A local control proof does not verify a real command/file/permission approval request.
 - Model buttons can be disabled when no model catalog loaded. Record that precondition instead of fabricating a catalog.
+- Fast is a per-turn service tier override. A control click proves persistence and selection, while an authenticated turn is needed to verify that the app server accepts it.
 - Permission list keys and option values are stable `data-permission` and `data-value` selectors. Verify mouse selection through `click`; assigning a select value cannot prove this entry point.
 - Slash text can be consumed by the highlighted menu row on Enter. Capture the menu selection and resulting dialog.

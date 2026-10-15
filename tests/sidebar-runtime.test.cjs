@@ -17,7 +17,7 @@ function fixture() {
   };
   const context = {
     console,
-    ZoteroCodexModules: {},
+    ZoteroCodexModules: { Protocol: require("../content/protocol.js") },
     Zotero: {
       getMainWindows: () => [],
       ItemPaneManager: { registerSection(callbacks) { hooks = callbacks; return "sidebar"; } },

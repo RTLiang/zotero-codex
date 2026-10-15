@@ -60,6 +60,7 @@ interface TurnRequest {
   context: unknown;
   model?: string;
   effort?: string;
+  serviceTier?: "default" | "priority";
   cwd?: string;
   useOfficialZoteroSkill?: boolean;
 }
@@ -84,6 +85,7 @@ interface TurnRequest {
     "Required final-answer check: if your answer makes claims from the current PDF and a source section or physical page is verified, include at least one of these Markdown citation links in the answer. A plain-text mention such as 'Section 4.3' does not satisfy this requirement. Original PDF excerpts labeled with a physical page or containing a numbered heading are sufficient to verify that page or section; no additional file access is required for those citations.",
     "Do not link to arXiv, publisher, DOI, other online copies, chrome:// URLs, or a bare # for this paper. Never invent a locator. If no supported location can be verified, leave the source mention as plain text. When no current local PDF is supplied, do not generate these current-PDF targets.",
     "For ordinary questions that locate or explain content in the current paper, use the PDF text and physical-page evidence supplied in Zotero context. Do not request Computer Use access to Zotero or operate its window merely to read, search, or verify the PDF. If the supplied excerpts are insufficient, read the local PDF file with available non-UI tools; if its text is unavailable, explain the limitation instead of requesting UI permission.",
+    "When Zotero reports no searchable PDF text or very little text, treat the attachment as a possible scan. Try locally available PDF/OCR tools on the local attachment path, limited to relevant pages when practical; never upload the paper to an external OCR service. Mark OCR-derived findings as OCR, verify their physical page numbers, and do not invent text or citations. If local OCR is unavailable or uncertain, tell the user and suggest creating a searchable text layer locally and rebuilding Zotero's full-text index.",
   ].join("\n");
 
   function dirname(path: string): string {
@@ -307,8 +309,8 @@ interface TurnRequest {
     }
 
     async connect(): Promise<CodexAppServerClient | undefined> {
-      if (this.process) return this;
       if (this.connecting) return this.connecting;
+      if (this.process) return this;
       this.closed = false;
       this.connecting = this._connect().finally(() => {
         this.connecting = null;
@@ -796,6 +798,7 @@ interface TurnRequest {
       context,
       model,
       effort,
+      serviceTier,
       cwd,
       useOfficialZoteroSkill = false,
     }: TurnRequest): Promise<JsonRecord> {
@@ -834,6 +837,7 @@ interface TurnRequest {
         ...(context ? { additionalContext: context } : {}),
         ...(model ? { model } : {}),
         ...(effort ? { effort } : {}),
+        ...(serviceTier ? { serviceTierForTurn: serviceTier } : {}),
         summary: "detailed",
         turnTrigger: "zotero-sidebar",
       });

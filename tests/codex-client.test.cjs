@@ -8,6 +8,23 @@ require("../content/codex-client.js");
 
 const { CodexAppServerClient } = global.ZoteroCodexModules.CodexClient;
 
+test("concurrent callers wait for the app-server handshake even after the process exists", async () => {
+  const client = new CodexAppServerClient();
+  let finish;
+  const handshake = new Promise(resolve => { finish = resolve; });
+  client._connect = async () => {
+    client.process = {};
+    await handshake;
+    return client;
+  };
+  const first = client.connect();
+  let ready = false;
+  const second = client.connect().then(() => { ready = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  try { assert.equal(ready, false); }
+  finally { finish(); await Promise.all([first, second]); }
+});
+
 test("new and resumed chats receive the same trusted PDF citation contract", async () => {
   const client = new CodexAppServerClient();
   client.connect = async () => {};
@@ -30,6 +47,8 @@ test("new and resumed chats receive the same trusted PDF citation contract", asy
   assert.match(instructions, /no additional file access is required for those citations/u);
   assert.match(instructions, /#page=4&quote=/u);
   assert.match(instructions, /Never put a paraphrase or translation in quote/u);
+  assert.match(instructions, /treat the attachment as a possible scan/iu);
+  assert.match(instructions, /never upload the paper to an external OCR service/u);
   const context = Protocol.buildZoteroContext({ title: "Document", pdfPath: "/fixtures/document.pdf" });
   await client.startTurn({ threadID: "fixture-chat", text: "Explain the method", context });
   assert.deepEqual(calls[2].params.additionalContext, context);
@@ -79,6 +98,21 @@ test("applies changed permissions to the next turn of an existing chat", async (
   preferences.sandbox = "danger-full-access";
   await client.startTurn({ threadID: "existing", text: "Edit", cwd: "/fixtures" });
   assert.deepEqual(params.sandboxPolicy, { type: "dangerFullAccess" });
+});
+
+test("sends the selected speed for each turn without changing the chat's tier", async () => {
+  const client = new CodexAppServerClient();
+  client.loadedThreads.add("fixture-chat");
+  const requests = [];
+  client.request = async (method, params) => {
+    requests.push({ method, params });
+    return { turn: { id: `fixture-turn-${requests.length}` } };
+  };
+  await client.startTurn({ threadID: "fixture-chat", text: "Summarize the sample", serviceTier: "priority" });
+  await client.startTurn({ threadID: "fixture-chat", text: "Explain the sample", serviceTier: "default" });
+  assert.deepEqual(requests.map(({ method }) => method), ["turn/start", "turn/start"]);
+  assert.deepEqual(requests.map(({ params }) => params.serviceTierForTurn), ["priority", "default"]);
+  assert.ok(requests.every(({ params }) => !Object.hasOwn(params, "serviceTier")));
 });
 
 test("permission edits during skill loading only affect later turns", async () => {

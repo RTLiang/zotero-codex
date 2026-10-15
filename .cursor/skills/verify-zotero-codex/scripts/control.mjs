@@ -374,10 +374,16 @@ async function prove(client) {
   const pane = await client.evaluate(`const e=[...document.querySelectorAll(arguments[0]+' [data-pane]')].find(e=>e.dataset.pane.includes('codex-sidebar')); if(!e)return null; return arguments[0]+' [data-pane*="codex-sidebar"]';`,[sidenav]);
   assert.ok(pane, "Codex sidenav button is missing");
   await drive(client, "click", pane);
+  let ready = false;
   for (let i = 0; i < 60; i++) {
-    if (await client.evaluate(`${elementScript} return !e.disabled;`,[ui(".zcs-input")]).catch(()=>false)) break;
+    ready = await client.evaluate(`${elementScript}
+      const model = document.querySelector(arguments[1]);
+      return !e.disabled && model && !model.disabled && !Zotero.CodexSidebar.settings.busy();
+    `,[ui(".zcs-input"),ui(".zcs-model-trigger")]).catch(()=>false);
+    if (ready) break;
     await delay(500);
   }
+  assert.ok(ready, "Sidebar initialization did not finish; inspect the native controls and CLI connection");
   await snapshot(client, "permissions-before");
   await drive(client, "click", ui(".zcs-permissions-trigger"));
   assert.equal(await client.evaluate(`return document.querySelector(arguments[0]).hidden;`,[ui(".zcs-permissions-card")]), false);
