@@ -19,6 +19,8 @@ Users open permission or model controls from the composer footer or local slash 
 
 ## Driving it with control.mjs
 
+All selector examples below are shorthand: prefix them with `#zotero-item-pane ` for library controls or `#zotero-context-pane-inner ` for reader controls. Both panes can retain matching elements, so an unscoped selector can select an inactive control.
+
 Preconditions:
 
 - Launch and doctor pass. The local permission proof needs no model login.

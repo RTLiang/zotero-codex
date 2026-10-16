@@ -245,10 +245,22 @@ async function drive(client, action, selector, value = "") {
   let result = await client.evaluate(scripts[action], [selector, value]);
   if (action === "click" || action === "dblclick") {
     const point = await client.evaluate(`${elementScript}
-      const r=e.getBoundingClientRect(); let x=r.left+r.width/2, y=r.top+r.height/2;
+      let point;
+      const rects=[...e.getClientRects()];
+      for (const [index,r] of rects.entries()) {
+        const left=Math.max(0,r.left), right=Math.min(e.ownerDocument.defaultView.innerWidth,r.right);
+        const top=Math.max(0,r.top), bottom=Math.min(e.ownerDocument.defaultView.innerHeight,r.bottom);
+        if (right<=left || bottom<=top) continue;
+        const x=Math.round((left+right)/2), y=Math.round((top+bottom)/2);
+        const hit=e.ownerDocument.elementFromPoint(x,y);
+        if (hit===e || e.contains(hit)) { point={x,y,rectangle:index}; break; }
+      }
+      if (!point) throw new Error('No unobscured click rectangle: '+arguments[0]);
+      let {x,y}=point;
       let w=e.ownerDocument.defaultView;
       while (w.frameElement) {const f=w.frameElement, r=f.getBoundingClientRect(); x+=r.left+f.clientLeft; y+=r.top+f.clientTop; w=f.ownerDocument.defaultView;}
-      return {x:Math.round(x), y:Math.round(y)};`, [selector]);
+      return {x:Math.round(x), y:Math.round(y), rectangle:point.rectangle, rectangles:rects.length};`, [selector]);
+    record("pointer-target", { selector, ...point });
     await client.call("WebDriver:PerformActions", { actions: [{ type: "pointer", id: "verification-mouse",
       parameters: { pointerType: "mouse" }, actions: [
         { type: "pointerMove", origin: "viewport", x: point.x, y: point.y, duration: 0 },
