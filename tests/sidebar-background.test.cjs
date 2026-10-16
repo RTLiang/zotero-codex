@@ -190,6 +190,26 @@ test("a late turn-start response cannot change the newly selected chat", async (
   assert.equal(manager.runningTurns.get("A").turnID, "turn-A");
 });
 
+test("writer contention restores the draft and images after refreshing rejected history", async () => {
+  const { manager, client } = session();
+  manager.notifyTurnCompleted = async () => {};
+  const view = viewFor(manager);
+  const error = Object.assign(new Error("Chat in use"), { l10nID: "zotero-codex-error-thread-busy" });
+  client.startTurn = async () => { throw error; };
+  const errors = [];
+  view.showError = error => errors.push(error);
+  view.cancelEdit = ({ clearInput }) => { if (clearInput) view.elements.input.value = ""; };
+  const image = { name: "fixture.png", dataURL: "data:image/png;base64,AA==" };
+  view.elements.input.value = "Explain the sample";
+  view.images = [image];
+  await SidebarView.prototype.send.call(view);
+  assert.equal(view.elements.input.value, "Explain the sample");
+  assert.deepEqual(view.images, [image]);
+  assert.deepEqual(errors, [error]);
+  assert.equal(manager.runningTurns.size, 0);
+  assert.equal(view.running, false);
+});
+
 test("does not revive a completed turn from a stale history response", async () => {
   const { manager, client } = session();
   const view = viewFor(manager);

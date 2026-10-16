@@ -8,6 +8,127 @@ require("../content/codex-client.js");
 
 const { CodexAppServerClient } = global.ZoteroCodexModules.CodexClient;
 
+async function withImmediateLockWait(run) {
+  const original = global.setTimeout;
+  global.setTimeout = (callback, delay, ...args) => original(callback, delay === 500 ? 0 : delay, ...args);
+  try { await run(); }
+  finally { global.setTimeout = original; }
+}
+
+test("waits for an external reader's writer lock before sending exactly once", async () => {
+  await withImmediateLockWait(async () => {
+    const client = new CodexAppServerClient();
+    client.connect = async () => client;
+    const calls = [];
+    let resumes = 0;
+    client.request = async (method) => {
+      calls.push(method);
+      if (method === "thread/resume" && ++resumes < 3) {
+        throw new Error("thread fixture-chat already has an active writer");
+      }
+      return { turn: { id: "fixture-turn" } };
+    };
+    const turn = await client.startTurn({ threadID: "fixture-chat", text: "Explain the sample" });
+    assert.equal(turn.id, "fixture-turn");
+    assert.deepEqual(calls, ["thread/resume", "thread/resume", "thread/resume", "turn/start"]);
+  });
+});
+
+test("persistent writer contention is bounded, localized and never sends the message", async () => {
+  await withImmediateLockWait(async () => {
+    const client = new CodexAppServerClient();
+    client.connect = async () => client;
+    let attempts = 0;
+    client.request = async method => {
+      assert.equal(method, "thread/resume");
+      attempts++;
+      throw new Error("thread fixture-chat already has an active writer");
+    };
+    await assert.rejects(client.startTurn({ threadID: "fixture-chat", text: "Explain" }),
+      error => error.l10nID === "zotero-codex-error-thread-busy");
+    assert.ok(attempts > 1 && attempts <= 21);
+    assert.equal(client.loadedThreads.has("fixture-chat"), false);
+    client.request = async () => ({ turn: { id: "retry-turn" } });
+    assert.equal((await client.startTurn({ threadID: "fixture-chat", text: "Explain" })).id, "retry-turn");
+  });
+});
+
+test("concurrent loads share one resume while duplicate sends are rejected per thread", async () => {
+  const client = new CodexAppServerClient();
+  client.connect = async () => client;
+  let release;
+  const resumed = new Promise(resolve => { release = resolve; });
+  const calls = [];
+  client.request = async (method, params) => {
+    calls.push([method, params.threadId]);
+    if (method === "thread/resume" && params.threadId === "fixture-chat") await resumed;
+    return { turn: { id: "fixture-turn" } };
+  };
+  const first = client.startTurn({ threadID: "fixture-chat", text: "First" });
+  const load = client.ensureThreadLoaded("fixture-chat");
+  let duplicateError;
+  const duplicate = client.startTurn({ threadID: "fixture-chat", text: "Duplicate" })
+    .catch(error => { duplicateError = error; });
+  try {
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(duplicateError?.l10nID, "zotero-codex-error-thread-busy");
+    await client.startTurn({ threadID: "other-chat", text: "Independent" });
+  }
+  finally { release(); await Promise.all([first, load, duplicate]); }
+  assert.equal(calls.filter(([method, id]) => method === "thread/resume" && id === "fixture-chat").length, 1);
+  assert.equal(calls.filter(([method, id]) => method === "turn/start" && id === "fixture-chat").length, 1);
+});
+
+test("unloaded thread notifications invalidate cached ownership before the next send", async () => {
+  for (const notification of [
+    { method: "thread/closed", params: { threadId: "fixture-chat" } },
+    { method: "thread/status/changed", params: { threadId: "fixture-chat", status: { type: "notLoaded" } } },
+  ]) {
+    const client = new CodexAppServerClient();
+    client.connect = async () => client;
+    client.loadedThreads.add("fixture-chat");
+    client._handleMessage(notification);
+    const calls = [];
+    client.request = async method => { calls.push(method); return { turn: { id: "fixture-turn" } }; };
+    await client.startTurn({ threadID: "fixture-chat", text: "Explain" });
+    assert.deepEqual(calls, ["thread/resume", "turn/start"]);
+  }
+});
+
+test("resume errors other than writer contention are not retried", async () => {
+  const client = new CodexAppServerClient();
+  client.connect = async () => client;
+  let attempts = 0;
+  client.request = async () => { attempts++; throw new Error("fixture unavailable"); };
+  await assert.rejects(client.startTurn({ threadID: "fixture-chat", text: "Explain" }), /fixture unavailable/);
+  assert.equal(attempts, 1);
+});
+
+test("disconnect cancels lock waiting and cannot mark an old resume as loaded", async () => {
+  await withImmediateLockWait(async () => {
+    const client = new CodexAppServerClient();
+    client.connect = async () => client;
+    let calls = 0;
+    client.request = async method => {
+      assert.equal(method, "thread/resume");
+      calls++;
+      client._fail(new Error("fixture disconnect"));
+      throw new Error("thread fixture-chat already has an active writer");
+    };
+    await assert.rejects(client.startTurn({ threadID: "fixture-chat", text: "Explain" }),
+      error => error.l10nID === "zotero-codex-error-disconnected");
+    assert.equal(calls, 1);
+    assert.equal(client.loadedThreads.has("fixture-chat"), false);
+    client.request = async () => {
+      client._fail(new Error("fixture disconnect"));
+      return {};
+    };
+    await assert.rejects(client.ensureThreadLoaded("fixture-chat"),
+      error => error.l10nID === "zotero-codex-error-disconnected");
+    assert.equal(client.loadedThreads.has("fixture-chat"), false);
+  });
+});
+
 test("concurrent callers wait for the app-server handshake even after the process exists", async () => {
   const client = new CodexAppServerClient();
   let finish;

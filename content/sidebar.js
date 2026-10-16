@@ -248,7 +248,7 @@
     setL10n(button, l10nID);
   }
 
-  async function openMarkdownTarget(target) {
+  async function openMarkdownTarget(target, label = "", openPdfReference = null) {
     const value = String(target || "").trim();
     if (/^https?:\/\//iu.test(value)) {
       try {
@@ -258,7 +258,10 @@
             .map((id) => global.Zotero.Items.get(id))
             .find(isPDF);
           if (attachment) {
-            await global.Zotero.Reader.open(attachment.id);
+            const reference = pdfLinkLocation(value, label);
+            if (reference && openPdfReference) await openPdfReference(reference, attachment.id);
+            else await global.Zotero.Reader.open(attachment.id, reference?.pageNumber
+              ? { pageIndex: reference.pageNumber - 1 } : undefined);
             return;
           }
           if (await global.Zotero.getActiveZoteroPane?.()?.selectItem(item.id)) return;
@@ -334,6 +337,21 @@
     return matchWithoutPdf;
   }
 
+  function pdfLinkLocation(value, label) {
+    const page = value.match(/(?:[?#&]page=)([1-9]\d{0,3})(?!\d)/iu);
+    const section = String(label).match(/(?:第\s*)?(\d{1,3}(?:\.\d{1,3})*)\s*节|\b(?:section|sec\.?)\s*(\d{1,3}(?:\.\d{1,3})*)|§\s*(\d{1,3}(?:\.\d{1,3})*)/iu);
+    const fragmentSection = value.match(/#(?:s|sec(?:tion)?[-_=]?)(\d{1,3}(?:[._]\d{1,3})*)\b/iu);
+    const sectionNumber = fragmentSection?.[1]?.replace(/_/gu, ".")
+      || section?.[1] || section?.[2] || section?.[3];
+    const sectionTitle = /(?:方法部分|方法章节|\bmethod(?:s|ology)?\b|\bapproach\b)/iu.test(label)
+      ? "method" : null;
+    if (!page && !sectionNumber && !sectionTitle) return null;
+    return {
+      ...(page ? { pageNumber: Number(page[1]) } : {}),
+      ...(sectionNumber ? { sectionNumber } : sectionTitle ? { sectionTitle } : {}),
+    };
+  }
+
   function resolvePaperLink(target, context, label = "") {
     const value = String(target || "").trim();
     if (!context?.attachmentID || !context.pdfPath) {
@@ -368,23 +386,15 @@
       return reference ? { kind: "pdf", reference } : { kind: "text" };
     }
     if (value.startsWith("#")) return { kind: "text" };
-    const page = value.match(/(?:[?#&]page=)(\d{1,4})/iu);
     const sameFile = value === context.pdfPath || value === `file://${context.pdfPath}`;
     const identity = paperLinkIdentity(value);
     const samePaper = sameFile || [context.url, context.doi]
       .filter(Boolean).some((candidate) => paperLinkIdentity(candidate) === identity);
-    const section = String(label).match(/第\s*(\d{1,3}(?:\.\d{1,3})*)\s*节|\b(?:section|sec\.?)\s*(\d{1,3}(?:\.\d{1,3})*)|§\s*(\d{1,3}(?:\.\d{1,3})*)/iu);
-    const fragmentSection = value.match(/#(?:s|sec(?:tion)?[-_]?)(\d{1,3}(?:[._]\d{1,3})*)\b/iu);
-    const sectionNumber = section?.[1] || section?.[2] || section?.[3]
-      || fragmentSection?.[1]?.replace(/_/gu, ".");
-    const sectionTitle = /(?:方法部分|方法章节|\bmethod(?:s|ology)?\b|\bapproach\b)/iu.test(label)
-      ? "method" : null;
+    const reference = pdfLinkLocation(value, label);
     const titleLink = /^(?:本文|原文|论文|全文|paper|full text)$/iu.test(String(label).trim());
     const webLink = /^https?:\/\//iu.test(value);
     if (!samePaper) return webLink ? null : { kind: "text" };
-    if (page) return { kind: "pdf", reference: { pageNumber: Number(page[1]) } };
-    if (sectionNumber) return { kind: "pdf", reference: { sectionNumber } };
-    if (sectionTitle) return { kind: "pdf", reference: { sectionTitle } };
+    if (reference) return { kind: "pdf", reference };
     if (titleLink) return { kind: "pdf", reference: { pageNumber: 1 } };
     return webLink ? null : { kind: "text" };
   }
@@ -521,8 +531,8 @@
 
   function appendMarkdown(doc, parent, value, openPdfReference = null, paperContext = null) {
     Markdown.appendMarkdown(doc, parent, value, {
-      openTarget: openMarkdownTarget,
-      openPdfReference,
+      openTarget: (target, label) => openMarkdownTarget(target, label, openPdfReference),
+      openPdfReference: paperContext?.attachmentID ? openPdfReference : null,
       resolveLink: (target, label) => resolvePaperLink(target, paperContext, label),
     });
   }
@@ -2257,8 +2267,7 @@
       return nativeHeading ? { position: nativeHeading.position } : null;
     }
 
-    async openPdfReference(reference) {
-      const attachmentID = this.context?.attachmentID;
+    async openPdfReference(reference, attachmentID = this.context?.attachmentID) {
       if (!attachmentID || !reference) return;
       try {
         const location = reference.pageNumber
@@ -3236,7 +3245,7 @@
         else {
           const message = create(this.doc, "div", "zcs-process-message");
           appendMarkdown(this.doc, message, entry.text,
-            this.context?.attachmentID ? (reference) => { void this.openPdfReference(reference); } : null,
+            (reference, attachmentID) => this.openPdfReference(reference, attachmentID),
             this.context);
           body.append(message);
         }
@@ -3381,7 +3390,7 @@
         ));
         const content = create(this.doc, "div", "zcs-message-content zcs-process-body");
         appendMarkdown(this.doc, content, entry.text,
-          this.context?.attachmentID ? (reference) => { void this.openPdfReference(reference); } : null,
+          (reference, attachmentID) => this.openPdfReference(reference, attachmentID),
           this.context);
         details.append(content);
         if (streaming) details.classList.add("zcs-streaming");
@@ -3391,8 +3400,8 @@
       const article = create(this.doc, "article", `zcs-message zcs-${entry.role}`);
       const content = create(this.doc, "div", "zcs-message-content");
       if (entry.text) appendMarkdown(this.doc, content, entry.text,
-        entry.role === "assistant" && this.context?.attachmentID
-          ? (reference) => { void this.openPdfReference(reference); }
+        entry.role === "assistant"
+          ? (reference, attachmentID) => this.openPdfReference(reference, attachmentID)
           : null,
         entry.role === "assistant" ? this.context : null);
       const body = create(this.doc, "div", "zcs-message-body");
@@ -3559,7 +3568,7 @@
         const content = this.streamingNode.querySelector(".zcs-message-content");
         content.replaceChildren();
         appendMarkdown(this.doc, content, this.streamingText,
-          this.context?.attachmentID ? (reference) => { void this.openPdfReference(reference); } : null,
+          (reference, attachmentID) => this.openPdfReference(reference, attachmentID),
           this.context);
       }
     }
@@ -3788,16 +3797,20 @@
           (sendingThreadID && this.threadID !== sendingThreadID)) return;
         this.setRunning(false);
         this.hidePendingResponse();
+        const draft = this.elements.input.value || (clearedInput ? text : "");
+        const draftImages = this.images.length ? this.images : (clearedInput ? images : []);
+        if (this.threadID && !this.editingMessage) {
+          await this.selectThread(this.threadID).catch(() => null);
+        }
+        if (contextEpoch !== this.contextEpoch || this.destroyed ||
+          (sendingThreadID && this.threadID !== sendingThreadID)) return;
         this.showError(error);
-        if (clearedInput && !this.elements.input.value) {
-          this.elements.input.value = text;
-          this.images = images;
+        if (!this.elements.input.value) {
+          this.elements.input.value = draft;
+          this.images = draftImages;
           this.resizeComposer();
           this.renderContextAttachment();
           this.updateComposerState();
-        }
-        if (this.threadID && !this.editingMessage) {
-          await this.selectThread(this.threadID).catch(() => null);
         }
       }
     }

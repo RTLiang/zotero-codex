@@ -197,6 +197,7 @@ zotero-codex-error-server-exited = Codex 意外退出{ $details }
 zotero-codex-error-not-connected = 尚未连接到 Codex。
 zotero-codex-error-timeout = { $method } 在 { $seconds } 秒内没有响应。
 zotero-codex-error-thread-missing = 无法从 Codex 读取这段对话。
+zotero-codex-error-thread-busy = 此会话正被另一个 Codex 会话占用，请在释放后重新发送。草稿已保留。
 zotero-codex-error-thread-id-missing = Codex 没有返回新对话。
 zotero-codex-error-fork-id-missing = 无法从这条较早的消息创建对话分支。
 zotero-codex-error-revert-thread-missing = 无法更新这段对话。

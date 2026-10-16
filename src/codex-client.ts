@@ -258,6 +258,8 @@ interface TurnRequest {
     pending: Map<number, PendingRequest>;
     listeners: Set<(event: CodexClientEvent) => void>;
     loadedThreads: Set<unknown>;
+    loadingThreads: Map<unknown, Promise<void>>;
+    sendingThreads: Set<string>;
     stdoutBuffer: string;
     stderrTail: string;
     binaryPath: string;
@@ -273,6 +275,8 @@ interface TurnRequest {
       this.pending = new Map();
       this.listeners = new Set();
       this.loadedThreads = new Set();
+      this.loadingThreads = new Map();
+      this.sendingThreads = new Set();
       this.stdoutBuffer = "";
       this.stderrTail = "";
       this.binaryPath = "";
@@ -442,6 +446,10 @@ interface TurnRequest {
         return;
       }
       if (typeof message?.method === "string") {
+        if (message.method === "thread/closed" ||
+          (message.method === "thread/status/changed" && message.params?.status?.type === "notLoaded")) {
+          this.loadedThreads.delete(message.params?.threadId);
+        }
         this.emit({ type: "notification", method: message.method, params: message.params || {} });
       }
     }
@@ -737,13 +745,41 @@ interface TurnRequest {
         this.markThreadLoaded(threadID);
         return;
       }
-      await this.connect();
-      await this.request("thread/resume", {
-        threadId: threadID,
-        excludeTurns: true,
-        developerInstructions: ZOTERO_DEVELOPER_INSTRUCTIONS,
+      const pending = this.loadingThreads.get(threadID);
+      if (pending) return pending;
+      const loading: Promise<void> = Promise.resolve().then(async () => {
+        await this.connect();
+        for (let attempt = 0; ; attempt++) {
+          if (this.loadingThreads.get(threadID) !== loading) {
+            throw clientError("zotero-codex-error-disconnected", null, "Codex App Server disconnected");
+          }
+          try {
+            await this.request("thread/resume", {
+              threadId: threadID,
+              excludeTurns: true,
+              developerInstructions: ZOTERO_DEVELOPER_INSTRUCTIONS,
+            });
+            if (this.loadingThreads.get(threadID) !== loading) {
+              throw clientError("zotero-codex-error-disconnected", null, "Codex App Server disconnected");
+            }
+            this.markThreadLoaded(threadID);
+            return;
+          }
+          catch (error) {
+            if (!(error instanceof Error) || !/\balready has an active writer\b/u.test(error.message)) throw error;
+            if (attempt >= 20) throw clientError(
+              "zotero-codex-error-thread-busy", null,
+              "This chat is in use by another Codex session. Try sending again when it is released. Your draft has been kept.",
+            );
+            await new Promise<void>(resolve => global.setTimeout(resolve, 500));
+          }
+        }
       });
-      this.markThreadLoaded(threadID);
+      this.loadingThreads.set(threadID, loading);
+      try { await loading; }
+      finally {
+        if (this.loadingThreads.get(threadID) === loading) this.loadingThreads.delete(threadID);
+      }
     }
 
     markThreadLoaded(threadID: unknown): void {
@@ -802,52 +838,60 @@ interface TurnRequest {
       cwd,
       useOfficialZoteroSkill = false,
     }: TurnRequest): Promise<JsonRecord> {
-      const { approvalPolicy, approvalsReviewer, sandbox, networkAccess } = this.permissionSettings();
-      await this.ensureThreadLoaded(threadID);
-      const input = Protocol.buildTurnInput(text, images);
-      const workingDirectory = cwd || this.getPreference("workingDirectory") || getHomeDirectory();
-      if (useOfficialZoteroSkill || /(?:^|\s)\$/u.test(String(text || ""))) {
-        try {
-          const skills = await this.listSkills({ cwd: workingDirectory });
-          const requested = Protocol.referencedSkills(String(text || ""), skills);
-          const zotero = useOfficialZoteroSkill && skills.find((skill) => skill.name.toLowerCase() === "zotero");
-          if (zotero && !requested.includes(zotero)) requested.push(zotero);
-          for (const skill of requested) {
-            input.push({ type: "skill", name: skill.name, path: skill.path });
+      if (this.sendingThreads.has(threadID)) throw clientError(
+        "zotero-codex-error-thread-busy", null,
+        "This chat is in use by another Codex session. Try sending again when it is released. Your draft has been kept.",
+      );
+      this.sendingThreads.add(threadID);
+      try {
+        const { approvalPolicy, approvalsReviewer, sandbox, networkAccess } = this.permissionSettings();
+        await this.ensureThreadLoaded(threadID);
+        const input = Protocol.buildTurnInput(text, images);
+        const workingDirectory = cwd || this.getPreference("workingDirectory") || getHomeDirectory();
+        if (useOfficialZoteroSkill || /(?:^|\s)\$/u.test(String(text || ""))) {
+          try {
+            const skills = await this.listSkills({ cwd: workingDirectory });
+            const requested = Protocol.referencedSkills(String(text || ""), skills);
+            const zotero = useOfficialZoteroSkill && skills.find((skill) => skill.name.toLowerCase() === "zotero");
+            if (zotero && !requested.includes(zotero)) requested.push(zotero);
+            for (const skill of requested) {
+              input.push({ type: "skill", name: skill.name, path: skill.path });
+            }
+          }
+          catch (error) {
+            // Requested skills remain optional so normal Codex turns still work
+            // when a skill is unavailable in the app-server environment.
+            this.log("Could not resolve requested Codex skill paths", error);
           }
         }
-        catch (error) {
-          // Requested skills remain optional so normal Codex turns still work
-          // when a skill is unavailable in the app-server environment.
-          this.log("Could not resolve requested Codex skill paths", error);
-        }
+        const sandboxPolicy = sandbox === "danger-full-access"
+          ? { type: "dangerFullAccess" }
+          : sandbox === "workspace-write"
+            ? { type: "workspaceWrite", writableRoots: [workingDirectory], networkAccess }
+            : { type: "readOnly", networkAccess };
+        const result = await this.request("turn/start", {
+          threadId: threadID,
+          input,
+          approvalPolicy,
+          approvalsReviewer,
+          sandboxPolicy,
+          ...(cwd ? { cwd } : {}),
+          ...(context ? { additionalContext: context } : {}),
+          ...(model ? { model } : {}),
+          ...(effort ? { effort } : {}),
+          ...(serviceTier ? { serviceTierForTurn: serviceTier } : {}),
+          summary: "detailed",
+          turnTrigger: "zotero-sidebar",
+        });
+        const turn = Protocol.extractTurn(result);
+        if (!turn?.id) throw clientError(
+          "zotero-codex-error-turn-id-missing",
+          null,
+          "Codex App Server did not return a turn ID",
+        );
+        return turn;
       }
-      const sandboxPolicy = sandbox === "danger-full-access"
-        ? { type: "dangerFullAccess" }
-        : sandbox === "workspace-write"
-          ? { type: "workspaceWrite", writableRoots: [workingDirectory], networkAccess }
-          : { type: "readOnly", networkAccess };
-      const result = await this.request("turn/start", {
-        threadId: threadID,
-        input,
-        approvalPolicy,
-        approvalsReviewer,
-        sandboxPolicy,
-        ...(cwd ? { cwd } : {}),
-        ...(context ? { additionalContext: context } : {}),
-        ...(model ? { model } : {}),
-        ...(effort ? { effort } : {}),
-        ...(serviceTier ? { serviceTierForTurn: serviceTier } : {}),
-        summary: "detailed",
-        turnTrigger: "zotero-sidebar",
-      });
-      const turn = Protocol.extractTurn(result);
-      if (!turn?.id) throw clientError(
-        "zotero-codex-error-turn-id-missing",
-        null,
-        "Codex App Server did not return a turn ID",
-      );
-      return turn;
+      finally { this.sendingThreads.delete(threadID); }
     }
 
     async interruptTurn(threadID: string, turnID: string): Promise<void> {
@@ -867,6 +911,7 @@ interface TurnRequest {
       }
       this.pending.clear();
       this.loadedThreads.clear();
+      this.loadingThreads.clear();
       this.process = null;
       this.emit({ type: "disconnected", error });
     }

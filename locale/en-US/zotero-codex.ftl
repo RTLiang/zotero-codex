@@ -197,6 +197,7 @@ zotero-codex-error-server-exited = Codex stopped unexpectedly{ $details }
 zotero-codex-error-not-connected = Not connected to Codex.
 zotero-codex-error-timeout = { $method } did not respond within { $seconds } seconds.
 zotero-codex-error-thread-missing = Could not load this conversation from Codex.
+zotero-codex-error-thread-busy = This chat is in use by another Codex session. Try sending again when it is released. Your draft has been kept.
 zotero-codex-error-thread-id-missing = Codex did not return the new conversation.
 zotero-codex-error-fork-id-missing = Could not create a conversation from this earlier message.
 zotero-codex-error-revert-thread-missing = Could not update this conversation.

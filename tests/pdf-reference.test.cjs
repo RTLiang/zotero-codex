@@ -67,6 +67,8 @@ test("same-item links use explicit PDF locations and otherwise keep their web ta
     "方法部分"), { kind: "pdf", reference: { sectionTitle: "method" } });
   assert.equal(resolvePaperLink("https://arxiv.org/html/0000.00000", context,
     "更多信息"), null);
+  assert.deepEqual(resolvePaperLink("https://arxiv.org/pdf/0000.00000#page=5", context,
+    "文档原文，3.2.2 节"), { kind: "pdf", reference: { pageNumber: 5, sectionNumber: "3.2.2" } });
 });
 
 function documentStub() {
@@ -140,6 +142,62 @@ test("a link to another locally saved paper prefers its PDF copy in Zotero", asy
     const link = root.children[0].children.find(node => node.tag === "a");
     await link.listeners.click({ preventDefault() {} });
     assert.deepEqual(opened, [12]);
+    assert.deepEqual(launched, []);
+  }
+  finally {
+    if (previousZotero === undefined) delete global.Zotero;
+    else global.Zotero = previousZotero;
+  }
+});
+
+test("another local PDF keeps its page and section when its Markdown link is clicked", async () => {
+  const previousZotero = global.Zotero;
+  const local = {
+    id: 13, isRegularItem: () => true,
+    getField: field => field === "url" ? "https://arxiv.org/abs/0000.12345" : "",
+    getAttachments: () => [12],
+  };
+  const opened = [], navigated = [], launched = [];
+  const pdfDocument = {
+    numPages: 6, getPage() {},
+    async getOutline() { return [{ title: "3.2.2 Synthetic timing rules", dest: [4, { name: "XYZ" }, 40, 180, null] }]; },
+  };
+  const reader = {
+    _initPromise: Promise.resolve(),
+    _internalReader: { _primaryView: { initializedPromise: Promise.resolve(),
+      _iframeWindow: { PDFViewerApplication: { pdfDocument } } } },
+    navigate: async location => navigated.push(location),
+  };
+  global.Zotero = {
+    Search: class { addCondition() {} async search() { return [13]; } },
+    Libraries: { getAll: () => [{ libraryID: 1 }] },
+    Items: { get: id => id === 13 ? local : { id: 12, isPDFAttachment: () => true } },
+    Reader: { open: async (id, location) => { opened.push({ id, location }); return reader; } },
+    launchURL: url => launched.push(url),
+  };
+  try {
+    const view = Object.assign(Object.create(SidebarView.prototype), {
+      context: { attachmentID: 99 }, showError(error) { throw error; },
+    });
+    const cases = [
+      { attachmentID: 12, pdfPath: "/fixtures/target.pdf", url: local.getField("url") },
+      { attachmentID: 99, pdfPath: "/fixtures/current.pdf", url: "https://example.com/current" },
+      null,
+    ];
+    for (const context of cases) {
+      opened.length = 0;
+      navigated.length = 0;
+      view.context = context;
+      const doc = documentStub(), root = doc.createElement("div");
+      appendMarkdown(doc, root,
+        "[文档原文，3.2.2 节](https://arxiv.org/pdf/0000.12345#page=5)",
+        (reference, attachmentID) => view.openPdfReference(reference, attachmentID), context);
+      const link = root.children[0].children.find(node => node.tag === "a");
+      await link.listeners.click({ preventDefault() {} });
+      assert.deepEqual(opened, [{ id: 12, location: { pageIndex: 4 } }]);
+      assert.deepEqual(navigated, [{ position: { pageIndex: 4, rects: [[40, 178, 41, 192]] } }]);
+      assert.equal(view.context, context);
+    }
     assert.deepEqual(launched, []);
   }
   finally {

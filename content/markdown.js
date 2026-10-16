@@ -938,7 +938,7 @@
           link.title = "Jump to PDF";
           link.addEventListener("click", (event) => {
             event.preventDefault();
-            options.openPdfReference?.(paperLink.reference);
+            return options.openPdfReference?.(paperLink.reference);
           });
           appendInlineTokens(doc, link, token.children,
             { ...options, openPdfReference: null, resolveLink: null });
@@ -950,7 +950,7 @@
         if (target.startsWith("/") || /^file:\/\//iu.test(target)) link.classList.add("zcs-local-link");
         link.addEventListener("click", (event) => {
           event.preventDefault();
-          return options.openTarget?.(target);
+          return options.openTarget?.(target, label);
         });
         appendInlineTokens(doc, link, token.children,
           { ...options, openPdfReference: null, resolveLink: null });
