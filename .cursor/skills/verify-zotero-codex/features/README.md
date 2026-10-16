@@ -12,7 +12,7 @@ Before any recipe, follow [contributor privacy](../SKILL.md#contributor-privacy)
 | [Paper context](paper-context.md) | Library item pane, PDF reader sidebar, Item/+ menu, selection popup, current/other saved-paper links | Context controls and extraction differ from authenticated citation clicks; inspect the target heading/object |
 | [Conversations](conversations.md) | Header +, picker New chat, `/new`, picker rows/search/filter, message controls, paper-switch drafts, occupied-chat send | Draft switching, authenticated reply/history, external ownership and notifications need separate observations |
 | [Images and message rendering](images-rendering.md) | + menu, paste, drag/drop, image click, message transcript | Source-mapped; requires image input or real reply evidence |
-| [Connection and storage](connection-storage.md) | Sidebar Settings, its Zotero settings link, Zotero Settings → Codex | Source-mapped; preferences and reconnect need their own proof |
+| [Connection and storage](connection-storage.md) | Sidebar Settings, default model and model refresh, its Zotero settings link, Zotero Settings → Codex | Model controls save without reconnect; connection preferences and reconnect need their own proof |
 | [Interactive UI](interactive-ui.md) | New chat prompt, generated controls, normal follow-up, chat picker reopen | Requires real tool history, native interaction/state/context and isolation proof |
 | [Interface language](interface-language.md) | Sidebar Settings → Language, Zotero Settings → Codex → Language, library and PDF-reader sidebars | Source-mapped; verify immediate switching and saved preference in an isolated profile |
 

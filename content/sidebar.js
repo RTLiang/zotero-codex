@@ -724,6 +724,12 @@
       languageSelect.value = modules.Localization.selected();
       languageCard.append(languageLabel, languageSelect);
       settingsContent.append(languageCard);
+      settingsContent.append(createL10n(doc, "div", "zcs-settings-section-title zcs-settings-section-spaced",
+        "zotero-codex-models-heading", "Models"));
+      const modelSettingsCard = create(doc, "div", "zcs-model-settings-card");
+      modelSettingsCard.id = `${pagePrefix}-model-settings`;
+      const modelSettings = modules.Preferences.mountModels(modelSettingsCard, this.manager.modelSettings());
+      settingsContent.append(modelSettingsCard);
       settingsContent.append(createL10n(
         doc,
         "div",
@@ -1149,6 +1155,7 @@
         connectionSubtitle,
         reconnectButton,
         languageSelect,
+        modelSettings,
         showWorkProcessToggle,
         permissionInputs,
         permissionChoices,
@@ -1419,6 +1426,7 @@
 
     openSettings() {
       this.showPage("settings", { focus: false });
+      this.elements.modelSettings.update(this.manager.modelCatalog || []);
       this.elements.pathInput.value = String(this.manager.getPreference("codexPath") || "");
       this.applyWorkProcessPreference();
       this.elements.settingsView.focus({ preventScroll: true });
@@ -1775,9 +1783,14 @@
     }
 
     async refreshModels() {
-      this.models = await this.client.listModels();
-      const requestedModel = this.thread?.model
-        || this.selectedModel
+      await this.manager.refreshModelCatalog();
+    }
+
+    setModels(models) {
+      this.models = models;
+      this.elements?.modelSettings?.update(models);
+      const requestedModel = this.selectedModel
+        || this.thread?.model
         || String(this.manager.getPreference("model") || "");
       const requestedEffort = this.thread?.reasoningEffort
         || this.selectedEffort
@@ -4249,6 +4262,8 @@
       this.pluginID = "";
       this.paneID = "";
       this.views = new Map();
+      this.modelCatalog = [];
+      this.modelCatalogRequest = null;
       this.reconfiguring = false;
       this.runtimeViews = new Map();
       this.runtimeDrafts = new WeakMap();
@@ -4263,6 +4278,41 @@
       this.liveSelectionSequence = 0;
       this.selectionPopupCleanups = new Set();
       this.readerSelectionHandler = (event) => this.handleReaderSelection(event);
+    }
+
+    modelSettings() {
+      return {
+        read: () => String(this.getPreference("model") || ""),
+        catalog: () => this.modelCatalog,
+        save: value => {
+          const selected = this.modelCatalog.find(model => model.model === value);
+          this.setPreference("model", selected?.model || "");
+          for (const view of this.views.values()) {
+            view.elements?.modelSettings?.update(this.modelCatalog);
+            if (!view.threadID && !view.running && !view.creatingTask) {
+              view.applyModelSelection(selected?.model || "", view.selectedEffort);
+            }
+          }
+        },
+        refresh: () => this.refreshModelCatalog(),
+      };
+    }
+
+    async refreshModelCatalog() {
+      if (this.reconfiguring) throw new Error("Wait for reconnection to finish before refreshing models.");
+      if (this.modelCatalogRequest) return this.modelCatalogRequest;
+      this.modelCatalogRequest = (async () => {
+        const models = await this.client.listModels();
+        this.modelCatalog = models;
+        const saved = String(this.getPreference("model") || "");
+        if (saved && !models.some(model => model.model === saved || model.id === saved)) {
+          this.setPreference("model", "");
+        }
+        for (const view of this.views.values()) view.setModels(models);
+        return models;
+      })();
+      try { return await this.modelCatalogRequest; }
+      finally { this.modelCatalogRequest = null; }
     }
 
     trackTurn(threadID, { turnID = "", label, context, doc, titleRequest = null } = {}) {

@@ -32,9 +32,11 @@ test("settings save follows background activity and recovers after requests end 
       removeEventListener() {},
     },
     createElementNS(_ns, tag) {
-      const node = { tag, children: [], events: {}, value: "", disabled: false,
+      const node = { ownerDocument: doc, tag, children: [], events: {}, value: "", disabled: false,
         appendChild(child) { this.children.push(child); },
-        setAttribute() {}, addEventListener(name, fn) { this.events[name] = fn; },
+        setAttribute() {}, removeAttribute() {},
+        replaceChildren(...children) { this.children = children; },
+        addEventListener(name, fn) { this.events[name] = fn; },
       };
       nodes.push(node);
       return node;
@@ -48,6 +50,7 @@ test("settings save follows background activity and recovers after requests end 
   vm.runInNewContext(fs.readFileSync(require.resolve("../content/preferences.js"), "utf8"), context);
   let busy = true;
   const api = {
+    models: { read: () => "", catalog: () => [], save() {}, refresh: async () => [] },
     read: () => ({ proxyMode: "inherit" }), busy: () => busy,
     language: () => "auto", setLanguage() {},
     subscribe(fn) { listener = fn; return () => { unsubscribed = true; }; },
