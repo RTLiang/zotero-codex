@@ -97,6 +97,7 @@ var ZoteroCodexPlugin: ZoteroCodexPluginObject = {
       },
       reconnect: () => this.client!.reconnect(),
       settings: {
+        models: this.sidebar!.modelSettings(),
         read: () => modules.RuntimeSettings!.read(name => this.getPreference(name)),
         language: () => modules.Localization!.selected(),
         setLanguage: (value) => this.sidebar!.setLanguage(value),

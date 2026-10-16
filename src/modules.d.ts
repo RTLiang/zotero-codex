@@ -25,7 +25,19 @@ interface CodexClientModule {
   processPath(binaryPath: string): string;
 }
 
+interface ModelPreferencesApi {
+  read(): string;
+  catalog(): NormalizedModel[];
+  save(value: string): void;
+  refresh(): Promise<NormalizedModel[]>;
+}
+
+interface ModelPreferencesControls {
+  update(models: NormalizedModel[]): void;
+}
+
 interface PreferencesApi {
+  models: ModelPreferencesApi;
   read(): RuntimeSettingsValues;
   language(): string;
   setLanguage(value: string): void;
@@ -37,6 +49,7 @@ interface PreferencesApi {
 
 interface PreferencesModule {
   mount(root: Element, api: PreferencesApi): void;
+  mountModels(root: Element, api: ModelPreferencesApi): ModelPreferencesControls;
 }
 
 interface SidebarOptions {
@@ -57,6 +70,7 @@ interface SidebarViewState {
 }
 
 interface SidebarInstance {
+  modelSettings(): ModelPreferencesApi;
   runningTurns: { size: number };
   views: Map<unknown, SidebarViewState>;
   init(id: string): void;

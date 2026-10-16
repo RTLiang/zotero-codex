@@ -5,6 +5,7 @@ global.ZoteroCodexModules = {
   Protocol: require("../content/protocol.js"), CodexClient: {}, Markdown: {},
 };
 require("../content/localization.js");
+require("../content/preferences.js");
 require("../content/sidebar.js");
 const { SidebarView } = global.ZoteroCodexModules.Sidebar;
 
@@ -33,6 +34,7 @@ function mountedView() {
         append(...children) {
           for (const child of children) { child.parentNode = this; this.children.push(child); }
         },
+        appendChild(child) { this.append(child); return child; },
         replaceChildren(...children) { this.children = []; this.append(...children); },
         remove() { this.parentNode.children = this.parentNode.children.filter(child => child !== this); },
         contains(target) {
@@ -50,7 +52,10 @@ function mountedView() {
     createElementNS() { return this.createElement(); },
   };
   const view = Object.assign(Object.create(SidebarView.prototype), {
-    doc, body: doc.createElement(), manager: { getPreference() {} },
+    doc, body: doc.createElement(), manager: {
+      getPreference() {},
+      modelSettings: () => ({ read: () => "", catalog: () => [], save() {}, refresh: async () => [] }),
+    },
     setStatus() {}, applyWorkProcessPreference() {}, renderContextAttachment() {},
     updateComposerState() {}, lockInitialShellHeight() {},
   });
@@ -269,4 +274,82 @@ test("waiting feedback advances, preserves elapsed time across phases, and stops
   assert.equal(view.elements.waitingArea.hidden, true);
   view.showPendingResponse();
   assert.equal(elapsed().textContent, "0s");
+});
+
+test("settings select only catalog models and keep the choice inside the plugin", async () => {
+  const preferences = new Map();
+  const models = [
+    { model: "sample-default", displayName: "Sample default", isDefault: true, supportedReasoningEfforts: [] },
+    { model: "sample-alternative", displayName: "Sample alternative", supportedReasoningEfforts: [] },
+  ];
+  const manager = new global.ZoteroCodexModules.Sidebar.SidebarManager({
+    client: { listModels: async () => models },
+    getPreference: key => preferences.get(key),
+    setPreference: (key, value) => preferences.set(key, value),
+  });
+  const view = mountedView();
+  view.manager = manager;
+  manager.views.set(1, view);
+  await manager.refreshModelCatalog();
+  const root = view.doc.createElement();
+  global.ZoteroCodexModules.Preferences.mountModels(root, manager.modelSettings());
+  const select = root.children.find(node => node.className === "zcs-default-model-select");
+  assert.deepEqual(select.children.map(option => option.value), ["", "sample-default", "sample-alternative"]);
+  select.value = "sample-alternative";
+  select.listeners.get("change")();
+  assert.deepEqual([...preferences], [["model", "sample-alternative"]]);
+  assert.equal(view.selectedModel, "sample-alternative");
+  view.threadID = "sample-existing-chat";
+  select.value = "";
+  select.listeners.get("change")();
+  assert.equal(preferences.get("model"), "");
+  assert.equal(view.selectedModel, "sample-alternative", "changing the default leaves existing chats alone");
+  view.threadID = "";
+  select.listeners.get("change")();
+  assert.equal(view.selectedModel, "sample-default");
+  manager.modelSettings().save("sample-not-listed");
+  assert.equal(preferences.get("model"), "");
+});
+
+test("model refresh falls back when a saved model disappears and preserves the catalog on failure", async () => {
+  const models = [
+    { model: "sample-other", supportedReasoningEfforts: [] },
+    { model: "sample-default", isDefault: true, supportedReasoningEfforts: [] },
+  ];
+  const preferences = new Map([["model", "sample-removed"]]);
+  let requests = 0, resolve;
+  const client = { listModels: () => { requests++; return new Promise(done => { resolve = done; }); } };
+  const manager = new global.ZoteroCodexModules.Sidebar.SidebarManager({
+    client, getPreference: key => preferences.get(key), setPreference: (key, value) => preferences.set(key, value),
+  });
+  const view = mountedView();
+  view.manager = manager;
+  view.selectedModel = "sample-removed";
+  manager.views.set(1, view);
+  const root = view.doc.createElement();
+  global.ZoteroCodexModules.Preferences.mountModels(root, manager.modelSettings());
+  const select = root.children.find(node => node.className === "zcs-default-model-select");
+  const button = root.children.find(node => node.className === "zcs-settings-actions").children[0];
+  const status = root.children.find(node => node.className === "zcs-model-settings-status");
+  const pending = button.listeners.get("click")();
+  const second = manager.refreshModelCatalog();
+  assert.equal(button.disabled, true);
+  assert.equal(select.disabled, true);
+  assert.equal(requests, 1);
+  resolve(models);
+  await Promise.all([pending, second]);
+  assert.equal(view.selectedModel, "sample-default");
+  assert.equal(preferences.get("model"), "");
+  assert.equal(select.value, "");
+  assert.equal(button.disabled, false);
+  assert.match(status.textContent, /refreshed \(2\)/);
+  preferences.set("model", "sample-other");
+  client.listModels = async () => { throw new Error("Sample catalog unavailable"); };
+  const options = select.children;
+  await button.listeners.get("click")();
+  assert.equal(select.children, options);
+  assert.equal(manager.modelCatalog, models);
+  assert.equal(preferences.get("model"), "sample-other");
+  assert.match(status.textContent, /Sample catalog unavailable/);
+  assert.equal(button.disabled, false);
 });

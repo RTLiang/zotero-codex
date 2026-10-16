@@ -1,10 +1,12 @@
 # Connection and storage
 
-Users choose the CLI executable, proxy, Codex storage and working directory in Zotero's Codex preferences. Saving reconnects the sidebar while preserving unsent drafts.
+Users choose the plugin's default model, CLI executable, proxy, Codex storage and working directory in Zotero's Codex preferences. Model selection saves immediately; saving connection settings reconnects the sidebar while preserving unsent drafts.
 
 ## Sub-features
 
 - `settings-entry` opens native preferences from the sidebar link or Zotero Settings.
+- `default-model` chooses only a catalog model or Codex default, saves in this plugin's Zotero preferences and applies to new chats. It never writes a Codex model configuration.
+- `refresh-models` reloads the real CLI catalog, updates sidebar model controls and clears an unavailable saved model so selection falls back to the catalog's Codex default. Failed refreshes preserve the existing catalog and preference.
 - `proxy` enables manual fields only for manual mode and saves inherited/direct/manual configuration.
 - `storage` keeps Codex storage, working directories and paper bindings associated with the chosen configuration.
 - `reconnect-draft` preserves the current paper's unsent text/images across reconnection.
@@ -16,6 +18,7 @@ Users choose the CLI executable, proxy, Codex storage and working directory in Z
 
 - In the sidebar, click Settings (•••), then Proxy and storage on the settings page. In Zotero itself, open Settings → Codex.
 - Choose proxy mode, executable, storage and working directory, then Save and reconnect.
+- In sidebar Settings or Zotero Settings → Codex, choose Default model and click Refresh model list as needed. There is no manual model-ID input.
 - Use Zotero directories fills paths. Import existing login once is an explicit checkbox.
 - Reconnect and CLI auto-detection controls are also available in sidebar Settings.
 
@@ -28,6 +31,8 @@ Preconditions:
 
 - Enter through `click '.zcs-more-button'` then `click '[data-zcs-l10n-id="zotero-codex-runtime-settings"]'`, with `--run "$verify_run"`. `windows --run "$verify_run"` should list the native preferences URL. Alternatively use native app control to open Zotero Settings → Codex and capture that independent entry.
 - Inspect `snapshot runtime-before --run "$verify_run" --window preferences`. Set `select '#codex-setting-proxyMode' manual` with both flags and confirm `#codex-setting-proxyURL` and `#codex-setting-proxyBypass` become enabled. Switch to direct and inherit and confirm disabled fields. This proves field behavior only.
+- For models, inspect `.zcs-default-model-select` options, choose an actually listed model with `select`, then click `.zcs-refresh-models`. Use the active library/reader pane prefix in sidebar Settings; use `--window preferences` and `#codex-setting-model-select` in native preferences. Capture the selection and `.zcs-model-settings-status`, then independently read the plugin's `model` preference and reopen the view. Choose the empty option to restore Codex default and confirm the override is empty. Model selection saves without Save and reconnect. Verify both sidebar entries and native preferences, including explicit Chinese/English display.
+- Check that refresh disables its controls while pending and restores them on completion. Catalog removal and failure require an actual unavailable model/CLI failure or separate unit evidence; do not substitute a fabricated native catalog. Unit tests cover removed-model fallback and failure preservation.
 - Non-manual proxy fields are hidden as well as disabled, so their absence from a visible-control snapshot cannot prove the disabled property. Use a read-only observation of `#codex-manual-proxy.hidden` and both inputs' `disabled` properties for that assertion.
 - For a real save, leave isolated directories intact, enter an actual executable in `#codex-setting-codexPath`, and click `#codex-settings-save`. Capture `#codex-settings-status`, then run doctor to check connection/runtime identity. Read stored preference values independently. A status saying Connected alone does not prove a model reply or actual proxy routing.
 - Before opening preferences, enter `Draft survives reconnect` in `.zcs-input` and attach a disposable image through the normal picker. Save the native settings, close only the isolated preferences window with `close-window --run "$verify_run" --window preferences`, then return to the paper and capture both text and attachment. Switch papers during reconnection only when explicitly testing that branch; confirm restoration follows the latest selected paper.
@@ -43,3 +48,4 @@ Preconditions:
 - A custom executable wrapper can override proxy environment choices. Use the actual executable for routing tests and observe the child's environment/network separately.
 - One-time login import is different from ongoing credential synchronization. Never include auth contents in evidence.
 - Runtime reconnection, authentication, remote model response and proxy routing are different proof boundaries.
+- The default-model control uses the plugin's saved model preference, also used by the footer's model choice. Existing chats retain their selection when the default changes. A native catalog/selection proof does not establish that a remote model accepts a turn.

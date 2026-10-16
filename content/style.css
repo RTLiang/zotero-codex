@@ -455,6 +455,37 @@ border: 1px solid var(--zcs-border);
   padding: 13px;
 }
 
+.zcs-model-settings-card {
+  padding: 13px;
+  border: 1px solid var(--zcs-border);
+  border-radius: 12px;
+  background: var(--zcs-card, Canvas);
+}
+
+.zcs-default-model-select {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  margin: 7px 0;
+  padding: 4px 8px;
+  border: 1px solid var(--zcs-border);
+  border-radius: 6px;
+  background: Field;
+  color: FieldText;
+  font: inherit;
+}
+
+.zcs-model-settings-help,
+.zcs-model-settings-status {
+  display: block;
+  margin: 7px 0;
+  color: var(--zcs-muted);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .zcs-connection-top {
   display: flex;
   align-items: center;

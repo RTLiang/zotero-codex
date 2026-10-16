@@ -1,6 +1,67 @@
 (function (global) {
   "use strict";
   const modules = global.ZoteroCodexModules = global.ZoteroCodexModules || {};
+  function mountModels(root, api) {
+    const doc = root.ownerDocument;
+    doc.defaultView?.MozXULElement?.insertFTLIfNeeded?.("zotero-codex.ftl");
+    const prefix = root.id || "codex-model-settings";
+    function node(tag, className, id, text, parent = root) {
+      const element = doc.createElementNS("http://www.w3.org/1999/xhtml", tag);
+      element.className = className;
+      if (text) element.textContent = text;
+      if (id) modules.Localization.setAttributes(element, id);
+      parent.appendChild(element);
+      return element;
+    }
+    const label = node("label", "zcs-setting-label", "zotero-codex-default-model", "Default model");
+    const select = node("select", "zcs-default-model-select");
+    select.id = `${prefix}-select`;
+    label.htmlFor = select.id;
+    const help = node("small", "zcs-model-settings-help", "zotero-codex-default-model-help",
+      "Used for new chats in this plugin only. Unavailable models fall back to the Codex default.");
+    help.id = `${prefix}-help`;
+    select.setAttribute("aria-describedby", help.id);
+    const actions = node("div", "zcs-settings-actions");
+    const refresh = node("button", "zcs-secondary-button zcs-refresh-models", "zotero-codex-refresh-models", "Refresh model list", actions);
+    refresh.type = "button";
+    const status = node("output", "zcs-model-settings-status");
+    status.setAttribute("role", "status");
+    let loading = false;
+    function message(id, fallback, args = null) {
+      status.textContent = fallback;
+      modules.Localization.setAttributes(status, id, args);
+    }
+    function update(models) {
+      select.replaceChildren();
+      node("option", "", "zotero-codex-model-default", "Codex default", select).value = "";
+      for (const model of models) node("option", "", "", model.displayName || model.model, select).value = model.model;
+      const saved = api.read();
+      select.value = models.some(model => model.model === saved) ? saved : "";
+    }
+    select.addEventListener("change", () => {
+      api.save(select.value);
+      message("zotero-codex-model-saved", "Default model saved for this plugin.");
+    });
+    refresh.addEventListener("click", async () => {
+      if (loading) return;
+      loading = true;
+      refresh.disabled = select.disabled = true;
+      message("zotero-codex-models-loading", "Refreshing models…");
+      try {
+        const models = await api.refresh();
+        update(models);
+        message("zotero-codex-models-refreshed", `Model list refreshed (${models.length}).`, { count: models.length });
+      } catch (error) {
+        message("zotero-codex-models-refresh-failed", `Could not refresh models: ${error.message}`, { message: error.message });
+      } finally {
+        loading = false;
+        refresh.disabled = select.disabled = false;
+      }
+    });
+    update(api.catalog());
+    return { update };
+  }
+
   function mount(root, api) {
     const doc = root.ownerDocument;
     const body = root.querySelector("#codex-runtime-fields");
@@ -44,6 +105,9 @@
       ["zh-CN", "简体中文"],
     ]);
     language.value = api.language();
+    const models = section(t("Models", "模型"));
+    models.id = "codex-setting-model";
+    mountModels(models, api.models);
     const proxy = section(t("Connection", "连接"));
     field(proxy, "proxyMode", t("Proxy", "代理"), "", [
       ["inherit", t("Use Zotero environment", "使用 Zotero 环境")],
@@ -114,5 +178,5 @@
       } finally { update(); }
     });
   }
-  modules.Preferences = { mount };
+  modules.Preferences = { mount, mountModels };
 })(typeof globalThis !== "undefined" ? globalThis : this);
