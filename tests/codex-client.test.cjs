@@ -160,7 +160,12 @@ test("new and resumed chats receive the same trusted PDF citation contract", asy
   assert.deepEqual(calls.map((call) => call.method), ["thread/start", "thread/resume"]);
   const instructions = calls[0].params.developerInstructions;
   assert.equal(calls[1].params.developerInstructions, instructions);
-  for (const target of ["#page=4", "#section=4.3", "#figure=1", "#table=2", "#equation=10"]) {
+  assert.match(instructions, /Match citation labels to the language of your answer/u);
+  for (const label of ["Page 4", "Section 4.3", "Original passage", "Figure 1", "Table 2", "Equation (10)"]) {
+    assert.ok(instructions.includes(`[${label}](#`), `Missing language-neutral citation example: ${label}`);
+  }
+  assert.doesNotMatch(instructions, /\[(?:第[^\]]*|图[^\]]*|表[^\]]*|式[^\]]*|原文)\]\(#/u);
+  for (const target of ["#page=4", "#section=4.3", "#figure=1", "#table=2", "#equation=10", "#equation=1.1"]) {
     assert.ok(instructions.includes(target));
   }
   assert.match(instructions, /never use the paraphrased wording as a text-search target/u);

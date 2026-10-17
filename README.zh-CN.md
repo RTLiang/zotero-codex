@@ -2,6 +2,10 @@
 
 [English](README.md) · 简体中文
 
+在 Zotero 里读论文，让 Codex 陪你一起追问。
+
+![Codex for Zotero：阅读 IceCube 论文，讨论其科学突破与诺奖意义](docs/images/hero-zh.png)
+
 ## 安装
 
 1. 安装 [Codex CLI](https://learn.chatgpt.com/docs/codex/cli)，运行 `codex login` 登录。
@@ -16,6 +20,30 @@
 阅读文献时，可以直接在 Zotero 中与 Codex 讨论。需要时附上题录信息、摘要或 PDF 选中文本，也能在 Codex Desktop、命令行或本侧栏继续已有对话。
 
 默认沿用你现有的 Codex 登录状态，对话可在本机的 Codex 应用之间继续；也可以在 Zotero 设置中选择独立存储。chatgpt.com 上的 ChatGPT 对话与 Codex 对话分开保存，不会显示在这里。
+
+## 看看实际效果
+
+### 对照图表，理解证据
+
+直接追问图里的坐标、曲线与结果，点击回答中的引用，回到 PDF 的对应位置。
+
+![中文 Zotero 侧栏对照 IceCube 原文解释图 4](docs/images/figures-zh.png)
+
+### 从公式到理解
+
+在原文旁边讨论数学含义，公式以数学排版呈现。
+
+![中文 Zotero 侧栏解释论文中的中微子幂律能谱](docs/images/math-zh.png)
+
+IceCube 截图使用 [IceCube 合作组 2013 年的论文](https://arxiv.org/abs/1311.5238)，展示 Zotero 中真实生成的 Codex 对话。这篇论文是 Francis Halzen 获得 2026 年诺贝尔物理学奖所表彰研究中的重要工作之一；委员会评价的来源是 [Fermilab 转载的瑞典皇家科学院公告](https://news.fnal.gov/2026/10/nobel-prize-in-physics-awarded-to-francis-halzen-for-groundbreaking-neutrino-research/)。
+
+### 从公式追问数学突破
+
+对照原文中的定理与不等式，追问公式的含义，以及这项工作的数学意义。
+
+![中文 Zotero 侧栏讨论王虹与 Joshua Zahl 的 Kakeya 论文公式 (1.1)，以及王虹获菲尔茨奖的原因](docs/images/kakeya-zh.png)
+
+这组公式截图使用[王虹与 Joshua Zahl 的 Kakeya 论文（2025）](https://arxiv.org/abs/2502.17655)。获奖背景可参阅 [IMU 公布的 2026 年菲尔茨奖官方评价](https://www.mathunion.org/imu-awards/fields-medal/fields-medals-2026)。
 
 ## 功能
 

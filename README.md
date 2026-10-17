@@ -2,6 +2,10 @@
 
 English · [简体中文](README.zh-CN.md)
 
+Read papers with Codex beside you, right inside Zotero.
+
+![Codex for Zotero: reading IceCube research and discussing its Nobel significance](docs/images/hero-en.png)
+
 ## Installation
 
 1. Install [Codex CLI](https://learn.chatgpt.com/docs/codex/cli) and run `codex login`.
@@ -16,6 +20,30 @@ If Codex is not found automatically, enter its absolute executable path in the s
 Read a paper in Zotero and discuss it with Codex in the same window. Add citation details, the abstract, or selected PDF text when useful, then continue the conversation in Codex Desktop, the command line, or this sidebar.
 
 By default, conversations use your existing Codex sign-in and remain available across Codex apps on this computer. You can opt into dedicated storage in Zotero preferences. ChatGPT conversations on chatgpt.com are separate and do not appear here.
+
+## A closer look
+
+### Read the evidence
+
+Ask what a figure shows, discuss the results, and follow citations back into the PDF.
+
+![English Zotero sidebar explaining Figure 4 beside the original IceCube plot](docs/images/figures-en.png)
+
+### Work through the math
+
+Explore equations with formatted mathematics while keeping the original paper in view.
+
+![English Zotero sidebar explaining the paper's power-law neutrino spectrum](docs/images/math-en.png)
+
+The IceCube screenshots show real Codex conversations in Zotero with [IceCube Collaboration's 2013 paper](https://arxiv.org/abs/1311.5238), part of the research recognized by Francis Halzen's 2026 Nobel Prize in Physics. The committee's description comes from the [Royal Swedish Academy of Sciences announcement, reproduced by Fermilab](https://news.fnal.gov/2026/10/nobel-prize-in-physics-awarded-to-francis-halzen-for-groundbreaking-neutrino-research/).
+
+### From a formula to a breakthrough
+
+Ask what a theorem's estimate means and why the underlying work matters.
+
+![English Zotero sidebar discussing equation (1.1) in Wang and Zahl's Kakeya paper and Hong Wang's Fields Medal](docs/images/kakeya-en.png)
+
+This walkthrough uses [Hong Wang and Joshua Zahl's Kakeya paper (2025)](https://arxiv.org/abs/2502.17655). The award background is documented in the [IMU's official 2026 Fields Medal citations](https://www.mathunion.org/imu-awards/fields-medal/fields-medals-2026).
 
 ## Features
 

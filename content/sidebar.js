@@ -378,10 +378,12 @@
       else if (kind === "section" && /^\d{1,3}(?:\.\d{1,3})*$/u.test(number)) {
         reference = { sectionNumber: number };
       }
+      else if (kind === "equation" && /^\d{1,4}(?:\.\d{1,4})*[A-Za-z]?$/u.test(number)) {
+        reference = { query: `(${number})` };
+      }
       else if (/^\d{1,4}[A-Za-z]?$/u.test(number)) {
         if (kind === "figure") reference = { query: `Figure ${number}` };
         if (kind === "table") reference = { query: `Table ${number}` };
-        if (kind === "equation") reference = { query: `(${number})` };
       }
       return reference ? { kind: "pdf", reference } : { kind: "text" };
     }
@@ -2375,7 +2377,7 @@
             await reader.navigate({ position });
             return;
           }
-          const number = reference.query.match(/\d{1,4}[A-Za-z]?/u)?.[0];
+          const number = reference.query.match(/\d{1,4}(?:\.\d{1,4})*[A-Za-z]?/u)?.[0];
           const figure = Boolean(number && /^Figure /i.test(reference.query));
           const table = Boolean(number && /^Table /i.test(reference.query));
           const figureNumbers = figure && /[A-Za-z]$/u.test(number)

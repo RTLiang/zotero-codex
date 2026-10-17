@@ -337,6 +337,22 @@ test("figure links leave surrounding parentheses outside the clickable label", (
   assert.equal(segments.map(segment => segment.text).join(""), "示例面板（Fig. 3a），另见 (Fig. 3b) 和式(10)。");
 });
 
+test("section-numbered equation references preserve the full locator", () => {
+  const doc = documentStub(), root = doc.createElement("div"), opened = [];
+  appendMarkdown(doc, root,
+    "公式 (1.1)，式（2.3.4），Equation (1.1), Eq. 2.3a; [estimate](#equation=1.1)",
+    reference => opened.push(reference), { attachmentID: 42, pdfPath: "/fixtures/document.pdf" });
+  const links = [];
+  const visit = node => { if (node.tag === "a") links.push(node); for (const child of node.children || []) visit(child); };
+  visit(root);
+  assert.equal(links.length, 5);
+  assert.deepEqual(links.slice(0, 4).map(link => link.textContent), [
+    "公式 (1.1)", "式（2.3.4）", "Equation (1.1)", "Eq. 2.3a",
+  ]);
+  for (const link of links) link.listeners.click({ preventDefault() {} });
+  assert.deepEqual(opened.map(reference => reference.query), ["(1.1)", "(2.3.4)", "(1.1)", "(2.3a)", "(1.1)"]);
+});
+
 test("a Chinese paraphrase beside a section number jumps to that section", () => {
   const doc = documentStub();
   const root = doc.createElement("div");
@@ -590,6 +606,17 @@ test("repeated figure, table and equation jumps leave no active search highlight
     assert.equal(findStates.filter(state => state.active === false).length, 2);
     assert.equal(findStates.at(-1).query, "");
     assert.ok(findStates.every(state => state.popupOpen === false));
+  }
+});
+
+test("section-numbered equations search the complete number with either parenthesis style", async () => {
+  for (const foundQuery of ["(1.1)", "（1.1）"]) {
+    const { navigation, findStates } = await withReader({},
+      view => view.openPdfReference({ query: "(1.1)" }), { foundQuery });
+    assert.equal(navigation.length, 1);
+    assert.ok(findStates.some(state => state.query === foundQuery));
+    assert.ok(findStates.every(state => !["(1)", "（1）"].includes(state.query)));
+    assert.equal(findStates.at(-1).active, false);
   }
 });
 

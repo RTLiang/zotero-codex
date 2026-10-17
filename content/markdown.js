@@ -726,7 +726,7 @@
 
   function pdfReferenceSegments(value) {
     const source = String(value || "");
-    const references = /(?<![A-Za-z0-9])(?:Figure|Fig\.?|Table|Eq(?:uation)?\.?)\s*(?:[（(]\d{1,4}[A-Za-z]?[）)]|\d{1,4}[A-Za-z]?)|(?:图|表|公式|式)\s*(?:[（(]\d{1,4}[A-Za-z]?[）)]|\d{1,4}[A-Za-z]?)|第\s*\d{1,3}(?:\.\d{1,3})*\s*节|(?:Section|Sec\.?)\s*\d{1,3}(?:\.\d{1,3})*|第\s*\d{1,4}(?:\s*[-–至]\s*\d{1,4})?\s*页|(?:pages?|pp?\.)\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?|“[^”\n]{20,160}”|"[^"\n]{20,160}"/giu;
+    const references = /(?<![A-Za-z0-9])(?:Figure|Fig\.?|Table)\s*(?:[（(]\d{1,4}[A-Za-z]?[）)]|\d{1,4}[A-Za-z]?)|(?<![A-Za-z0-9])Eq(?:uation)?\.?\s*(?:[（(]\d{1,4}(?:\.\d{1,4})*[A-Za-z]?[）)]|\d{1,4}(?:\.\d{1,4})*[A-Za-z]?)|(?:图|表)\s*(?:[（(]\d{1,4}[A-Za-z]?[）)]|\d{1,4}[A-Za-z]?)|(?:公式|式)\s*(?:[（(]\d{1,4}(?:\.\d{1,4})*[A-Za-z]?[）)]|\d{1,4}(?:\.\d{1,4})*[A-Za-z]?)|第\s*\d{1,3}(?:\.\d{1,3})*\s*节|(?:Section|Sec\.?)\s*\d{1,3}(?:\.\d{1,3})*|第\s*\d{1,4}(?:\s*[-–至]\s*\d{1,4})?\s*页|(?:pages?|pp?\.)\s*\d{1,4}(?:\s*[-–]\s*\d{1,4})?|“[^”\n]{20,160}”|"[^"\n]{20,160}"/giu;
     const segments = [];
     let offset = 0;
     let nearbySection = null;
@@ -735,7 +735,7 @@
       const label = match[0];
       const page = label.match(/^(?:第\s*(\d+)(?:\s*[-–至]\s*\d+)?\s*页|(?:pages?|pp?\.)\s*(\d+)(?:\s*[-–]\s*\d+)?)$/iu);
       const section = label.match(/^(?:第\s*(\d{1,3}(?:\.\d{1,3})*)\s*节|(?:Section|Sec\.?)\s*(\d{1,3}(?:\.\d{1,3})*))$/iu);
-      const number = label.match(/\d{1,4}[A-Za-z]?/u)?.[0] || "";
+      const number = label.match(/\d{1,4}(?:\.\d{1,4})*[A-Za-z]?/u)?.[0] || "";
       let reference;
       if (page) reference = { pageNumber: Number(page[1] || page[2]) };
       else if (section) {
