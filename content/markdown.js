@@ -50,6 +50,7 @@
       || /^(?:mathcal|mathbb|mathrm|mathbf|mathit|mathsf|mathtt)(?:[A-Za-z])?$/u.test(command)
       || LATEX_SYMBOLS.has(command));
     if (!recognized) return false;
+    if (parseInlines(line).some(token => token.type === "math")) return false;
     return /(?:[=<>≤≥≈+*/]|\\(?:frac|dfrac|tfrac|binom|sqrt|sum|prod|coprod|int|iint|iiint|oint|xrightarrow|xleftarrow|xleftrightarrow|xRightarrow|xLeftarrow)\b|[_^](?:\{|[A-Za-z0-9]))/u.test(line);
   }
 

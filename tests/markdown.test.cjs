@@ -190,6 +190,71 @@ test("ships KaTeX with only its referenced WOFF2 font files", () => {
   for (const font of references) assert.ok(fs.existsSync(path.join(fontDirectory, font)), font);
 });
 
+test("renders inline and display LaTeX with real KaTeX while preserving surrounding prose", t => {
+  const previousKaTeX = global.katex;
+  global.katex = KaTeX;
+  t.after(() => {
+    if (previousKaTeX === undefined) delete global.katex;
+    else global.katex = previousKaTeX;
+  });
+  const doc = {
+    createElement: tag => ({
+      tag, className: "", children: [], append(...nodes) { this.children.push(...nodes); },
+    }),
+    createTextNode: text => ({ tag: "#text", text }),
+  };
+  const cases = [
+    { latex: String.raw`r_i=\frac{x_i^2}{\sqrt{m}}`, tags: ["mfrac", "msubsup", "msqrt"] },
+    { latex: String.raw`z=\sum_{j=1}^{n}\beta_j`, tags: ["mi", "mo"] },
+    { latex: String.raw`\begin{pmatrix}p&q\\r&s\end{pmatrix}`, tags: ["mtable", "mtr", "mtd"] },
+    { latex: String.raw`\begin{aligned}u&=v+w\\v&=u-w\end{aligned}`, tags: ["mtable", "mtr", "mtd"] },
+  ];
+  for (const { latex, tags } of cases) {
+    for (const [opening, closing, display] of [["$", "$", false], ["\\(", "\\)", false], ["$$", "$$", true], ["\\[", "\\]", true]]) {
+      const root = { children: [], append(...nodes) { this.children.push(...nodes); } };
+      const source = display ? `前文。\n\n${opening}\n${latex}\n${closing}\n\n后文。`
+        : `前文。${opening}${latex}${closing}后文。`;
+      Markdown.appendMarkdown(doc, root, source);
+      const nodes = [];
+      const walk = node => { nodes.push(node); for (const child of node.children || []) walk(child); };
+      walk(root);
+      const math = nodes.filter(node => node.className === (display ? "zcs-display-math" : "zcs-inline-math"));
+      assert.equal(math.length, 1, source);
+      assert.equal(math[0].tag, display ? "div" : "span");
+      assert.match(math[0].innerHTML, /class="katex"/u);
+      assert.equal(math[0].innerHTML.includes('class="katex-display"'), display);
+      assert.doesNotMatch(math[0].innerHTML, /katex-error/u);
+      for (const tag of tags) assert.match(math[0].innerHTML, new RegExp(`<${tag}(?:[ >])`, "u"));
+      assert.equal(nodes.filter(node => node.tag === "#text").map(node => node.text).join(""), "前文。后文。");
+    }
+  }
+});
+
+test("keeps delimited inline math inside paragraphs, lists, headings and quotations", () => {
+  const formulas = [String.raw`$r_i=\frac{x_i^2}{\sqrt{m}}$`, String.raw`\(r_i=\frac{x_i^2}{\sqrt{m}}\)`];
+  for (const formula of formulas) {
+    for (const [source, type] of [
+      [formula, "paragraph"],
+      [`Before ${formula} after.`, "paragraph"],
+      [`1. ${formula}`, "list"],
+      [`- ${formula}`, "list"],
+      [`## ${formula}`, "heading"],
+      [`> ${formula}`, "blockquote"],
+    ]) {
+      const blocks = Markdown.parseBlocks(source);
+      assert.equal(blocks[0].type, type, source);
+      const block = type === "blockquote" ? blocks[0].children[0] : blocks[0];
+      const text = type === "list" ? block.items[0].text : block.text;
+      const inline = Markdown.parseInlines(text);
+      assert.equal(inline.filter(token => token.type === "math").length, 1, source);
+      assert.equal(inline.find(token => token.type === "math").latex, String.raw`r_i=\frac{x_i^2}{\sqrt{m}}`);
+    }
+  }
+  const numbered = Markdown.parseBlocks(String.raw`1. $r_i=\frac{x_i^2}{\sqrt{m}}$，$\alpha_i+\beta_j$`);
+  assert.equal(numbered[0].type, "list");
+  assert.equal(Markdown.parseInlines(numbered[0].items[0].text).filter(token => token.type === "math").length, 2);
+});
+
 test("renders bare model-generated LaTeX and repairs common missing braces", () => {
   const blocks = Markdown.parseBlocks(String.raw`示例表达式如下：
 

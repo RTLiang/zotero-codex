@@ -177,6 +177,30 @@ test("new and resumed chats receive the same trusted PDF citation contract", asy
   assert.equal(context.zoteroCitationContract, undefined);
 });
 
+test("new, resumed and forked chats require Markdown LaTeX for mathematical output", async () => {
+  const client = new CodexAppServerClient();
+  client.connect = async () => {};
+  const calls = [];
+  client.request = async (method, params) => {
+    calls.push({ method, params });
+    return { thread: { id: "sample-math-chat" } };
+  };
+  await client.startThread({ cwd: "/fixtures" });
+  client.loadedThreads.clear();
+  await client.ensureThreadLoaded("sample-math-chat");
+  await client.forkThreadBeforeTurn({ threadID: "sample-math-chat", beforeTurnID: "sample-turn" });
+  assert.deepEqual(calls.map(call => call.method), ["thread/start", "thread/resume", "thread/fork"]);
+  const instructions = calls[0].params.developerInstructions;
+  for (const call of calls) assert.equal(call.params.developerInstructions, instructions);
+  assert.match(instructions, /every formula and mathematical variable.*must use Markdown LaTeX/u);
+  assert.match(instructions, /inline math in \$\.\.\.\$ and display math in \$\$\.\.\.\$\$/u);
+  assert.match(instructions, /display delimiters on their own lines/u);
+  assert.match(instructions, /Do not wrap formulas in inline code or fenced code blocks/u);
+  const Markdown = require("../content/markdown.js");
+  assert.equal(Markdown.parseInlines(instructions.match(/\$r_i[^$]+\$/u)[0])[0].type, "math");
+  assert.equal(Markdown.parseBlocks(instructions.match(/\$\$\n[^]*?\n\$\$/u)[0])[0].type, "math");
+});
+
 test("discovers skills for the current working directory and sends native skill inputs", async () => {
   const client = new CodexAppServerClient();
   client.connect = async () => {};
