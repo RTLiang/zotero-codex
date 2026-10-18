@@ -51,7 +51,7 @@ interface InteractiveUIModule {
   const toolDefinition: InteractiveUIModule["toolDefinition"] = {
     type: "function",
     name: TOOL_NAME,
-    description: "Display a self-contained interactive visualization or small tool inside the Zotero conversation.",
+    description: "Display a self-contained interactive visualization or small tool inside the Zotero conversation when it helps the user understand, compare, or explore the answer, even without an explicit request for a visualization.",
     inputSchema: {
       type: "object",
       properties: {
@@ -67,8 +67,9 @@ interface InteractiveUIModule {
   };
 
   const instructions = [
-    "When render_interactive_ui is available and the user requests an interactive explanation, visualization, calculator, or simulation, use it to display the UI directly in the conversation.",
-    "For self-contained teaching demos, call the tool directly without inspecting the environment, running commands, or writing files just to produce HTML. Give one short progress sentence, then generate a compact, useful first version. Keep any text after the tool brief. Consult paper context when the requested content depends on it.",
+    "Use render_interactive_ui proactively when an interactive view would materially help the user understand a mechanism, compare alternatives, explore relationships, or see how changing a parameter affects an outcome. The user does not need to ask for a visualization. Keep simple facts and explanations concise; use a widget only when it adds value to the answer and respect requests for text-only answers.",
+    "Integrate the UI naturally into the answer. Do not ask whether the user wants a visualization or announce tool use; provide a brief introduction only when it helps explain what to explore. Include the explanation needed to answer the question, without repeating what the UI already makes clear.",
+    "For self-contained teaching demos, call the tool directly without inspecting the environment, running commands, or writing files just to produce HTML. Generate a compact, useful first version. Consult paper context when the requested content depends on it.",
     "Use the available sidebar width and natural content height. Avoid fixed-width roots, viewport-height layouts, and nested scrolling unless the interaction requires it.",
     "Supply a concise title and self-contained HTML with inline CSS and JavaScript. Keep HTML below 128 KiB UTF-8. Use accessible controls, a responsive layout, and readable contrast.",
     "The UI runs in an isolated sandbox. Network requests, external scripts/styles/images, navigation, downloads, forms, popups, Zotero APIs, and local file access are unavailable. Use inline SVG or canvas for visuals.",

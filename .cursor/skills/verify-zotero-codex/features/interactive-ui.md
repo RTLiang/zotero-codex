@@ -12,13 +12,15 @@ New chats expose a dynamic tool that displays generated HTML inside a sandboxed 
 
 ## How to get to it (user POV)
 
-- Open Codex for a fixture paper in the library or PDF reader, start a new chat, and ask for an interactive explanation or calculator.
+- Open Codex for a fixture paper in the library or PDF reader, start a new chat, and ask an ordinary question about a mechanism, comparison, or parameter effect. The assistant should supply a useful interactive view without requiring a visualization request. Explicit requests for interactive explanations or calculators also work.
 - Operate its slider/buttons. Switch chats and return through the picker.
 - Ask an ordinary follow-up question in the composer; no selection or context button is needed.
 
 ## Driving it with control.mjs and native app control
 
 Preconditions: doctor passes, isolated fixture context is inspected, scratch storage has authenticated login through native Settings, and the CLI supports experimental dynamic tools (tested schema: 0.162.1).
+
+For proactive generation, start a new chat and send a synthetic question such as: "A container starts with 80 units and retains a fixed fraction each round. Explain how the retained fraction changes the amount after several rounds, and compare retaining 60% with retaining 90%." Do not mention a visualization, tool, slider, or HTML. Inspect the real tool history and rendered frame, operate its controls, and confirm that the view explains the requested relationship. The response should integrate the view without asking permission or narrating tool use. In separate new chats, check a simple factual question and a text-only explanation request; both should finish without a UI tool call. Record the model and observed behavior; prompt wording and unit checks alone do not prove model selection.
 
 1. Capture before generation. Send a synthetic request for a slider and numeric output with stable control IDs. Observe `.zcs-pending-response` above the composer, including with a long user message: its elapsed time advances, its long-wait hint appears after 20 seconds, and a started UI tool changes the label to generating an interactive view. Capture the first `.zcs-interactive-frame` and whether Stop is still present; the completed tool should render without waiting for turn completion. Stopping or switching chats must remove the pending timer.
 2. Resize the native sidebar and compare `.zcs-interactive-body`/frame widths with the card's available width. Use a widget whose content toggles between more than 900 px tall and short. Verify the frame grows to fit and shrinks afterward; ordinary content should scroll with the transcript, without a second vertical scrollbar. The frame height remains bounded at 6000 px for oversized documents.

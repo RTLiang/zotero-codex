@@ -45,6 +45,14 @@ Ask what a theorem's estimate means and why the underlying work matters.
 
 This walkthrough uses [Hong Wang and Joshua Zahl's Kakeya paper (2025)](https://arxiv.org/abs/2502.17655). The award background is documented in the [IMU's official 2026 Fields Medal citations](https://www.mathunion.org/imu-awards/fields-medal/fields-medals-2026).
 
+### Explore how things change
+
+Ask a question such as:
+
+> How does retaining 60% versus 90% each round affect what remains after several rounds?
+
+When an interactive view helps explain the answer, Codex can include a chart, slider, or calculator in the conversation. Adjust the controls, compare the results, and ask a follow-up using the current values. Simple questions stay concise, and you can ask for a text-only answer.
+
 ## Features
 
 - Works in Zotero's item details pane and PDF reader.
@@ -52,7 +60,8 @@ This walkthrough uses [Hong Wang and Joshua Zahl's Kakeya paper (2025)](https://
 - Switch chats or start a new one while a reply runs in the background. Returning to a running chat restores its progress and Stop button. Background replies show a desktop notification when ready; click it to return to the chat.
 - Start a conversation from a paper or return to one you already started.
 - Render Markdown headings, blockquotes, lists, task lists, tables, emphasis, strikethrough, links, code blocks, and common LaTeX expressions.
-- Ask for interactive explanations, sliders or calculators in a new chat. Generated views run locally in isolated frames; saved control state from the latest four views is automatically included with ordinary follow-up questions. This requires a Codex CLI with experimental dynamic-tool support. Existing chats without that tool need a new chat.
+- Interactive charts, sliders, and calculators can accompany ordinary explanations when they help you understand a mechanism, compare alternatives, or explore parameter changes. Generated views run locally in isolated frames, and follow-up questions include saved control state from the latest four views.
+- Follow page, section, figure, table, equation, and original-passage citations into the current PDF. Citation labels follow the answer's language. Links matching papers saved in Zotero open their local PDF or library item.
 - A new conversation is created when you send the first message. With item context enabled, its initial title uses the paper title; after the first reply, Codex uses the paper context, request, and answer to generate a short title identifying the paper's method or topic. Manually changed titles are preserved.
 - Each paper remembers its conversation. Switching papers returns you to the conversation you used for that paper.
 - Search recent conversations or filter the list to the current paper.
@@ -62,7 +71,8 @@ This walkthrough uses [Hong Wang and Joshua Zahl's Kakeya paper (2025)](https://
 - Click an attached or generated image to enlarge it. Press Esc, click the empty area, or use the close button to return to the chat.
 - Choose “Generate image” or type `$imagegen` to request images; generated images appear directly in the conversation.
 - In the Codex sidebar's Settings → Interface → Language, choose **Follow Zotero**, **English**, or **简体中文**. The plugin defaults to following Zotero; an explicit choice changes only this plugin's interface, PDF selection button, notifications, and errors.
-- Choose from the models available to your Codex account and their supported reasoning efforts. While a response is running, you can choose settings for the next reply.
+- Choose from the models available to your Codex account and their supported reasoning efforts. Select Standard or Fast when offered by the model. While a response is running, you can choose settings for the next reply.
+- Set a default model for new chats in this plugin and refresh the model list in sidebar Settings or Zotero Settings → Codex.
 - Copy messages. Editing your latest message updates the conversation; editing an earlier message starts a branch so later replies remain available.
 - Choose whether to include the current paper's title, authors, date, DOI, abstract, and local PDF path.
 - Automatically load the enabled, available official OpenAI Zotero skill to search papers, read indexed text, export BibTeX, insert citation keys, or import references. Normal chat continues when the skill is unavailable.
@@ -94,6 +104,7 @@ In Windows PowerShell, set `$env:CODEX_HOME = "C:\absolute\path\to\codex-storage
 
 - Zotero 10.0.x; the manifest limits compatibility to `10.0.*`.
 - Codex CLI installed and authenticated with `codex login`.
+- Interactive views require experimental dynamic-tool support in Codex CLI. Start a new chat if an existing chat was created without that tool.
 - The [official Codex CLI documentation](https://learn.chatgpt.com/docs/codex/cli) provides standalone, npm, and Homebrew installation options. The executable location depends on the installation method and prefix.
 - Standalone installer defaults: `~/.local/bin/codex` on macOS/Linux; `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin\codex.exe` on Windows. Custom `CODEX_INSTALL_DIR` locations are also detected.
 - macOS/Linux detection searches the inherited PATH, `bin/codex` under `NPM_CONFIG_PREFIX` or `npm_config_prefix`, and common Homebrew, Linuxbrew, and user installation directories. macOS includes `/opt/homebrew/bin/codex` and `/usr/local/bin/codex`. nvm/fnm installations are detected when their directories are in Zotero's inherited PATH; otherwise, enter the executable's absolute path in settings.
@@ -131,6 +142,8 @@ Pushes to `main` and pull requests run syntax checks, tests, XPI builds, and arc
 ## Privacy and permissions
 
 Current-paper context is included by default and appears as a removable attachment. You can turn it off through the “+” menu. Metadata, the local PDF path, and selected passages are sent as application context only when you send a message. Authentication and network requests are handled by Codex CLI. Only the explicitly selected one-time login import copies `auth.json` locally into the chosen storage directory (private file permissions, no overwrite); the plugin does not parse or log its contents.
+
+Generated interactive views cannot access the network, local files, or Zotero APIs. Their saved control values are included with follow-up messages as application context.
 
 This is a local integration. It does not embed the ChatGPT website. The `codex app-server` interface is experimental, so major CLI updates may require protocol adjustments.
 
