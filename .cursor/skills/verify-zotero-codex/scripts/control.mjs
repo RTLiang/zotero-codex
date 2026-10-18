@@ -327,6 +327,7 @@ async function seed(client) {
       for(const title of ['Verification paper A','Verification paper B']) {
         const item=new Zotero.Item('journalArticle');
         item.setField('title',title); item.setField('abstractNote','Disposable verification fixture.');
+        item.setField('url','https://example.invalid/verification/paper-'+(items.length ? 'b' : 'a'));
         item.setField('date','2026'); await item.saveTx();
         const attachment=pdf&&!items.length ? await Zotero.Attachments.importFromFile({file:pdf,parentItemID:item.id}) : null;
         items.push({id:item.id,key:item.key,title,attachmentID:attachment?.id});
