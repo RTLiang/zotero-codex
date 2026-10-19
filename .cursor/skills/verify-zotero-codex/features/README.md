@@ -10,9 +10,9 @@ Before any recipe, follow [contributor privacy](../SKILL.md#contributor-privacy)
 | --- | --- | --- |
 | [Commands and permissions](commands-permissions.md) | Bottom permission button, `/approvals`, slash menu, model button, `/model` | Permission button and `/approvals` are the generated smoke; other branches require separate proofs |
 | [Paper context](paper-context.md) | Library item pane, PDF reader sidebar, Item/+ menu, selection popup, current/other saved-paper links | Context controls and extraction differ from authenticated citation clicks; inspect the target heading/object |
-| [Conversations](conversations.md) | Header +, picker New chat, `/new`, picker rows/search/filter, message controls, paper-switch drafts, occupied-chat send | Draft switching, authenticated reply/history, external ownership and notifications need separate observations |
+| [Conversations](conversations.md) | Header +, picker New chat, `/new`, picker rows/search/filter, message controls, paper-switch drafts, occupied-chat send, native section title | Reading position, draft switching, authenticated reply/history, external ownership and notifications need separate observations |
 | [Images and message rendering](images-rendering.md) | + menu, paste, drag/drop, image click, message transcript | Source-mapped; requires image input or real reply evidence |
-| [Connection and storage](connection-storage.md) | Sidebar Settings, default model and model refresh, its Zotero settings link, Zotero Settings → Codex | Model controls save without reconnect; connection preferences and reconnect need their own proof |
+| [Connection and storage](connection-storage.md) | Sidebar Settings, default model/reasoning/Fast and model refresh, its Zotero settings link, Zotero Settings → Codex | Model defaults save without reconnect; existing/new chats, connection preferences and reconnect need their own proof |
 | [Interactive UI](interactive-ui.md) | New chat prompt, generated controls, normal follow-up, chat picker reopen | Requires real tool history, native interaction/state/context and isolation proof |
 | [Interface language](interface-language.md) | Sidebar Settings → Language, Zotero Settings → Codex → Language, library and PDF-reader sidebars | Source-mapped; verify immediate switching and saved preference in an isolated profile |
 
