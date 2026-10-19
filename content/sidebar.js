@@ -547,6 +547,8 @@
       this.body = props.body;
       this.item = props.item;
       this.tabType = props.tabType;
+      this.setSectionSummary = props.setSectionSummary;
+      this.sectionSummaryRevision = 0;
       this.context = null;
       this.taggedPdfIndex = null;
       this.threadID = "";
@@ -2947,6 +2949,15 @@
       if (label) setPlainText(this.elements.threadTitle, label);
       else setLocalizedText(this.elements.threadTitle, "zotero-codex-new-task", "New chat");
       this.elements.threadButton.title = label;
+      if (this.setSectionSummary) {
+        const revision = ++this.sectionSummaryRevision;
+        this.setSectionSummary(this.item ? label || this.elements.threadTitle.textContent : "");
+        if (this.item && !label) {
+          void formatValue(this.doc, "zotero-codex-new-task", null, "New chat").then(summary => {
+            if (!this.destroyed && revision === this.sectionSummaryRevision) this.setSectionSummary(summary);
+          });
+        }
+      }
       this.renderThreadPicker();
     }
 
@@ -4481,7 +4492,10 @@
     detachRuntimeViews() {
       this.reconfiguring = true;
       for (const [body, view] of this.views) {
-        this.runtimeViews.set(body, { doc: view.doc, body, item: view.item, tabType: view.tabType });
+        this.runtimeViews.set(body, {
+          doc: view.doc, body, item: view.item, tabType: view.tabType,
+          setSectionSummary: view.setSectionSummary,
+        });
         this.saveRuntimeDraft(view);
         view.destroy();
       }
@@ -4524,7 +4538,7 @@
       for (const view of this.views.values()) {
         view.elements.languageSelect.value = language;
         modules.Localization.refresh(view.body);
-        view.renderThreadPicker();
+        view.updateThreadHeader();
       }
     }
 
@@ -4630,14 +4644,8 @@
         onItemChange: ({ body, item, tabType, setEnabled, setSectionSummary }) => {
           setEnabled(Boolean(item));
           if (!item) setSectionSummary("");
-          else void formatValue(
-            body.ownerDocument,
-            this.getPreference("codexHome") ? "zotero-codex-section-summary-isolated" : "zotero-codex-section-summary",
-            null,
-            this.getPreference("codexHome") ? "Dedicated Zotero conversations" : "Shared local tasks",
-          ).then(setSectionSummary);
           if (this.reconfiguring) {
-            this.runtimeViews.set(body, { doc: body.ownerDocument, body, item, tabType });
+            this.runtimeViews.set(body, { doc: body.ownerDocument, body, item, tabType, setSectionSummary });
           } else this.views.get(body)?.setItem(item, tabType);
         },
         onRender: (props) => {

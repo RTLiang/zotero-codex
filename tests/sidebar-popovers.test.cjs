@@ -74,6 +74,47 @@ test("opening the chat picker loads history on demand", () => {
   assert.equal(loads, 1);
 });
 
+test("the native section summary follows the active chat and clears for a new chat", async () => {
+  const view = mountedView();
+  view.item = { id: 1 };
+  view.threads = [{ id: "first", name: "Sample discussion" }];
+  view.threadID = "first";
+  view.sectionSummaryRevision = 0;
+  view.setSectionSummary = value => { view.summary = value; };
+  view.renderThreadPicker = () => {};
+  view.updateThreadHeader();
+  assert.equal(view.summary, "Sample discussion");
+  view.threads[0].name = "Updated discussion";
+  view.updateThreadHeader();
+  assert.equal(view.summary, "Updated discussion");
+  view.threadID = "";
+  view.thread = null;
+  view.updateThreadHeader();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(view.summary, "New chat");
+  view.item = null;
+  view.updateThreadHeader();
+  assert.equal(view.summary, "");
+});
+
+test("a pending new-chat translation cannot overwrite a selected chat's native title", async () => {
+  const view = mountedView();
+  let translate;
+  view.doc.l10n = { formatValue: () => new Promise(resolve => { translate = resolve; }) };
+  view.item = { id: 1 };
+  view.threads = [];
+  view.sectionSummaryRevision = 0;
+  view.setSectionSummary = value => { view.summary = value; };
+  view.renderThreadPicker = () => {};
+  view.updateThreadHeader();
+  view.threadID = "second";
+  view.thread = { id: "second", name: "Another discussion" };
+  view.updateThreadHeader();
+  translate("New chat");
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(view.summary, "Another discussion");
+});
+
 test("permission controls do not dismiss their panel on Zotero's retargeted click", () => {
   const view = mountedView();
   view.togglePopover("permissions");
