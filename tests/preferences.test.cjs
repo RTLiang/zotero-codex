@@ -46,6 +46,7 @@ test("settings save follows background activity and recovers after requests end 
   const body = { childElementCount: 0, appendChild() {} };
   const root = { ownerDocument: doc, querySelector: () => body };
   const context = { Services: { locale: { appLocaleAsBCP47: "en-US" } } };
+  context.ZoteroCodexModules = { Protocol: require("../content/protocol.js") };
   vm.runInNewContext(fs.readFileSync(require.resolve("../content/localization.js"), "utf8"), context);
   vm.runInNewContext(fs.readFileSync(require.resolve("../content/preferences.js"), "utf8"), context);
   let busy = true;

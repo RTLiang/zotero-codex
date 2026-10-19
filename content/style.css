@@ -462,7 +462,8 @@ border: 1px solid var(--zcs-border);
   background: var(--zcs-card, Canvas);
 }
 
-.zcs-default-model-select {
+.zcs-default-model-select,
+.zcs-default-reasoning-select {
   display: block;
   width: 100%;
   min-width: 0;
@@ -474,6 +475,17 @@ border: 1px solid var(--zcs-border);
   background: Field;
   color: FieldText;
   font: inherit;
+}
+
+.zcs-default-fast-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.zcs-default-fast-checkbox {
+  margin: 0;
 }
 
 .zcs-model-settings-help,

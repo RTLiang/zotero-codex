@@ -394,3 +394,64 @@ test("model refresh falls back when a saved model disappears and preserves the c
   assert.match(status.textContent, /Sample catalog unavailable/);
   assert.equal(button.disabled, false);
 });
+
+test("default reasoning and Fast save immediately for new chats and follow model capabilities", async () => {
+  const preferences = new Map();
+  const models = [
+    { model: "sample-default", isDefault: true, supportedReasoningEfforts: ["low", "high"],
+      defaultReasoningEffort: "high", serviceTiers: [{ id: "priority" }] },
+    { model: "sample-basic", supportedReasoningEfforts: ["low"], defaultReasoningEffort: "low", serviceTiers: [] },
+  ];
+  const manager = new global.ZoteroCodexModules.Sidebar.SidebarManager({
+    client: { listModels: async () => models },
+    getPreference: key => preferences.get(key), setPreference: (key, value) => preferences.set(key, value),
+  });
+  const view = mountedView();
+  view.manager = manager;
+  manager.views.set(1, view);
+  await manager.refreshModelCatalog();
+  const root = view.doc.createElement();
+  const settings = global.ZoteroCodexModules.Preferences.mountModels(root, manager.modelSettings());
+  const select = root.children.find(node => node.className === "zcs-default-model-select");
+  const effort = root.children.find(node => node.className === "zcs-default-reasoning-select");
+  const fast = root.children.find(node => node.className === "zcs-default-fast-label").children[0];
+  assert.deepEqual(effort.children.map(option => option.value), ["", "low", "high"]);
+  assert.equal(effort.value, "");
+  assert.equal(fast.disabled, false);
+  effort.value = "low";
+  effort.listeners.get("change")();
+  fast.checked = true;
+  fast.listeners.get("change")();
+  assert.equal(preferences.get("reasoningEffort"), "low");
+  assert.equal(preferences.get("serviceTier"), "priority");
+  assert.equal(view.selectedEffort, "low");
+  assert.equal(view.selectedServiceTier, "priority");
+  view.threadID = "sample-existing-chat";
+  effort.value = "high";
+  effort.listeners.get("change")();
+  fast.checked = false;
+  fast.listeners.get("change")();
+  assert.equal(view.selectedEffort, "low");
+  assert.equal(view.selectedServiceTier, "priority");
+  assert.equal(preferences.get("serviceTier"), "default");
+  view.threadID = "";
+  select.value = "sample-basic";
+  select.listeners.get("change")();
+  assert.deepEqual(effort.children.map(option => option.value), ["", "low"]);
+  assert.equal(effort.value, "");
+  assert.equal(view.selectedEffort, "low");
+  assert.equal(view.selectedServiceTier, "default");
+  assert.equal(fast.checked, false);
+  assert.equal(fast.disabled, true);
+  manager.modelSettings().save("priority", "serviceTier");
+  manager.modelSettings().save("ultra", "reasoningEffort");
+  assert.equal(preferences.get("serviceTier"), "default");
+  assert.equal(preferences.get("reasoningEffort"), "high");
+  effort.value = "";
+  effort.listeners.get("change")();
+  assert.equal(preferences.get("reasoningEffort"), "");
+  assert.equal(view.selectedEffort, "low");
+  settings.update([]);
+  assert.equal(effort.disabled, true);
+  assert.equal(fast.disabled, true);
+});

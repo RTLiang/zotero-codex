@@ -21,31 +21,72 @@
       "Used for new chats in this plugin only. Unavailable models fall back to the Codex default.");
     help.id = `${prefix}-help`;
     select.setAttribute("aria-describedby", help.id);
+    const effortLabel = node("label", "zcs-setting-label", "zotero-codex-default-reasoning", "Default reasoning effort");
+    const effort = node("select", "zcs-default-reasoning-select");
+    effort.id = `${prefix}-reasoning`;
+    effortLabel.htmlFor = effort.id;
+    const fastLabel = node("label", "zcs-default-fast-label");
+    const fast = node("input", "zcs-default-fast-checkbox", "", "", fastLabel);
+    fast.type = "checkbox";
+    node("span", "", "zotero-codex-default-fast", "Enable Fast by default", fastLabel);
+    const fastHelp = node("small", "zcs-model-settings-help", "zotero-codex-default-fast-help",
+      "Available only for models that support Fast.");
+    fastHelp.id = `${prefix}-fast-help`;
+    fast.setAttribute("aria-describedby", fastHelp.id);
     const actions = node("div", "zcs-settings-actions");
     const refresh = node("button", "zcs-secondary-button zcs-refresh-models", "zotero-codex-refresh-models", "Refresh model list", actions);
     refresh.type = "button";
     const status = node("output", "zcs-model-settings-status");
     status.setAttribute("role", "status");
     let loading = false;
+    let catalog = [];
     function message(id, fallback, args = null) {
       status.textContent = fallback;
       modules.Localization.setAttributes(status, id, args);
     }
+    function updateOptions() {
+      const model = modules.Protocol.resolveModelSelection(catalog, select.value, "").modelInfo;
+      const efforts = model?.supportedReasoningEfforts || [];
+      effort.replaceChildren();
+      node("option", "", "zotero-codex-model-default", "Codex default", effort).value = "";
+      for (const value of efforts) {
+        node("option", "", `zotero-codex-effort-${value}`, value === "xhigh" ? "Extra high"
+          : value.charAt(0).toUpperCase() + value.slice(1), effort).value = value;
+      }
+      const saved = api.read("reasoningEffort");
+      effort.value = efforts.includes(saved) ? saved : "";
+      effort.disabled = loading || !efforts.length;
+      const supportsFast = model?.serviceTiers?.some(tier => tier.id === "priority");
+      fast.checked = Boolean(supportsFast && api.read("serviceTier") === "priority");
+      fast.disabled = loading || !supportsFast;
+    }
     function update(models) {
+      catalog = models;
       select.replaceChildren();
       node("option", "", "zotero-codex-model-default", "Codex default", select).value = "";
       for (const model of models) node("option", "", "", model.displayName || model.model, select).value = model.model;
       const saved = api.read();
       select.value = models.some(model => model.model === saved) ? saved : "";
+      updateOptions();
     }
     select.addEventListener("change", () => {
       api.save(select.value);
+      updateOptions();
       message("zotero-codex-model-saved", "Default model saved for this plugin.");
+    });
+    effort.addEventListener("change", () => {
+      api.save(effort.value, "reasoningEffort");
+      message("zotero-codex-model-settings-saved", "Default model settings saved for this plugin.");
+    });
+    fast.addEventListener("change", () => {
+      api.save(fast.checked ? "priority" : "default", "serviceTier");
+      message("zotero-codex-model-settings-saved", "Default model settings saved for this plugin.");
     });
     refresh.addEventListener("click", async () => {
       if (loading) return;
       loading = true;
       refresh.disabled = select.disabled = true;
+      updateOptions();
       message("zotero-codex-models-loading", "Refreshing models…");
       try {
         const models = await api.refresh();
@@ -56,6 +97,7 @@
       } finally {
         loading = false;
         refresh.disabled = select.disabled = false;
+        updateOptions();
       }
     });
     update(api.catalog());

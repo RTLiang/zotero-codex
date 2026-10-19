@@ -3083,7 +3083,7 @@
           this.applyModelSelection(thread.model, thread.reasoningEffort);
         }
         const scrollTop = preserveScroll ? this.elements.transcript.scrollTop : null;
-        this.renderTranscript(Protocol.flattenTurns(thread.turns));
+        this.renderTranscript(Protocol.flattenTurns(thread.turns), { preserveScroll });
         if (running) this.showPendingResponse();
         if (scrollTop !== null) this.elements.transcript.scrollTop = scrollTop;
         this.updateThreadHeader();
@@ -3150,10 +3150,10 @@
       this.manager.log(message, error);
     }
 
-    renderTranscript(entries) {
+    renderTranscript(entries, { preserveScroll = false } = {}) {
       this.disposeInteractiveViews();
       const transcript = this.elements.transcript;
-      this.clearResponseScrollSpace();
+      if (!preserveScroll) this.clearResponseScrollSpace();
       transcript.replaceChildren();
       const messages = Protocol.groupTranscriptEntries(entries);
       if (!messages.length) {
@@ -3170,7 +3170,7 @@
       messages.forEach((entry, index) => this.appendEntry(entry, {
         editMode: index === latestUserIndex ? "revert" : "fork",
       }));
-      transcript.scrollTop = transcript.scrollHeight;
+      if (!preserveScroll) transcript.scrollTop = transcript.scrollHeight;
     }
 
     clearResponseScrollSpace() {
@@ -4295,15 +4295,26 @@
 
     modelSettings() {
       return {
-        read: () => String(this.getPreference("model") || ""),
+        read: (key = "model") => String(this.getPreference(key) || ""),
         catalog: () => this.modelCatalog,
-        save: value => {
-          const selected = this.modelCatalog.find(model => model.model === value);
-          this.setPreference("model", selected?.model || "");
+        save: (value, key = "model") => {
+          const selected = Protocol.resolveModelSelection(this.modelCatalog,
+            key === "model" ? value : this.getPreference("model"), "").modelInfo;
+          if (key === "model") {
+            this.setPreference(key, this.modelCatalog.some(model => model.model === value) ? value : "");
+          } else if (key === "reasoningEffort") {
+            if (value && !selected?.supportedReasoningEfforts?.includes(value)) return;
+            this.setPreference(key, value);
+          } else if (key === "serviceTier") {
+            if (value !== "default" && (value !== "priority"
+              || !selected?.serviceTiers?.some(tier => tier.id === "priority"))) return;
+            this.setPreference(key, value);
+          } else return;
           for (const view of this.views.values()) {
             view.elements?.modelSettings?.update(this.modelCatalog);
             if (!view.threadID && !view.running && !view.creatingTask) {
-              view.applyModelSelection(selected?.model || "", view.selectedEffort);
+              view.applyModelSelection(String(this.getPreference("model") || ""),
+                String(this.getPreference("reasoningEffort") || ""));
             }
           }
         },
