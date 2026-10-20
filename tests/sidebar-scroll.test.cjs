@@ -57,6 +57,29 @@ test("opening another chat shows its latest messages without the previous reply'
   assert.equal(transcript.scrollTop, 1566);
 });
 
+for (const edge of ["top", "bottom"]) test(`growing the chat from its ${edge} bar does not expose the reply-positioning spacer`, () => {
+  const { view, transcript } = completedReply({ replyHeight: 400 });
+  let shellHeight = 800;
+  const handle = { dataset: { resizeEdge: edge }, setPointerCapture() {}, setAttribute() {} };
+  view.elements.root = {
+    parentElement: null, dataset: {}, classList: { add() {} },
+    getBoundingClientRect: () => ({ height: shellHeight }),
+    style: { setProperty(_key, value) {
+      const next = Number.parseFloat(value);
+      transcript.clientHeight += next - shellHeight;
+      shellHeight = next;
+    } },
+  };
+  view.elements.resizeHandles = [handle];
+  view.resizeCommandMenu = () => {};
+  view.startShellResize({ button: 0, pointerId: 1, clientY: 400, currentTarget: handle, preventDefault() {} });
+  view.moveShellResize({ pointerId: 1, clientY: edge === "top" ? 200 : 600, preventDefault() {} });
+  const contentBottom = 2000 + 50 + 400;
+  const visibleBlank = transcript.scrollTop + transcript.clientHeight - contentBottom;
+  assert.equal(shellHeight, 1000);
+  assert.ok(visibleBlank <= 16, `resizing exposed ${visibleBlank}px of blank space below the reply`);
+});
+
 test("completion keeps the current chat's Fast choice without changing the default", async () => {
   const { view } = completedReply({ replyHeight: 100 });
   const defaults = new Map([["serviceTier", "default"]]);

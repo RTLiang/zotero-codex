@@ -1381,6 +1381,7 @@
     applyShellHeight(value) {
       const height = normalizeShellHeight(value);
       if (!height || !this.elements?.root) return 0;
+      this.clearResponseScrollSpace();
       this.elements.root.style.setProperty("--zcs-shell-height", `${height}px`);
       this.elements.root.dataset.shellHeightLocked = "true";
       for (const handle of this.elements.resizeHandles) handle.setAttribute("aria-valuenow", String(height));
