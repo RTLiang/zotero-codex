@@ -56,3 +56,20 @@ test("opening another chat shows its latest messages without the previous reply'
   await view.selectThread("another-fixture-chat");
   assert.equal(transcript.scrollTop, 1566);
 });
+
+test("completion keeps the current chat's Fast choice without changing the default", async () => {
+  const { view } = completedReply({ replyHeight: 100 });
+  const defaults = new Map([["serviceTier", "default"]]);
+  view.manager.getPreference = key => defaults.get(key);
+  view.manager.setPreference = (key, value) => defaults.set(key, value);
+  view.models = [{ model: "sample-model", isDefault: true,
+    supportedReasoningEfforts: ["low"], serviceTiers: [{ id: "priority" }] }];
+  view.selectedServiceTier = "priority";
+  view.applyModelSelection = SidebarView.prototype.applyModelSelection;
+  view.renderModelControls = view.updateComposerState = () => {};
+  view._handleClientEvent({ type: "notification", method: "turn/completed",
+    params: { threadId: "fixture-chat", turn: { id: "fixture-turn", status: "completed" } } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(view.selectedServiceTier, "priority");
+  assert.equal(defaults.get("serviceTier"), "default");
+});

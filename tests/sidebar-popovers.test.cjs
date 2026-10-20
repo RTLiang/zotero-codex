@@ -202,14 +202,18 @@ test("destroying a sidebar removes its outside-pointer listener", () => {
   assert.equal(view.elements.permissionsCard.hidden, false);
 });
 
-test("clicking model, reasoning and speed options saves supported choices", () => {
+test("footer model, reasoning and speed choices leave defaults intact and new chats use defaults", () => {
   const view = mountedView();
-  const preferences = new Map();
+  const defaults = { model: "first", reasoningEffort: "high", serviceTier: "default" };
+  const preferences = new Map(Object.entries(defaults));
+  view.manager.getPreference = key => preferences.get(key);
   view.manager.setPreference = (key, value) => preferences.set(key, value);
   view.models = [
     { model: "first", displayName: "First", supportedReasoningEfforts: ["low", "high"], defaultReasoningEffort: "high", serviceTiers: [] },
     { model: "second", displayName: "Second", supportedReasoningEfforts: ["low", "high"], defaultReasoningEffort: "high", serviceTiers: [{ id: "priority", name: "Fast", description: "Faster responses" }] },
   ];
+  view.threadID = "sample-current-chat";
+  view.thread = { model: "first", reasoningEffort: "high" };
   view.applyModelSelection("first", "high");
   view.togglePopover("model");
   const modelOption = view.elements.modelOptions.children[1];
@@ -217,24 +221,41 @@ test("clicking model, reasoning and speed options saves supported choices", () =
   modelOption.click();
   assert.equal(view.elements.modelChoiceText.textContent, "Second");
   assert.equal(view.elements.modelTriggerName.textContent, "Second");
-  assert.equal(preferences.get("model"), "second");
+  assert.equal(preferences.get("model"), "first");
   const effortOption = view.elements.effortOptions.children[0];
   view.doc.dispatch("pointerdown", effortOption);
   effortOption.click();
   assert.equal(view.elements.effortChoiceText.textContent, "Low");
   assert.equal(view.elements.modelTriggerEffort.textContent, "Low");
-  assert.equal(preferences.get("reasoningEffort"), "low");
+  assert.equal(preferences.get("reasoningEffort"), "high");
   const fastOption = view.elements.speedOptions.children[1];
   assert.equal(fastOption.dataset.value, "priority");
   fastOption.click();
-  assert.equal(preferences.get("serviceTier"), "priority");
+  assert.equal(preferences.get("serviceTier"), "default");
   assert.equal(view.selectedServiceTier, "priority");
   assert.equal(view.elements.modelTriggerSpeed.hidden, false);
+  view.setModels([...view.models]);
+  assert.equal(view.selectedModel, "second");
+  assert.equal(view.selectedEffort, "low");
+  assert.equal(view.selectedServiceTier, "priority", "catalog refresh keeps the current chat's speed");
   view.elements.modelOptions.children[0].click();
   assert.equal(view.selectedServiceTier, "default");
   assert.equal(view.elements.speedOptions.children.length, 1);
   assert.equal(view.elements.modelTriggerSpeed.hidden, true);
   assert.equal(view.elements.modelPopover.hidden, false);
+  view.elements.modelOptions.children[1].click();
+  view.elements.speedOptions.children[1].click();
+  assert.equal(view.selectedModel, "second");
+  assert.equal(view.selectedServiceTier, "priority");
+  view.manager.clearPaperThread = () => {};
+  for (const method of ["hidePendingResponse", "clearResponseScrollSpace", "cancelEdit", "renderEmpty", "updateThreadHeader"]) {
+    view[method] = () => {};
+  }
+  view.newTask();
+  assert.equal(view.selectedModel, defaults.model);
+  assert.equal(view.selectedEffort, defaults.reasoningEffort);
+  assert.equal(view.selectedServiceTier, defaults.serviceTier);
+  for (const [key, value] of Object.entries(defaults)) assert.equal(preferences.get(key), value);
 });
 
 test("permission fields use the model choice control and persist mouse selections without dismissing the panel", () => {

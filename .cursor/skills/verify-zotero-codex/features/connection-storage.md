@@ -52,5 +52,5 @@ Preconditions:
 - A custom executable wrapper can override proxy environment choices. Use the actual executable for routing tests and observe the child's environment/network separately.
 - One-time login import is different from ongoing credential synchronization. Never include auth contents in evidence.
 - Runtime reconnection, authentication, remote model response and proxy routing are different proof boundaries.
-- The default-model control uses the plugin's saved model preference, also used by the footer's model choice. Existing chats retain their selection when the default changes. A native catalog/selection proof does not establish that a remote model accepts a turn.
+- Settings-page defaults initialize new chats. Footer model, reasoning and Fast choices affect the current chat without writing those defaults. Existing chats retain their selection when the default changes. A native catalog/selection proof does not establish that a remote model accepts a turn.
 - Footer `textContent` includes hidden labels, including Fast when its badge is hidden. Check the badge's `hidden` property, the popover's selected option and visible pixels before asserting the active speed.

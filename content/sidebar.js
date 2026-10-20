@@ -1826,13 +1826,15 @@
       const requestedModel = this.selectedModel
         || this.thread?.model
         || String(this.manager.getPreference("model") || "");
-      const requestedEffort = this.thread?.reasoningEffort
-        || this.selectedEffort
+      const requestedEffort = this.selectedEffort
+        || this.thread?.reasoningEffort
         || String(this.manager.getPreference("reasoningEffort") || "");
-      this.applyModelSelection(requestedModel, requestedEffort);
+      this.applyModelSelection(requestedModel, requestedEffort, this.selectedModel
+        ? this.selectedServiceTier : String(this.manager.getPreference("serviceTier") || "default"));
     }
 
-    applyModelSelection(requestedModel, requestedEffort, { persist = false } = {}) {
+    applyModelSelection(requestedModel, requestedEffort,
+      requestedTier = String(this.manager.getPreference("serviceTier") || "default")) {
       const selection = Protocol.resolveModelSelection(
         this.models,
         requestedModel,
@@ -1840,14 +1842,9 @@
       );
       this.selectedModel = selection.model;
       this.selectedEffort = selection.effort;
-      const requestedTier = String(this.manager.getPreference("serviceTier") || "default");
       this.selectedServiceTier = requestedTier === "priority"
         && selection.modelInfo?.serviceTiers?.some((tier) => tier.id === "priority")
         ? "priority" : "default";
-      if (persist) {
-        this.manager.setPreference("model", this.selectedModel);
-        this.manager.setPreference("reasoningEffort", this.selectedEffort);
-      }
       this.renderModelControls();
       this.updateComposerState();
     }
@@ -1898,7 +1895,7 @@
 
     selectModel(model) {
       if (this.creatingTask) return;
-      this.applyModelSelection(model, this.selectedEffort, { persist: true });
+      this.applyModelSelection(model, this.selectedEffort, this.selectedServiceTier);
       if (this.running) this.nextTurnSelectionPending = true;
       this.closeChoiceOptions();
       this.elements.modelChoice.focus();
@@ -1910,7 +1907,6 @@
       if (selection.effort !== effort) return;
       this.selectedEffort = effort;
       if (this.running) this.nextTurnSelectionPending = true;
-      this.manager.setPreference("reasoningEffort", effort);
       this.renderModelControls();
       this.updateComposerState();
       this.closeChoiceOptions();
@@ -1924,7 +1920,6 @@
         || !selected?.serviceTiers?.some((tier) => tier.id === serviceTier))) return;
       this.selectedServiceTier = serviceTier;
       if (this.running) this.nextTurnSelectionPending = true;
-      this.manager.setPreference("serviceTier", serviceTier);
       this.renderModelControls();
       this.closeChoiceOptions();
       this.elements.speedChoice.focus();
@@ -3110,7 +3105,8 @@
         if (bind) this.manager.setPaperThread(this.context, threadID);
         if (!preserveNextTurnSelection) {
           this.nextTurnSelectionPending = false;
-          this.applyModelSelection(thread.model, thread.reasoningEffort);
+          this.applyModelSelection(thread.model, thread.reasoningEffort,
+            switching ? undefined : this.selectedServiceTier);
         }
         const scrollTop = preserveScroll ? this.elements.transcript.scrollTop : null;
         this.renderTranscript(Protocol.flattenTurns(thread.turns), { preserveScroll });
