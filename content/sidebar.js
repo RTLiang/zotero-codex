@@ -337,35 +337,16 @@
     return matchWithoutPdf;
   }
 
-  function pdfLinkLocation(value, label) {
-    const page = value.match(/(?:[?#&]page=)([1-9]\d{0,3})(?!\d)/iu);
-    const section = String(label).match(/(?:第\s*)?(\d{1,3}(?:\.\d{1,3})*)\s*节|\b(?:section|sec\.?)\s*(\d{1,3}(?:\.\d{1,3})*)|§\s*(\d{1,3}(?:\.\d{1,3})*)/iu);
-    const fragmentSection = value.match(/#(?:s|sec(?:tion)?[-_=]?)(\d{1,3}(?:[._]\d{1,3})*)\b/iu);
-    const sectionNumber = fragmentSection?.[1]?.replace(/_/gu, ".")
-      || section?.[1] || section?.[2] || section?.[3];
-    const sectionTitle = /(?:方法部分|方法章节|\bmethod(?:s|ology)?\b|\bapproach\b)/iu.test(label)
-      ? "method" : null;
-    if (!page && !sectionNumber && !sectionTitle) return null;
-    return {
-      ...(page ? { pageNumber: Number(page[1]) } : {}),
-      ...(sectionNumber ? { sectionNumber } : sectionTitle ? { sectionTitle } : {}),
-    };
-  }
-
-  function resolvePaperLink(target, context, label = "") {
-    const value = String(target || "").trim();
-    if (!context?.attachmentID || !context.pdfPath) {
-      return /^#(?:page|section|figure|table|equation)=/iu.test(value) ? { kind: "text" } : null;
-    }
+  function explicitPdfLocation(value) {
     const passage = value.match(/^#page=([1-9]\d{0,3})&quote=(.+)$/iu);
     if (passage) {
       try {
         const quote = decodeURIComponent(passage[2]).replace(/\s+/gu, " ").trim();
         return quote && quote.length <= 2000
-          ? { kind: "pdf", reference: { pageNumber: Number(passage[1]), quote } }
-          : { kind: "text" };
+          ? { pageNumber: Number(passage[1]), quote }
+          : null;
       }
-      catch (_) { return { kind: "text" }; }
+      catch (_) { return null; }
     }
     const locator = value.match(/^#(page|section|figure|table|equation)=([\d.A-Za-z]+)$/iu);
     if (locator) {
@@ -385,8 +366,35 @@
         if (kind === "figure") reference = { query: `Figure ${number}` };
         if (kind === "table") reference = { query: `Table ${number}` };
       }
-      return reference ? { kind: "pdf", reference } : { kind: "text" };
+      return reference;
     }
+    return null;
+  }
+
+  function pdfLinkLocation(value, label) {
+    const explicit = explicitPdfLocation(value.includes("#") ? value.slice(value.indexOf("#")) : "");
+    if (explicit && (!explicit.pageNumber || explicit.quote)) return explicit;
+    const page = value.match(/(?:[?#&]page=)([1-9]\d{0,3})(?!\d)/iu);
+    const section = String(label).match(/(?:第\s*)?(\d{1,3}(?:\.\d{1,3})*)\s*节|\b(?:section|sec\.?)\s*(\d{1,3}(?:\.\d{1,3})*)|§\s*(\d{1,3}(?:\.\d{1,3})*)/iu);
+    const fragmentSection = value.match(/#(?:s|sec(?:tion)?[-_=]?)(\d{1,3}(?:[._]\d{1,3})*)\b/iu);
+    const sectionNumber = fragmentSection?.[1]?.replace(/_/gu, ".")
+      || section?.[1] || section?.[2] || section?.[3];
+    const sectionTitle = /(?:方法部分|方法章节|\bmethod(?:s|ology)?\b|\bapproach\b)/iu.test(label)
+      ? "method" : null;
+    if (!page && !sectionNumber && !sectionTitle) return null;
+    return {
+      ...(page ? { pageNumber: Number(page[1]) } : {}),
+      ...(sectionNumber ? { sectionNumber } : sectionTitle ? { sectionTitle } : {}),
+    };
+  }
+
+  function resolvePaperLink(target, context, label = "") {
+    const value = String(target || "").trim();
+    if (!context?.attachmentID || !context.pdfPath) {
+      return /^#(?:page|section|figure|table|equation)=/iu.test(value) ? { kind: "text" } : null;
+    }
+    const explicit = explicitPdfLocation(value);
+    if (explicit) return { kind: "pdf", reference: explicit };
     if (value.startsWith("#")) return { kind: "text" };
     const sameFile = value === context.pdfPath || value === `file://${context.pdfPath}`;
     const identity = paperLinkIdentity(value);
@@ -1062,21 +1070,26 @@
       const statusText = create(doc, "span", "zcs-status-text");
       status.append(statusText);
 
-      const resizeHandle = create(doc, "div", "zcs-resize-handle");
-      resizeHandle.tabIndex = 0;
-      resizeHandle.setAttribute("role", "separator");
-      resizeHandle.setAttribute("aria-orientation", "horizontal");
-      resizeHandle.setAttribute("aria-valuemin", String(MIN_SHELL_HEIGHT));
-      resizeHandle.setAttribute("aria-valuemax", String(MAX_SHELL_HEIGHT));
-      resizeHandle.setAttribute("aria-label", "Resize chat height");
-      resizeHandle.title = "Drag to resize chat height";
-      setL10n(resizeHandle, "zotero-codex-resize-height");
+      const resizeHandles = ["top", "bottom"].map(edge => {
+        const handle = create(doc, "div", `zcs-resize-handle zcs-resize-handle-${edge}`);
+        handle.dataset.resizeEdge = edge;
+        handle.tabIndex = 0;
+        handle.setAttribute("role", "separator");
+        handle.setAttribute("aria-orientation", "horizontal");
+        handle.setAttribute("aria-valuemin", String(MIN_SHELL_HEIGHT));
+        handle.setAttribute("aria-valuemax", String(MAX_SHELL_HEIGHT));
+        handle.setAttribute("aria-label", "Resize chat height");
+        handle.title = "Drag to resize chat height";
+        setL10n(handle, "zotero-codex-resize-height");
+        return handle;
+      });
 
       const waitingArea = create(doc, "div", "zcs-waiting-area");
       waitingArea.hidden = true;
       chatView.append(transcript, requestArea, waitingArea, composer, quickControls);
       workspace.append(chatView, settingsView);
       root.append(
+        resizeHandles[0],
         topbar,
         workspace,
         threadPopover,
@@ -1085,7 +1098,7 @@
         modelPopover,
         permissionsCard,
         status,
-        resizeHandle,
+        resizeHandles[1],
       );
       this.body.append(root);
       this.elements = {
@@ -1116,7 +1129,7 @@
         refreshButton,
         status,
         statusText,
-        resizeHandle,
+        resizeHandles,
         contextPopover,
         contextAddButton,
         contextModeButton,
@@ -1323,11 +1336,13 @@
       showWorkProcessToggle.addEventListener("change", this.handlers.toggleWorkProcess);
       languageSelect.addEventListener("change", this.handlers.changeLanguage);
       networkAccess.addEventListener("change", this.handlers.permissionChange);
-      resizeHandle.addEventListener("pointerdown", this.handlers.resizeStart);
-      resizeHandle.addEventListener("pointermove", this.handlers.resizeMove);
-      resizeHandle.addEventListener("pointerup", this.handlers.resizeEnd);
-      resizeHandle.addEventListener("pointercancel", this.handlers.resizeEnd);
-      resizeHandle.addEventListener("keydown", this.handlers.resizeKeydown);
+      for (const handle of resizeHandles) {
+        handle.addEventListener("pointerdown", this.handlers.resizeStart);
+        handle.addEventListener("pointermove", this.handlers.resizeMove);
+        handle.addEventListener("pointerup", this.handlers.resizeEnd);
+        handle.addEventListener("pointercancel", this.handlers.resizeEnd);
+        handle.addEventListener("keydown", this.handlers.resizeKeydown);
+      }
       input.addEventListener("input", this.handlers.input);
       input.addEventListener("keydown", this.handlers.keydown);
       input.addEventListener("paste", this.handlers.paste);
@@ -1368,7 +1383,7 @@
       if (!height || !this.elements?.root) return 0;
       this.elements.root.style.setProperty("--zcs-shell-height", `${height}px`);
       this.elements.root.dataset.shellHeightLocked = "true";
-      this.elements.resizeHandle.setAttribute("aria-valuenow", String(height));
+      for (const handle of this.elements.resizeHandles) handle.setAttribute("aria-valuenow", String(height));
       this.resizeCommandMenu();
       return height;
     }
@@ -1387,22 +1402,36 @@
       if (event.button !== 0) return;
       event.preventDefault();
       const height = Math.round(this.elements.root.getBoundingClientRect().height);
-      this.shellResize = { pointerID: event.pointerId, startY: event.clientY, height };
+      const handle = event.currentTarget;
+      const direction = handle.dataset.resizeEdge === "top" ? -1 : 1;
+      let scrollContainer = null;
+      if (direction === -1) {
+        for (let parent = this.elements.root.parentElement; parent; parent = parent.parentElement) {
+          if (/auto|scroll/u.test(this.doc.defaultView.getComputedStyle(parent).overflowY)) {
+            scrollContainer = parent;
+            break;
+          }
+        }
+      }
+      this.shellResize = { pointerID: event.pointerId, startY: event.clientY, height,
+        handle, direction, scrollContainer, scrollTop: scrollContainer?.scrollTop || 0 };
       this.elements.root.classList.add("zcs-resizing");
-      this.elements.resizeHandle.setPointerCapture?.(event.pointerId);
+      handle.setPointerCapture?.(event.pointerId);
     }
 
     moveShellResize(event) {
       if (!this.shellResize || event.pointerId !== this.shellResize.pointerID) return;
       event.preventDefault();
-      this.applyShellHeight(this.shellResize.height + event.clientY - this.shellResize.startY);
+      const resize = this.shellResize;
+      const height = this.applyShellHeight(resize.height + resize.direction * (event.clientY - resize.startY));
+      if (resize.scrollContainer) resize.scrollContainer.scrollTop = resize.scrollTop + height - resize.height;
     }
 
     finishShellResize(event) {
       if (!this.shellResize || event.pointerId !== this.shellResize.pointerID) return;
       event.preventDefault();
       const height = Math.round(this.elements.root.getBoundingClientRect().height);
-      this.elements.resizeHandle.releasePointerCapture?.(event.pointerId);
+      this.shellResize.handle.releasePointerCapture?.(event.pointerId);
       this.elements.root.classList.remove("zcs-resizing");
       this.shellResize = null;
       this.persistShellHeight(height);
@@ -1412,7 +1441,8 @@
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
       event.preventDefault();
       const current = Math.round(this.elements.root.getBoundingClientRect().height);
-      const direction = event.key === "ArrowUp" ? -1 : 1;
+      const direction = (event.key === "ArrowUp" ? -1 : 1)
+        * (event.currentTarget.dataset.resizeEdge === "top" ? -1 : 1);
       this.persistShellHeight(current + direction * SHELL_HEIGHT_STEP);
     }
 
@@ -4245,11 +4275,13 @@
       e.languageSelect.removeEventListener("change", this.handlers.changeLanguage);
       e.showWorkProcessToggle.removeEventListener("change", this.handlers.toggleWorkProcess);
       e.permissionInputs.networkAccess.removeEventListener("change", this.handlers.permissionChange);
-      e.resizeHandle.removeEventListener("pointerdown", this.handlers.resizeStart);
-      e.resizeHandle.removeEventListener("pointermove", this.handlers.resizeMove);
-      e.resizeHandle.removeEventListener("pointerup", this.handlers.resizeEnd);
-      e.resizeHandle.removeEventListener("pointercancel", this.handlers.resizeEnd);
-      e.resizeHandle.removeEventListener("keydown", this.handlers.resizeKeydown);
+      for (const handle of e.resizeHandles) {
+        handle.removeEventListener("pointerdown", this.handlers.resizeStart);
+        handle.removeEventListener("pointermove", this.handlers.resizeMove);
+        handle.removeEventListener("pointerup", this.handlers.resizeEnd);
+        handle.removeEventListener("pointercancel", this.handlers.resizeEnd);
+        handle.removeEventListener("keydown", this.handlers.resizeKeydown);
+      }
       e.input.removeEventListener("input", this.handlers.input);
       e.input.removeEventListener("keydown", this.handlers.keydown);
       e.input.removeEventListener("paste", this.handlers.paste);

@@ -146,7 +146,7 @@ test("concurrent callers wait for the app-server handshake even after the proces
   finally { finish(); await Promise.all([first, second]); }
 });
 
-test("new and resumed chats receive the same trusted PDF citation contract", async () => {
+test("new, resumed and forked chats receive the same trusted PDF citation contract", async () => {
   const client = new CodexAppServerClient();
   client.connect = async () => {};
   const calls = [];
@@ -173,6 +173,11 @@ test("new and resumed chats receive the same trusted PDF citation contract", asy
   assert.match(instructions, /no additional file access is required for those citations/u);
   assert.match(instructions, /#page=4&quote=/u);
   assert.match(instructions, /Never put a paraphrase or translation in quote/u);
+  assert.match(instructions, /Source ownership check/u);
+  assert.match(instructions, /never use a current-PDF fragment.*for another paper/u);
+  assert.match(instructions, /Repeat the source URL for each citation/u);
+  assert.match(instructions, /Never borrow the current PDF's evidence to verify another paper/u);
+  assert.match(instructions, /audit every citation's document identity and locator together/u);
   assert.match(instructions, /treat the attachment as a possible scan/iu);
   assert.match(instructions, /never upload the paper to an external OCR service/u);
   const context = Protocol.buildZoteroContext({ title: "Document", pdfPath: "/fixtures/document.pdf" });
@@ -180,6 +185,9 @@ test("new and resumed chats receive the same trusted PDF citation contract", asy
   assert.deepEqual(calls[2].params.additionalContext, context);
   assert.equal(calls[2].params.developerInstructions, undefined);
   assert.equal(context.zoteroCitationContract, undefined);
+  await client.forkThreadBeforeTurn({ threadID: "fixture-chat", beforeTurnID: "fixture-turn" });
+  assert.equal(calls[3].method, "thread/fork");
+  assert.equal(calls[3].params.developerInstructions, instructions);
 });
 
 test("new, resumed and forked chats require Markdown LaTeX for mathematical output", async () => {

@@ -221,11 +221,16 @@ async function launch() {
 const elementScript = `
   const parts = arguments[0].split(' >>> ');
   let scope = document;
+  const frameOffsets = [];
   let e;
   for (let i = 0; i < parts.length; i++) {
     e = scope.querySelector(parts[i]);
     if (!e) throw new Error("Missing selector: " + parts[i]);
-    if (i < parts.length - 1) { scope = e.contentDocument; if (!scope) throw new Error('Frame has no document'); }
+    if (i < parts.length - 1) {
+      const r = e.getBoundingClientRect();
+      frameOffsets.push({x:r.left+e.clientLeft,y:r.top+e.clientTop});
+      scope = e.contentDocument; if (!scope) throw new Error('Frame has no document');
+    }
   }
   if (!e) throw new Error("Missing selector: " + arguments[0]);
   if (!e.getClientRects().length || e.closest('[hidden],[collapsed="true"]') || !e.getBoundingClientRect().width) throw new Error("Hidden element: " + arguments[0]);
@@ -235,15 +240,18 @@ async function drive(client, action, selector, value = "") {
   const scripts = {
     click: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
     dblclick: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
+    drag: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
     fill: `${elementScript} e.focus(); e.value = arguments[1]; e.dispatchEvent(new e.ownerDocument.defaultView.Event('input', {bubbles:true})); return e.value;`,
     select: `${elementScript} if (![...e.options].some(o=>o.value===arguments[1])) throw new Error('Unknown option'); e.value=arguments[1]; e.dispatchEvent(new e.ownerDocument.defaultView.Event('change',{bubbles:true})); return e.value;`,
     key: `${elementScript} e.focus(); e.dispatchEvent(new e.ownerDocument.defaultView.KeyboardEvent('keydown',{key:arguments[1],bubbles:true,cancelable:true})); return true;`,
     check: `${elementScript} if(e.checked !== (arguments[1]==='true')) e.click(); return e.checked;`,
   };
   assert.ok(scripts[action], `Unknown action ${action}`);
+  if (action === "drag") assert.ok(/^-?\d{1,4}$/.test(value) && Math.abs(Number(value)) <= 1000,
+    "Drag distance must be an integer from -1000 to 1000 CSS pixels");
   record("action", { action, selector, value });
   let result = await client.evaluate(scripts[action], [selector, value]);
-  if (action === "click" || action === "dblclick") {
+  if (action === "click" || action === "dblclick" || action === "drag") {
     const point = await client.evaluate(`${elementScript}
       let point;
       const rects=[...e.getClientRects()];
@@ -257,16 +265,20 @@ async function drive(client, action, selector, value = "") {
       }
       if (!point) throw new Error('No unobscured click rectangle: '+arguments[0]);
       let {x,y}=point;
-      let w=e.ownerDocument.defaultView;
-      while (w.frameElement) {const f=w.frameElement, r=f.getBoundingClientRect(); x+=r.left+f.clientLeft; y+=r.top+f.clientTop; w=f.ownerDocument.defaultView;}
+      for (const offset of frameOffsets) {x+=offset.x; y+=offset.y;}
       return {x:Math.round(x), y:Math.round(y), rectangle:point.rectangle, rectangles:rects.length};`, [selector]);
     record("pointer-target", { selector, ...point });
     await client.call("WebDriver:PerformActions", { actions: [{ type: "pointer", id: "verification-mouse",
       parameters: { pointerType: "mouse" }, actions: [
         { type: "pointerMove", origin: "viewport", x: point.x, y: point.y, duration: 0 },
-        ...Array.from({length:action === "dblclick" ? 2 : 1},()=>[
-          { type: "pointerDown", button: 0 }, { type: "pointerUp", button: 0 },
-        ]).flat(),
+        ...(action === "drag" ? [
+          { type: "pointerDown", button: 0 }, { type: "pause", duration: 100 },
+          { type: "pointerMove", origin: "viewport", x: point.x, y: point.y + Number(value), duration: 400 },
+          { type: "pause", duration: 100 }, { type: "pointerUp", button: 0 },
+        ] : Array.from({length:action === "dblclick" ? 2 : 1},()=>[
+          { type: "pointerDown", button: 0 }, { type: "pause", duration: 100 },
+          { type: "pointerUp", button: 0 },
+        ]).flat()),
       ] }] });
     await client.call("WebDriver:ReleaseActions");
     result = true;
@@ -376,7 +388,7 @@ async function prove(client) {
       record("action",{action:"click-reader-context-toggle",point});
       await client.call("WebDriver:PerformActions",{actions:[{type:"pointer",id:"verification-reader-mouse",parameters:{pointerType:"mouse"},actions:[
         {type:"pointerMove",origin:"viewport",...point,duration:0},
-        {type:"pointerDown",button:0},{type:"pointerUp",button:0},
+        {type:"pointerDown",button:0},{type:"pause",duration:100},{type:"pointerUp",button:0},
       ]}]});
       await client.call("WebDriver:ReleaseActions");
       await delay(500);
@@ -521,7 +533,7 @@ async function cleanup() {
 async function main() {
   if (command === "launch") return launch();
   if (command === "cleanup") return cleanup();
-  assert.ok(["doctor","windows","focus","seed","prove","snapshot","read","click","dblclick","fill","key","select","check","close-window"].includes(command), "Use launch|doctor|windows|focus|seed|prove|snapshot LABEL|read SCRIPT_FILE|click SELECTOR|dblclick SELECTOR|fill SELECTOR VALUE|key SELECTOR KEY|select SELECTOR VALUE|check SELECTOR true|close-window --window preferences|cleanup --run DIRECTORY [--entry library|reader]");
+  assert.ok(["doctor","windows","focus","seed","prove","snapshot","read","click","dblclick","drag","fill","key","select","check","close-window"].includes(command), "Use launch|doctor|windows|focus|seed|prove|snapshot LABEL|read SCRIPT_FILE|click SELECTOR|dblclick SELECTOR|drag SELECTOR DELTA_Y|fill SELECTOR VALUE|key SELECTOR KEY|select SELECTOR VALUE|check SELECTOR true|close-window --window preferences|cleanup --run DIRECTORY [--entry library|reader]");
   const client = await connect();
   try {
     let result;

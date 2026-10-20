@@ -56,6 +56,16 @@
   transition: opacity 120ms ease, width 120ms ease;
 }
 
+.zcs-resize-handle-top {
+  top: 0;
+  bottom: auto;
+}
+
+.zcs-resize-handle-top::before {
+  top: 2px;
+  bottom: auto;
+}
+
 .zcs-resize-handle:hover::before,
 .zcs-resize-handle:focus-visible::before,
 .zcs-resizing .zcs-resize-handle::before {
@@ -99,10 +109,10 @@
 display: grid;
   grid-template-columns: 32px minmax(0, 1fr) 32px;
   align-items: center;
-  flex: 0 0 48px;
+  flex: 0 0 52px;
   gap: 4px;
   min-width: 0;
-  padding: 6px 10px;
+  padding: 10px 10px 6px;
 }
 
 .zcs-thread-trigger {

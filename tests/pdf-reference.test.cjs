@@ -84,6 +84,20 @@ function documentStub() {
   };
 }
 
+test("a comparison never turns another paper's bare locators into current-PDF links", () => {
+  const doc = documentStub(), root = doc.createElement("div"), opened = [];
+  appendMarkdown(doc, root,
+    "### Other synthetic document\n\nIts Section 4.1.2, 第 3 节, Figure 1, Table 2, 式(10), page 4 and 第 5 页 describe the method.\n\n[Current source](#section=2)",
+    reference => opened.push(reference), { attachmentID: 42, pdfPath: "/fixtures/current.pdf" });
+  const links = [];
+  const visit = node => { if (node.tag === "a") links.push(node); for (const child of node.children || []) visit(child); };
+  visit(root);
+  assert.equal(links.length, 1);
+  assert.equal(links[0].children[0].text, "Current source");
+  links[0].listeners.click({ preventDefault() {} });
+  assert.deepEqual(opened, [{ sectionNumber: "2" }]);
+});
+
 test("external sources remain clickable links in a PDF chat", async () => {
   const doc = documentStub(), root = doc.createElement("div");
   const urls = [
@@ -206,6 +220,41 @@ test("another local PDF keeps its page and section when its Markdown link is cli
   }
 });
 
+test("each external citation carries its own document and explicit locator", async () => {
+  const previousZotero = global.Zotero;
+  const local = { id: 13, isRegularItem: () => true,
+    getField: field => field === "url" ? "https://example.invalid/other-document" : "",
+    getAttachments: () => [12] };
+  const opened = [], launched = [];
+  global.Zotero = {
+    Search: class { addCondition() {} async search() { return [13]; } },
+    Libraries: { getAll: () => [{ libraryID: 1 }] },
+    Items: { get: id => id === 13 ? local : { id: 12, isPDFAttachment: () => true } },
+    launchURL: url => launched.push(url),
+  };
+  try {
+    const doc = documentStub(), root = doc.createElement("div");
+    const targets = ["section=4.3", "figure=1", "table=2", "equation=1.1", "page=4", "page=4&quote=Original%20sample"];
+    appendMarkdown(doc, root, "[Current](#section=2) " + targets.map(target =>
+      `[Other source](https://example.invalid/other-document#${target})`).join(" "),
+    (reference, attachmentID) => opened.push({ reference, attachmentID }),
+    { attachmentID: 42, pdfPath: "/fixtures/current.pdf", url: "https://example.invalid/current-document" });
+    const links = root.children[0].children.filter(node => node.tag === "a");
+    for (const link of links) await link.listeners.click({ preventDefault() {} });
+    assert.deepEqual(opened, [
+      { reference: { sectionNumber: "2" }, attachmentID: undefined },
+      ...[{ sectionNumber: "4.3" }, { query: "Figure 1" }, { query: "Table 2" },
+        { query: "(1.1)" }, { pageNumber: 4 }, { pageNumber: 4, quote: "Original sample" }]
+        .map(reference => ({ reference, attachmentID: 12 })),
+    ]);
+    assert.deepEqual(launched, []);
+  }
+  finally {
+    if (previousZotero === undefined) delete global.Zotero;
+    else global.Zotero = previousZotero;
+  }
+});
+
 test("a local paper without a PDF is selected and an unmatched link opens online", async () => {
   const doc = documentStub(), root = doc.createElement("div");
   const localURL = "https://doi.org/10.9999/synthetic-paper";
@@ -305,39 +354,7 @@ test("an original-passage citation carries its physical page and decoded text", 
   }
 });
 
-test("Chinese and English references in a reply open the matching PDF target", () => {
-  const doc = documentStub();
-  const root = doc.createElement("div");
-  const opened = [];
-  Markdown.appendMarkdown(doc, root, "如图1所示，另见 Table 2 和式(10)。", {
-    openPdfReference: (reference) => opened.push(reference),
-  });
-  const links = [];
-  const visit = (node) => {
-    if (node.tag === "a") links.push(node);
-    for (const child of node.children || []) visit(child);
-  };
-  visit(root);
-  assert.deepEqual(links.map((link) => link.textContent), ["图1", "Table 2", "式(10)"]);
-  for (const link of links) link.listeners.click({ preventDefault() {} });
-  assert.deepEqual(opened, [
-    { query: "Figure 1", label: "图1" },
-    { query: "Table 2", label: "Table 2" },
-    { query: "(10)", label: "式(10)" },
-  ]);
-});
-
-test("figure links leave surrounding parentheses outside the clickable label", () => {
-  const segments = Markdown.pdfReferenceSegments("示例面板（Fig. 3a），另见 (Fig. 3b) 和式(10)。");
-  assert.deepEqual(segments.filter(segment => segment.reference), [
-    { text: "Fig. 3a", reference: { query: "Figure 3a" } },
-    { text: "Fig. 3b", reference: { query: "Figure 3b" } },
-    { text: "式(10)", reference: { query: "(10)" } },
-  ]);
-  assert.equal(segments.map(segment => segment.text).join(""), "示例面板（Fig. 3a），另见 (Fig. 3b) 和式(10)。");
-});
-
-test("section-numbered equation references preserve the full locator", () => {
+test("explicit equation links preserve the complete locator while bare mentions stay text", () => {
   const doc = documentStub(), root = doc.createElement("div"), opened = [];
   appendMarkdown(doc, root,
     "公式 (1.1)，式（2.3.4），Equation (1.1), Eq. 2.3a; [estimate](#equation=1.1)",
@@ -345,39 +362,9 @@ test("section-numbered equation references preserve the full locator", () => {
   const links = [];
   const visit = node => { if (node.tag === "a") links.push(node); for (const child of node.children || []) visit(child); };
   visit(root);
-  assert.equal(links.length, 5);
-  assert.deepEqual(links.slice(0, 4).map(link => link.textContent), [
-    "公式 (1.1)", "式（2.3.4）", "Equation (1.1)", "Eq. 2.3a",
-  ]);
-  for (const link of links) link.listeners.click({ preventDefault() {} });
-  assert.deepEqual(opened.map(reference => reference.query), ["(1.1)", "(2.3.4)", "(1.1)", "(2.3a)", "(1.1)"]);
-});
-
-test("a Chinese paraphrase beside a section number jumps to that section", () => {
-  const doc = documentStub();
-  const root = doc.createElement("div");
-  const opened = [];
-  Markdown.appendMarkdown(doc, root,
-    "第 3 节回答原理，第 4.3 节回答“如何按照示例文档里的步骤完成一次测试操作”。", {
-      openPdfReference: (reference) => opened.push(reference),
-    });
-  const links = [];
-  const visit = (node) => {
-    if (node.tag === "a") links.push(node);
-    for (const child of node.children || []) visit(child);
-  };
-  visit(root);
-  assert.deepEqual(links.map((link) => link.textContent), [
-    "第 3 节", "第 4.3 节", "“如何按照示例文档里的步骤完成一次测试操作”",
-  ]);
-  for (const link of links) link.listeners.click({ preventDefault() {} });
-  assert.deepEqual(opened, [
-    { sectionNumber: "3", label: "第 3 节" },
-    { sectionNumber: "4.3", label: "第 4.3 节" },
-    { sectionNumber: "4.3", label: "“如何按照示例文档里的步骤完成一次测试操作”" },
-  ]);
-  assert.deepEqual(Markdown.pdfReferenceSegments("“这是一段并非 PDF 原文的中文概括，不能假装可以逐字定位”")
-    .filter((segment) => segment.reference), []);
+  assert.equal(links.length, 1);
+  links[0].listeners.click({ preventDefault() {} });
+  assert.deepEqual(opened, [{ query: "(1.1)" }]);
 });
 
 async function withReader(pdfDocument, action, options = {}) {
