@@ -1709,7 +1709,7 @@ display: flex;
   flex: 0 0 32px;
   padding: 0 !important;
   border-radius: 999px !important;
-  color: white !important;
+  color: var(--zcs-card, Canvas) !important;
   background: var(--zcs-fg, CanvasText) !important;
   place-items: center;
   font-size: 17px;
