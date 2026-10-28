@@ -10,7 +10,7 @@ Users create, search, resume and manage chats while replies stream. Chats can co
 - `chat-height` exposes top and bottom resize bars. Dragging the top upward increases the height while scrolling the surrounding pane to keep the bottom stable; dragging the bottom downward increases it. Both bars support arrow keys and show the same saved height across sidebar views.
 - `session-contention` waits briefly when another Codex process owns the chat. Persistent contention reports a busy error and keeps text/image drafts; release during the wait permits one send. Duplicate local send starts are rejected.
 - `picker` searches recent chats, filters to a paper, and loads further rows on scroll.
-- `cold-start` starts the CLI while the native sidebar renders, resolves local context alongside the handshake, and restores the current paper's bound chat alongside model discovery. The full history catalog loads when the picker opens.
+- `cold-start` starts the CLI while the native sidebar renders, resolves local context alongside the handshake, and restores the current paper's bound chat alongside model discovery. Opening the picker refreshes recent history; without a paper key, initialization can refresh it too. Each history query is limited to 500 entries, with a separate paper-directory query when the paper filter is enabled.
 - `paper-drafts` preserves unsent text and image attachments independently while switching between library papers.
 - `background` keeps a reply running while users switch chats and restores its Stop button.
 - `history-edit` copies messages, edits the latest turn, or branches an earlier turn.

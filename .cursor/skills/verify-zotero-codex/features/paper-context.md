@@ -4,7 +4,7 @@ The composer can attach the current paper's metadata and PDF passages. Each pape
 
 ## Sub-features
 
-- `item-context` shows title, creators, date, DOI, abstract and the local PDF path when available.
+- `item-context` attaches available title, creators, date, DOI and local PDF path to the context sent to the model. It includes the URL when there is no PDF and the abstract when there is no PDF evidence. The visible attachment chip shows the title and PDF/Item type.
 - `pdf-question-evidence` reads the attached local PDF through Zotero's PDFWorker before sending an item-scoped question. It selects matching passages and section headings with physical PDF page markers, keeping the context short enough to avoid Codex's middle truncation. The abstract is omitted when PDF evidence or extraction guidance is attached. This supplies paper locations without Computer Use access to the Zotero window. Extraction failure retains item metadata and the local PDF path and supplies local-PDF/OCR guidance.
 - `scanned-pdf-fallback` detects empty or extremely sparse Zotero full-text extraction and tells Codex to try only locally available PDF/OCR tools on the local attachment, never a third-party OCR service. OCR claims must be labeled and page locations verified. If local OCR is unavailable, the user can add a searchable text layer locally and rebuild Zotero's full-text index before retrying.
 - `current-pdf-page` captures the reader's physical page and printed label at send time, including the last active view in a split reader. With current-item context enabled, it puts that page's text before question-matched passages. Long pages carry an explicitly marked opening excerpt; missing text still preserves the page marker. Library sends and disabled item context do not attach a reading position.
@@ -34,7 +34,7 @@ The composer can attach the current paper's metadata and PDF passages. Each pape
 Preconditions:
 
 - Doctor passes. Run `seed` once or use the fixtures already created by `prove`.
-- Metadata-only checks need no model reply. Reader paths require a disposable local PDF attached to a fixture paper through Zotero's normal attachment UI.
+- Metadata-only checks need no model reply. Reader paths require a disposable local PDF attached to a fixture paper. Importing it with the helper prepares fixture data; it does not verify Zotero's manual attachment UI.
 - `seed` and `prove` accept `--entry reader --pdf /absolute/path/to/fixture.pdf` to import a chosen local PDF as fixture data into the isolated profile. Without `--pdf`, they generate the one-page permission fixture. The original file is read without modification.
 
 - Select paper A by its visible title in `#zotero-items-tree [role="treeitem"]`. `snapshot paper-list --run "$verify_run"` exposes the current row ID. In the fresh fixture list A is `#item-tree-main-default-row-0`; use `click '#item-tree-main-default-row-0'` with the run argument and confirm the title before relying on the index.

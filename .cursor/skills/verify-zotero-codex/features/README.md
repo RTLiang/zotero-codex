@@ -1,6 +1,6 @@
 # Codex for Zotero feature map
 
-This map covers the native Zotero sidebar and its preferences. Read the main [verification skill](../SKILL.md) for launch, ownership, authentication and cleanup. In each recipe, `verify_control` and `verify_run` are the shell variables established there. Independent proofs use fresh runs; a combined maintenance pass may reuse one owned, healthy profile serially. Each abbreviated selector must be prefixed with the active library or reader pane as specified in the main skill.
+This map covers the native Zotero sidebar and its preferences. Read the main [verification skill](../SKILL.md) for launch, ownership, authentication and cleanup. In each recipe, `verify_control` and `verify_run` are the shell variables established there. Independent proofs use fresh runs; a combined maintenance pass may reuse one owned, healthy profile serially. Prefix abbreviated sidebar selectors with the active library or reader pane; the main skill identifies window-level exceptions.
 
 Before any recipe, follow [contributor privacy](../SKILL.md#contributor-privacy) for fixtures, model requests, and shared evidence. Raw captures remain local; share only inspected, sanitized copies.
 
