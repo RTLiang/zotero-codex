@@ -511,6 +511,11 @@ test("registers the UI tool on new chats and centrally answers tool calls once f
   assert.equal(startParams.dynamicTools[0].name, "render_interactive_ui");
   assert.deepEqual(startParams.dynamicTools[0].inputSchema.required, ["title", "html"]);
   assert.match(startParams.developerInstructions, /render_interactive_ui/u);
+  assert.match(startParams.developerInstructions, /support both light and dark themes/u);
+  assert.match(startParams.developerInstructions, /text, controls, chart labels, and graphics.*actual backgrounds/u);
+  assert.match(startParams.developerInstructions, /matching foreground and background styles for both themes/u);
+  assert.match(startParams.developerInstructions, /Do not place fixed dark text on a transparent background/u);
+  assert.match(startParams.developerInstructions, /slider tracks and thumbs, control borders, and focus indicators/u);
 
   const events = [];
   client.subscribe((event) => events.push({ view: "first", event }));
