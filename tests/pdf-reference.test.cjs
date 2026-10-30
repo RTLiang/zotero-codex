@@ -71,6 +71,27 @@ test("same-item links use explicit PDF locations and otherwise keep their web ta
     "文档原文，3.2.2 节"), { kind: "pdf", reference: { pageNumber: 5, sectionNumber: "3.2.2" } });
 });
 
+test("hierarchical web section anchors preserve the complete subsection number", () => {
+  const context = { attachmentID: 42, pdfPath: "/fixtures/current.pdf",
+    url: "https://arxiv.org/abs/0000.00000" };
+  for (const [fragment, number] of [
+    ["S4", "4"], ["S4.SS3", "4.3"], ["S4.SS3.SSS1", "4.3.1"],
+    ["S4.SS3.SSS4", "4.3.4"], ["S12.SS10.SSS2", "12.10.2"],
+    ["section-4.3.1", "4.3.1"], ["sec4_3_1", "4.3.1"],
+  ]) {
+    assert.deepEqual(resolvePaperLink(`https://arxiv.org/html/0000.00000#${fragment}`,
+      context, "Source"), { kind: "pdf", reference: { sectionNumber: number } });
+  }
+  assert.deepEqual(resolvePaperLink("https://arxiv.org/html/0000.00000#S4.SS3.SSS1",
+    context, "§4.3.1"), { kind: "pdf", reference: { sectionNumber: "4.3.1" } });
+  assert.deepEqual(resolvePaperLink("https://arxiv.org/html/0000.00000#S4.SS3.SSS1.p1",
+    context, "§4.3.1"), { kind: "pdf", reference: { sectionNumber: "4.3.1" } });
+  assert.equal(resolvePaperLink("https://arxiv.org/html/0000.00000#S4.SS3.SSS1.p1",
+    context, "Source"), null);
+  assert.equal(resolvePaperLink("https://arxiv.org/html/0000.00001#S4.SS3.SSS1",
+    context, "§4.3.1"), null);
+});
+
 function documentStub() {
   return {
     createElement(tag) {
@@ -660,6 +681,36 @@ function nativeTextLine(text, { x = 108, y = 184, size = 12, font = "Fixture-Med
     lineBreakAfter: index === text.length - 1,
   }));
 }
+
+test("clicking hierarchical subsection citations navigates to each exact heading", async () => {
+  const pdfDocument = {
+    numPages: 6,
+    async getOutline() { return null; },
+    async getPage() { return {}; },
+    async getPageData({ pageIndex }) {
+      const headings = ["4 Synthetic method", "4.3 Synthetic objectives",
+        ...[1, 2, 3, 4].map(number => `4.3.${number} Synthetic objective`)];
+      return { chars: nativeTextLine(headings[pageIndex]) };
+    },
+  };
+  const { navigation } = await withReader(pdfDocument, async view => {
+    const doc = documentStub(), root = doc.createElement("div");
+    appendMarkdown(doc, root, [1, 2, 3, 4].map(number =>
+      `- [§4.3.${number}](https://arxiv.org/html/0000.00000#S4.SS3.SSS${number})`).join("\n"),
+    reference => view.openPdfReference(reference), {
+      attachmentID: 42, pdfPath: "/fixtures/current.pdf", url: "https://arxiv.org/abs/0000.00000",
+    });
+    const links = [];
+    const visit = node => { if (node.tag === "a") links.push(node); for (const child of node.children || []) visit(child); };
+    visit(root);
+    assert.equal(links.length, 4);
+    for (const link of links) {
+      assert.ok(link.className.includes("zcs-pdf-reference"));
+      await link.listeners.click({ preventDefault() {} });
+    }
+  });
+  assert.deepEqual(navigation.map(location => location.position.pageIndex), [2, 3, 4, 5]);
+});
 
 test("sections without bookmarks use Zotero page data and skip chart labels", async () => {
   const pdfDocument = {

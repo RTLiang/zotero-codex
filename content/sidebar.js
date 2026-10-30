@@ -376,8 +376,11 @@
     if (explicit && (!explicit.pageNumber || explicit.quote)) return explicit;
     const page = value.match(/(?:[?#&]page=)([1-9]\d{0,3})(?!\d)/iu);
     const section = String(label).match(/(?:第\s*)?(\d{1,3}(?:\.\d{1,3})*)\s*节|\b(?:section|sec\.?)\s*(\d{1,3}(?:\.\d{1,3})*)|§\s*(\d{1,3}(?:\.\d{1,3})*)/iu);
-    const fragmentSection = value.match(/#(?:s|sec(?:tion)?[-_=]?)(\d{1,3}(?:[._]\d{1,3})*)\b/iu);
-    const sectionNumber = fragmentSection?.[1]?.replace(/_/gu, ".")
+    const fragment = value.includes("#") ? value.slice(value.indexOf("#")) : "";
+    const hierarchicalSection = /^#S\d{1,3}(?:\.S{2,}\d{1,3})*$/iu.test(fragment)
+      ? fragment.match(/\d+/gu).join(".") : null;
+    const fragmentSection = fragment.match(/^#(?:s|sec(?:tion)?[-_=]?)(\d{1,3}(?:[._]\d{1,3})*)$/iu);
+    const sectionNumber = hierarchicalSection || fragmentSection?.[1]?.replace(/_/gu, ".")
       || section?.[1] || section?.[2] || section?.[3];
     const sectionTitle = /(?:方法部分|方法章节|\bmethod(?:s|ology)?\b|\bapproach\b)/iu.test(label)
       ? "method" : null;
