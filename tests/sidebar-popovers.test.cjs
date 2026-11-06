@@ -319,12 +319,12 @@ test("waiting feedback advances, preserves elapsed time across phases, and stops
   const hint = () => view.pendingResponseNode.children.find(child => child.className === "zcs-pending-response-hint");
   assert.equal(label().textContent, "Working…");
   assert.equal(elapsed().textContent, "0s");
-  assert.equal(hint().hidden, true);
+  assert.equal(hint(), undefined);
   assert.equal(view.pendingResponseNode.parentNode, view.elements.waitingArea);
   assert.equal(view.elements.waitingArea.hidden, false);
   t.mock.timers.tick(21000);
   assert.equal(elapsed().textContent, "21s");
-  assert.equal(hint().hidden, false);
+  assert.equal(hint(), undefined);
   view.showPendingResponse("interactive");
   assert.equal(label().textContent, "Generating interactive view…");
   assert.equal(elapsed().textContent, "21s");

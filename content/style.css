@@ -1046,7 +1046,6 @@ width: fit-content;
 }
 
 .zcs-pending-response-elapsed { font-variant-numeric: tabular-nums; }
-.zcs-pending-response-hint { flex-basis: 100%; }
 
 @keyframes zcs-waiting-pulse {
   50% {

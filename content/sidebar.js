@@ -3577,15 +3577,12 @@
       label.setAttribute("role", "status");
       const elapsed = create(this.doc, "span", "zcs-pending-response-elapsed");
       elapsed.setAttribute("aria-hidden", "true");
-      const hint = createL10n(this.doc, "span", "zcs-pending-response-hint",
-        "zotero-codex-waiting-hint", "Still working. You can stop this reply.");
       const update = () => {
         const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
         setLocalizedText(elapsed, "zotero-codex-waiting-elapsed", `${seconds}s`, { seconds });
-        hint.hidden = seconds < 20;
       };
       update();
-      pending.append(label, elapsed, hint);
+      pending.append(label, elapsed);
       this.elements.waitingArea.append(pending);
       this.elements.waitingArea.hidden = false;
       this.pendingResponseNode = pending;
