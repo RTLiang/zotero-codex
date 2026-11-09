@@ -1,0 +1,4 @@
+Beautiful Mermaid 1.1.3 — https://github.com/lukilabs/beautiful-mermaid
+Bundled with elkjs and entities. Dependency versions are pinned in package-lock.json.
+Rebuild: npm ci && npm run vendor:diagrams
+ELK source: https://github.com/kieler/elkjs (EPL-2.0)

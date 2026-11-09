@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Diagram renderer fixtures</title>
+<link rel="stylesheet" href="/content/style.css">
+<style>
+  body { margin: 24px; color-scheme: light; background: Canvas; color: CanvasText; font: 14px system-ui; }
+  main { width: 420px; max-width: 100%; --zcs-border: color-mix(in srgb, CanvasText 20%, Canvas); --zcs-muted: GrayText; --zcs-softer: Canvas; }
+</style>
+<main id="fixture"><h1>Diagram renderer fixtures</h1></main>
+<script src="/content/diagram-frame.js"></script>
+<script src="/content/markdown.js"></script>
+<script>
+(async () => {
+  const params = new URLSearchParams(location.search);
+  if (params.get('theme') === 'dark') document.body.style.colorScheme = 'dark';
+  const source = await (await fetch('/content/vendor/beautiful-mermaid/beautiful-mermaid.min.js')).text();
+  ZoteroCodexModules.DiagramFrame.configure(source);
+  const cases = {
+    flowchart: 'flowchart TD\nA[输入信息] --> B[共享表示]\nB --> C[分支一]\nB --> D[分支二]\nC --> E[融合结果]\nD --> E\nE --> F[输出结果]\nC -. 交换信息 .-> D',
+    sequence: 'sequenceDiagram\nAlice->>Bob: Sample request\nBob-->>Alice: Sample result',
+    invalid: 'not a diagram',
+    hostile: 'flowchart TD\nA["\u003c/script>\u003cimg src=https://example.invalid/blocked onerror=alert(1)>"] --> B[Sample result]',
+  };
+  const example = cases[params.get('case')] || cases.flowchart;
+  ZoteroCodexModules.Markdown.appendMarkdown(document, document.querySelector('main'), '```mermaid\n' + example + '\n```');
+})();
+</script>
+</html>

@@ -1,5 +1,6 @@
 /* Local UI fixture. All conversations and responses below are simulated. */
 (async () => {
+  window.ZoteroCodexModules.DiagramFrame.configure(await (await fetch('/content/vendor/beautiful-mermaid/beautiful-mermaid.min.js')).text());
   const options = new URLSearchParams(location.search);
   if (options.has("width")) document.querySelector("#preview").style.width = `${Math.max(260, Math.min(800, Number(options.get("width")) || 440))}px`;
   if (["light", "dark"].includes(options.get("theme"))) document.body.style.colorScheme = options.get("theme");

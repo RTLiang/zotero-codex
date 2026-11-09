@@ -94,6 +94,7 @@ interface CodexSidebarHost {
 }
 
 interface ZoteroCodexModuleRegistry {
+  DiagramFrame: DiagramFrameModule;
   InteractiveUI: InteractiveUIModule;
   InteractiveFrame: InteractiveFrameModule;
   CodexClient: CodexClientModule;

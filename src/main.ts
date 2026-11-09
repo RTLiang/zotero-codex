@@ -54,9 +54,10 @@ var ZoteroCodexPlugin: ZoteroCodexPluginObject = {
 
     this.storageHome = String(this.getPreference("codexHome") || "");
 
-    const [stylesheetText, katexStylesheet] = await Promise.all([
+    const [stylesheetText, katexStylesheet, mermaidSource] = await Promise.all([
       Zotero.File.getResourceAsync(rootURI + "content/style.css"),
       Zotero.File.getResourceAsync(rootURI + "content/vendor/katex/katex.min.css"),
+      Zotero.File.getResourceAsync(rootURI + "content/vendor/beautiful-mermaid/beautiful-mermaid.min.js"),
     ]);
     const katexFontRoot = `${rootURI}content/vendor/katex/`;
     const resolvedKatexStylesheet = katexStylesheet.replace(
@@ -68,6 +69,7 @@ var ZoteroCodexPlugin: ZoteroCodexPluginObject = {
       throw new Error("Codex for Zotero modules failed to load");
     }
     modules.Localization!.configure((name) => this.getPreference(name));
+    modules.DiagramFrame!.configure(mermaidSource);
 
     const pluginLog = (message: string, error?: unknown) => {
       Zotero.debug(`Codex for Zotero: ${message}`);
@@ -176,6 +178,7 @@ var ZoteroCodexPlugin: ZoteroCodexPluginObject = {
   async shutdown() {
     if (!this.initialized) return;
     await this.sidebar?.shutdown();
+    globalThis.ZoteroCodexModules?.DiagramFrame?.shutdown();
     await this.client?.disconnect();
     delete Zotero.CodexSidebar;
     delete globalThis.ZoteroCodexModules;

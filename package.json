@@ -4,6 +4,7 @@
   "private": true,
   "description": "Discuss papers with Codex in Zotero and continue your conversations across Codex apps.",
   "scripts": {
+    "vendor:diagrams": "node scripts/build-diagrams.mjs",
     "check": "node scripts/check.mjs",
     "compile": "node scripts/compile.mjs",
     "check:migration": "npm run compile && node scripts/check-emit-equivalence.mjs",
@@ -16,6 +17,8 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "beautiful-mermaid": "1.1.3",
+    "esbuild": "0.28.2",
     "typescript": "5.9.3"
   }
 }

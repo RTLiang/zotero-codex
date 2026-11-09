@@ -139,8 +139,11 @@
           content.push(lines[index]);
           index++;
         }
-        if (index < lines.length) index++;
-        blocks.push({ type: "code", language: fence[2].trim(), text: content.join("\n") });
+        const closed = index < lines.length;
+        if (closed) index++;
+        const language = fence[2].trim();
+        blocks.push({ type: "code", language, text: content.join("\n"),
+          ...(language.toLowerCase() === "mermaid" ? { closed } : {}) });
         continue;
       }
 
@@ -935,6 +938,10 @@
         parent.append(quote);
       }
       else if (block.type === "code") {
+        if (block.language.toLowerCase() === "mermaid" && block.closed && modules.DiagramFrame) {
+          modules.DiagramFrame.append(doc, parent, block.text);
+          continue;
+        }
         const wrapper = create(doc, "div", "zcs-code-block");
         if (block.language) wrapper.append(create(doc, "div", "zcs-code-language", block.language));
         const pre = create(doc, "pre");
