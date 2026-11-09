@@ -939,7 +939,7 @@
       }
       else if (block.type === "code") {
         if (block.language.toLowerCase() === "mermaid" && block.closed && modules.DiagramFrame) {
-          modules.DiagramFrame.append(doc, parent, block.text);
+          modules.DiagramFrame.append(doc, parent, block.text, options.openDiagramPreview);
           continue;
         }
         const wrapper = create(doc, "div", "zcs-code-block");

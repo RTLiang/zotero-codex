@@ -1,6 +1,7 @@
 interface DiagramFrameModule {
   configure(source: string): void;
-  append(doc: Document, parent: HTMLElement, text: string): void;
+  append(doc: Document, parent: HTMLElement, text: string,
+    openPreview?: (source: string, opener: HTMLElement) => void): void;
   shutdown(): void;
 }
 
@@ -45,7 +46,8 @@ interface Window { MutationObserver: typeof MutationObserver }
     state.frames.set(frame, cleanup);
   }
 
-  function append(doc: Document, parent: HTMLElement, text: string) {
+  function append(doc: Document, parent: HTMLElement, text: string,
+    openPreview?: (source: string, opener: HTMLElement) => void) {
     const wrapper = doc.createElement("figure");
     wrapper.className = "zcs-diagram zcs-code-block";
     const status = localized(doc, "div", "zotero-codex-diagram-loading", "Rendering diagram…");
@@ -76,8 +78,17 @@ interface Window { MutationObserver: typeof MutationObserver }
     frame.setAttribute("sandbox", "allow-scripts");
     frame.setAttribute("type", "content");
     frame.setAttribute("referrerpolicy", "no-referrer");
+    const enlarge = doc.createElement("button");
+    enlarge.className = "zcs-diagram-enlarge";
+    enlarge.type = "button";
+    enlarge.textContent = "↗";
+    enlarge.title = "Enlarge diagram";
+    enlarge.setAttribute("aria-label", enlarge.title);
+    modules.Localization?.setAttributes(enlarge, "zotero-codex-diagram-enlarge");
+    enlarge.hidden = true;
     const fail = () => {
       frame.hidden = true;
+      enlarge.hidden = true;
       source.open = true;
       status.textContent = "Could not render this diagram. The source is shown below.";
       modules.Localization?.setAttributes(status, "zotero-codex-diagram-error");
@@ -90,15 +101,21 @@ interface Window { MutationObserver: typeof MutationObserver }
       const data = event.data;
       if (!data || typeof data !== "object" || !("type" in data) || data.type !== "zcs-mermaid"
         || !("state" in data)) return;
+      if (data.state === "preview" && openPreview && "svg" in data && typeof data.svg === "string"
+        && data.svg.length <= 2_000_000 && data.svg.startsWith("<svg") && data.svg.endsWith("</svg>")) {
+        openPreview(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(data.svg)}`, enlarge);
+      }
       if (data.state === "error") { win.clearTimeout(timeout); fail(); }
       else if (data.state === "ready" && "height" in data && typeof data.height === "number" && Number.isFinite(data.height)) {
         win.clearTimeout(timeout);
         frame.hidden = false;
         frame.style.height = `${Math.max(80, Math.min(1200, Math.ceil(data.height)))}px`;
         status.hidden = true;
+        enlarge.hidden = !openPreview;
         wrapper.dataset.state = "ready";
       }
     };
+    enlarge.addEventListener("click", () => ports.port1.postMessage({ type: "zcs-mermaid-preview" }));
     let connected = false;
     frame.addEventListener("load", () => {
       if (connected || frame.contentDocument?.URL !== "about:srcdoc") return;
@@ -132,6 +149,18 @@ interface Window { MutationObserver: typeof MutationObserver }
         svg.style.maxWidth = 'none';
         svg.style.width = svg.viewBox.baseVal.width + 'px';
         svg.style.height = svg.viewBox.baseVal.height + 'px';
+        if (${Boolean(openPreview)}) {
+          const preview = () => port.postMessage({type:'zcs-mermaid',state:'preview',svg:svg.outerHTML});
+          svg.style.cursor = 'zoom-in';
+          svg.setAttribute('role', 'button');
+          svg.setAttribute('tabindex', '0');
+          svg.setAttribute('aria-haspopup', 'dialog');
+          svg.addEventListener('click', event => { event.preventDefault(); preview(); });
+          svg.addEventListener('keydown', event => {
+            if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); preview(); }
+          });
+          port.onmessage = message => { if(message.data?.type === 'zcs-mermaid-preview') preview(); };
+        }
         document.addEventListener('click', event => { if(event.target.closest?.('a')) event.preventDefault(); });
         document.addEventListener('submit', event => event.preventDefault());
         new ResizeObserver(() => report('ready')).observe(document.body);
@@ -140,7 +169,7 @@ interface Window { MutationObserver: typeof MutationObserver }
     });`;
     frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><style>html{color-scheme:${dark ? "dark" : "light"};font:14px system-ui;background:Canvas;color:CanvasText}body{margin:0;padding:8px;box-sizing:border-box;width:max-content;min-width:100%}#diagram-root{display:flex;justify-content:center}svg{display:block}*{box-sizing:border-box}</style></head><body><div id="diagram-root"></div><script>${library}</script><script>${render}</script></body></html>`;
     wrapper.dataset.state = "loading";
-    wrapper.append(status, frame, source);
+    wrapper.append(status, frame, source, enlarge);
     parent.append(wrapper);
   }
 

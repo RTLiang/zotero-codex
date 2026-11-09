@@ -908,6 +908,46 @@ width: fit-content;
   object-fit: contain;
 }
 
+.zcs-diagram-dialog-stage {
+  display: block;
+  overflow: auto;
+}
+
+.zcs-diagram-dialog-canvas {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
+.zcs-diagram-dialog .zcs-image-dialog-image {
+  max-width: none;
+  max-height: none;
+  flex: none;
+}
+
+.zcs-diagram-zoom-in,
+.zcs-diagram-zoom-out,
+.zcs-diagram-fit {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+  border-radius: 8px;
+  background: var(--zcs-card, Canvas);
+  color: CanvasText;
+  cursor: pointer;
+  font: 14px system-ui;
+}
+
+.zcs-diagram-zoom-level {
+  min-width: 42px;
+  text-align: center;
+  font: 12px system-ui;
+}
+
 .zcs-user .zcs-message-image {
   max-width: 260px;
 }
@@ -1228,8 +1268,27 @@ width: fit-content;
 }
 
 .zcs-diagram {
+  position: relative;
   max-width: 100%;
   margin: 8px 0;
+}
+
+.zcs-diagram-enlarge {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--zcs-border);
+  border-radius: 7px;
+  background: var(--zcs-card, Canvas);
+  color: CanvasText;
+  cursor: zoom-in;
+  font-size: 18px;
+}
+
+.zcs-diagram-enlarge[hidden] {
+  display: none;
 }
 
 .zcs-mermaid-frame {

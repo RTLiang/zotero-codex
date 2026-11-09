@@ -37,7 +37,7 @@ function completedReply({ replyHeight, scrollTop = 2000 }) {
 }
 
 for (const [name, replyHeight, scrollTop] of [
-  ["short reply", 100, 2000],
+  ["short reply", 100, 1500],
   ["long reply", 1400, 2000],
   ["user reading earlier messages", 100, 700],
 ]) {
@@ -47,6 +47,19 @@ for (const [name, replyHeight, scrollTop] of [
       params: { threadId: "fixture-chat", turn: { id: "fixture-turn", status: "completed" } } });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(transcript.scrollTop, scrollTop, "finishing a reply must not move the reading viewport");
+  });
+}
+
+for (const replyHeight of [100, 1400]) {
+  test(`completion removes empty scroll space below a ${replyHeight}px reply`, async () => {
+    const { view, transcript } = completedReply({ replyHeight, scrollTop: 10000 });
+    view._handleClientEvent({ type: "notification", method: "turn/completed",
+      params: { threadId: "fixture-chat", turn: { id: "fixture-turn", status: "completed" } } });
+    await new Promise(resolve => setImmediate(resolve));
+    const contentBottom = 2000 + 50 + replyHeight;
+    assert.ok(transcript.scrollTop + transcript.clientHeight - contentBottom <= 16,
+      "the end of the chat must sit above the composer without a reserved blank viewport");
+    assert.equal(transcript.scrollTop, contentBottom + 16 - transcript.clientHeight);
   });
 }
 

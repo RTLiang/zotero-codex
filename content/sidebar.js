@@ -542,11 +542,12 @@
     return (pageEvidence + evidence).slice(0, 3000);
   }
 
-  function appendMarkdown(doc, parent, value, openPdfReference = null, paperContext = null) {
+  function appendMarkdown(doc, parent, value, openPdfReference = null, paperContext = null, openDiagramPreview = null) {
     Markdown.appendMarkdown(doc, parent, value, {
       openTarget: (target, label) => openMarkdownTarget(target, label, openPdfReference),
       openPdfReference: paperContext?.attachmentID ? openPdfReference : null,
       resolveLink: (target, label) => resolvePaperLink(target, paperContext, label),
+      openDiagramPreview,
     });
   }
 
@@ -3196,7 +3197,7 @@
     renderTranscript(entries, { preserveScroll = false } = {}) {
       this.disposeInteractiveViews();
       const transcript = this.elements.transcript;
-      if (!preserveScroll) this.clearResponseScrollSpace();
+      this.clearResponseScrollSpace();
       transcript.replaceChildren();
       const messages = Protocol.groupTranscriptEntries(entries);
       if (!messages.length) {
@@ -3315,7 +3316,7 @@
           const message = create(this.doc, "div", "zcs-process-message");
           appendMarkdown(this.doc, message, entry.text,
             (reference, attachmentID) => this.openPdfReference(reference, attachmentID),
-            this.context);
+            this.context, (source, opener) => this.openDiagramPreview(source, opener));
           body.append(message);
         }
       }
@@ -3343,13 +3344,19 @@
       });
     }
 
-    openImagePreview(preview, name = preview.alt) {
-      const source = displayableImageSource({ url: preview.src });
+    openDiagramPreview(source, opener) {
+      this.openImagePreview(opener, "Mermaid", { source, diagram: true });
+    }
+
+    openImagePreview(preview, name = preview.alt, {
+      source = displayableImageSource({ url: preview.src }), diagram = false,
+    } = {}) {
       if (!source || this.destroyed) return;
       this.closeImagePreview?.();
       const doc = this.doc;
       const dialog = doc.createElementNS("http://www.w3.org/1999/xhtml", "dialog");
       dialog.className = "zcs-image-dialog";
+      if (diagram) dialog.classList.add("zcs-diagram-dialog");
       dialog.setAttribute("aria-label", "Image preview");
       setL10n(dialog, "zotero-codex-image-preview-dialog");
       const toolbar = create(doc, "div", "zcs-image-dialog-toolbar");
@@ -3365,14 +3372,64 @@
       const image = create(doc, "img", "zcs-image-dialog-image");
       image.src = source;
       image.alt = String(name || "");
-      stage.append(image);
+      let canvas = null;
+      let removeResize = () => {};
+      if (diagram) {
+        stage.classList.add("zcs-diagram-dialog-stage");
+        canvas = create(doc, "div", "zcs-diagram-dialog-canvas");
+        canvas.append(image);
+        stage.append(canvas);
+        const zoomOut = create(doc, "button", "zcs-diagram-zoom-out", "−");
+        const zoomIn = create(doc, "button", "zcs-diagram-zoom-in", "+");
+        const fit = createL10n(doc, "button", "zcs-diagram-fit", "zotero-codex-diagram-fit", "Fit");
+        const level = create(doc, "span", "zcs-diagram-zoom-level");
+        level.setAttribute("aria-live", "polite");
+        for (const [button, id, title] of [
+          [zoomOut, "zotero-codex-diagram-zoom-out", "Zoom out"],
+          [zoomIn, "zotero-codex-diagram-zoom-in", "Zoom in"],
+        ]) {
+          button.type = "button";
+          button.title = title;
+          button.setAttribute("aria-label", title);
+          setL10n(button, id);
+        }
+        fit.type = "button";
+        toolbar.insertBefore(zoomOut, close);
+        toolbar.insertBefore(level, close);
+        toolbar.insertBefore(zoomIn, close);
+        toolbar.insertBefore(fit, close);
+        let scale = 1;
+        let fitting = true;
+        const zoom = (value) => {
+          if (!image.naturalWidth || !image.naturalHeight) return;
+          scale = Math.max(0.1, Math.min(8, value));
+          image.style.width = `${image.naturalWidth * scale}px`;
+          image.style.height = `${image.naturalHeight * scale}px`;
+          level.textContent = `${Math.round(scale * 100)}%`;
+          zoomOut.disabled = scale <= 0.1;
+          zoomIn.disabled = scale >= 8;
+        };
+        const fitImage = () => {
+          zoom(Math.min(stage.clientWidth / image.naturalWidth, stage.clientHeight / image.naturalHeight));
+          stage.scrollLeft = 0;
+          stage.scrollTop = 0;
+        };
+        zoomOut.addEventListener("click", () => { fitting = false; zoom(scale / 1.25); });
+        zoomIn.addEventListener("click", () => { fitting = false; zoom(scale * 1.25); });
+        fit.addEventListener("click", () => { fitting = true; fitImage(); });
+        image.addEventListener("load", fitImage, { once: true });
+        const resized = () => { if (fitting) fitImage(); };
+        doc.defaultView.addEventListener("resize", resized);
+        removeResize = () => doc.defaultView.removeEventListener("resize", resized);
+      } else stage.append(image);
       dialog.append(toolbar, stage);
       const dismiss = () => dialog.close();
       close.addEventListener("click", dismiss);
       dialog.addEventListener("click", (event) => {
-        if (event.target === dialog || event.target === stage) dismiss();
+        if (event.target === dialog || event.target === canvas || (!diagram && event.target === stage)) dismiss();
       });
       dialog.addEventListener("close", () => {
+        removeResize();
         dialog.remove();
         if (this.closeImagePreview === dismiss) this.closeImagePreview = null;
         if (!this.closeImagePreview && preview.isConnected && !this.destroyed) preview.focus({ preventScroll: true });
@@ -3460,7 +3517,7 @@
         const content = create(this.doc, "div", "zcs-message-content zcs-process-body");
         appendMarkdown(this.doc, content, entry.text,
           (reference, attachmentID) => this.openPdfReference(reference, attachmentID),
-          this.context);
+          this.context, (source, opener) => this.openDiagramPreview(source, opener));
         details.append(content);
         if (streaming) details.classList.add("zcs-streaming");
         transcript.append(details);
@@ -3472,7 +3529,8 @@
         entry.role === "assistant"
           ? (reference, attachmentID) => this.openPdfReference(reference, attachmentID)
           : null,
-        entry.role === "assistant" ? this.context : null);
+        entry.role === "assistant" ? this.context : null,
+        (source, opener) => this.openDiagramPreview(source, opener));
       const body = create(this.doc, "div", "zcs-message-body");
       if (entry.role === "user" && entry.selections?.length) {
         const selections = create(this.doc, "div", "zcs-message-selections");
@@ -3650,7 +3708,7 @@
         content.replaceChildren();
         appendMarkdown(this.doc, content, this.streamingText,
           (reference, attachmentID) => this.openPdfReference(reference, attachmentID),
-          this.context);
+          this.context, (source, opener) => this.openDiagramPreview(source, opener));
       }
     }
 

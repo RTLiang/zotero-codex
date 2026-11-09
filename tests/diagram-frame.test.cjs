@@ -15,7 +15,7 @@ function fixture() {
     setTimeout: () => 1, clearTimeout() {},
     MessageChannel: class {
       constructor() {
-        this.port1 = { onmessage: null, close() { this.closed = true; } };
+        this.port1 = { onmessage: null, messages: [], postMessage(message) { this.messages.push(message); }, close() { this.closed = true; } };
         this.port2 = { close() { this.closed = true; } };
         channels.push(this);
       }
@@ -27,10 +27,11 @@ function fixture() {
   };
   const doc = { defaultView: win, documentElement: {}, querySelectorAll: () => frames,
     createElement(tag) {
-      const node = { tag, children: [], dataset: {}, style: {}, attributes: {}, isConnected: true,
+      const node = { tag, children: [], dataset: {}, style: {}, attributes: {}, isConnected: true, events: new Map(),
         append(...children) { for (const child of children) { child.parentElement = this; this.children.push(child); } },
         setAttribute(name, value) { this.attributes[name] = value; },
-        addEventListener() {},
+        addEventListener(type, listener) { this.events.set(type, listener); },
+        click() { this.events.get('click')?.(); },
         querySelector(selector) { return this.children.find(child => selector === "details" ? child.tag === "details" : child.className === selector.slice(1)); },
       };
       if (tag === "iframe") { node.contentWindow = {}; frames.push(node); }
@@ -57,6 +58,30 @@ test("renders complete Mermaid fences while ordinary and partial code stays read
   }
   assert.equal(f.frames.length, 1);
   assert.equal(f.root.children.at(-1).className, "zcs-code-block");
+});
+
+test("sidebar diagram expansion uses a private SVG image preview and a keyboard-accessible button", () => {
+  const f = fixture();
+  const opened = [];
+  f.Markdown.appendMarkdown(f.doc, f.root, '```mermaid\nflowchart TD\nA[Start] --> B[Finish]\n```', {
+    openDiagramPreview: (source, opener) => opened.push({ source, opener }),
+  });
+  const wrapper = f.root.children[0];
+  const button = wrapper.children[3];
+  assert.equal(button.tag, 'button');
+  assert.equal(button.hidden, true);
+  f.channels[0].port1.onmessage({ data: { type: 'zcs-mermaid', state: 'ready', height: 300 } });
+  assert.equal(button.hidden, false);
+  button.click();
+  assert.equal(f.channels[0].port1.messages[0].type, 'zcs-mermaid-preview');
+  f.channels[0].port1.onmessage({ data: { type: 'zcs-mermaid', state: 'preview', svg: '<script>bad()</script>' } });
+  assert.equal(opened.length, 0);
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>Sample</text></svg>';
+  f.channels[0].port1.onmessage({ data: { type: 'zcs-mermaid', state: 'preview', svg } });
+  assert.equal(opened.length, 1);
+  assert.ok(opened[0].source.startsWith('data:image/svg+xml;charset=utf-8,'));
+  assert.equal(decodeURIComponent(opened[0].source.split(',')[1]), svg);
+  assert.equal(opened[0].opener, button);
 });
 
 test("diagram text stays sandboxed and frame status uses a private message channel", () => {
