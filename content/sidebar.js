@@ -2498,7 +2498,7 @@
     renderSelections({ highlightSelectionID = "" } = {}) {
       const container = this.elements.selections;
       container.replaceChildren();
-      const selections = this.manager.getSelections(this.context?.attachmentID);
+      const selections = this.draftPinnedSelections();
       const liveSelection = this.manager.getLiveSelection(this.context?.attachmentID);
       const mergedSelections = Protocol.mergeContextSelections(liveSelection, selections);
       const showLiveSelection = Boolean(
@@ -2553,7 +2553,7 @@
         remove.title = "Remove this selection";
         setL10n(remove, "zotero-codex-remove-selection");
         remove.addEventListener("click", () => {
-          this.manager.removeSelection(this.context?.attachmentID, selection.id);
+          this.removeDraftSelection(selection.id);
         });
         chip.append(label, remove);
         container.append(chip);
@@ -2623,9 +2623,7 @@
     renderContextAttachment({ highlightSelectionID = "" } = {}) {
       if (!this.elements) return;
       const enabled = Boolean(this.manager.getPreference("includeItemContext"));
-      const selections = this.context
-        ? this.manager.getSelections(this.context.attachmentID)
-        : [];
+      const selections = this.draftPinnedSelections();
       const liveSelection = this.context
         ? this.manager.getLiveSelection(this.context.attachmentID)
         : null;
@@ -2740,7 +2738,7 @@
                 "zotero-codex-current-selection",
                 "Current selection",
               ),
-          create(this.doc, "span", "zcs-attachment-meta", Protocol.firstLine(liveSelection.text, 72)),
+          create(this.doc, "span", "zcs-selection-text", liveSelection.text),
         );
         const remove = create(this.doc, "button", "zcs-attachment-remove", "×");
         remove.type = "button";
@@ -2775,14 +2773,14 @@
                 "zotero-codex-selection-added",
                 "Selection added",
               ),
-          create(this.doc, "span", "zcs-attachment-meta", Protocol.firstLine(selection.text, 72)),
+          create(this.doc, "span", "zcs-selection-text", selection.text),
         );
         const remove = create(this.doc, "button", "zcs-attachment-remove", "×");
         remove.type = "button";
         remove.title = "Remove this selection";
         setL10n(remove, "zotero-codex-remove-selection");
         remove.addEventListener("click", () => {
-          this.manager.removeSelection(this.context?.attachmentID, selection.id);
+          this.removeDraftSelection(selection.id);
         });
         chip.append(copy, remove);
         attachments.append(chip);
@@ -2790,6 +2788,21 @@
           this.doc.defaultView?.requestAnimationFrame?.(() => chip.scrollIntoView?.({ block: "nearest" }));
         }
       }
+    }
+
+    draftPinnedSelections() {
+      return Protocol.mergeContextSelections(null, [
+        ...(this.editingMessage?.selections || []),
+        ...this.manager.getSelections(this.context?.attachmentID),
+      ]);
+    }
+
+    removeDraftSelection(selectionID) {
+      if (this.editingMessage) {
+        this.editingMessage.selections = this.editingMessage.selections
+          .filter(selection => selection.id !== selectionID);
+      }
+      this.manager.removeSelection(this.context?.attachmentID, selectionID);
     }
 
     toggleItemContext() {
@@ -3461,6 +3474,20 @@
           : null,
         entry.role === "assistant" ? this.context : null);
       const body = create(this.doc, "div", "zcs-message-body");
+      if (entry.role === "user" && entry.selections?.length) {
+        const selections = create(this.doc, "div", "zcs-message-selections");
+        for (const selection of entry.selections) {
+          const quote = create(this.doc, "blockquote", "zcs-message-selection");
+          const page = selection.pageLabel || selection.pageNumber || "?";
+          quote.append(
+            createL10n(this.doc, "div", "zcs-attachment-meta", "zotero-codex-selection-page",
+              `Selection · page ${page}`, { page }),
+            create(this.doc, "div", "zcs-selection-text", selection.text),
+          );
+          selections.append(quote);
+        }
+        body.append(selections);
+      }
       if (entry.text) body.append(content);
       this.appendMessageImages(body, entry.images);
       if (!streaming && (entry.role === "user" || entry.role === "assistant")) {
@@ -3504,9 +3531,9 @@
       return article;
     }
 
-    appendOptimisticUser(text, images = []) {
+    appendOptimisticUser(text, images = [], selections = []) {
       this.elements.transcript.querySelector(".zcs-empty")?.remove();
-      const message = this.appendEntry({ role: "user", text, images });
+      const message = this.appendEntry({ role: "user", text, images, selections });
       this.positionMessageAtTop(message);
     }
 
@@ -3518,6 +3545,7 @@
         turnID: entry.turnID,
         text: String(entry.text || ""),
         images: Array.isArray(entry.images) ? entry.images : [],
+        selections: Protocol.mergeContextSelections(null, entry.selections),
         mode: mode === "revert" ? "revert" : "fork",
       };
       this.images = this.editingMessage.images.map((image, index) => ({
@@ -3736,6 +3764,9 @@
         if (!paperContext) paperContext = await this.refreshContext();
         if (!paperContext || !this.isCurrentContext(contextEpoch, paperContext)) return;
         const currentPage = currentPdfPage(paperContext, this.doc);
+        const pinnedSelections = this.draftPinnedSelections();
+        const liveSelection = this.manager.getLiveSelection(paperContext.attachmentID);
+        const selections = Protocol.mergeContextSelections(liveSelection, pinnedSelections);
         if (this.editingMessage) {
           const prepared = await this.prepareEditedThread(this.editingMessage, {
             epoch: contextEpoch,
@@ -3752,9 +3783,6 @@
         sendingThreadID = threadID;
         if (this.manager.runningTurns.has(threadID)) return;
 
-        const pinnedSelections = this.manager.getSelections(paperContext.attachmentID);
-        const liveSelection = this.manager.getLiveSelection(paperContext.attachmentID);
-        const selections = Protocol.mergeContextSelections(liveSelection, pinnedSelections);
         const includeItem = Boolean(this.manager.getPreference("includeItemContext"));
         let pdfEvidence = "";
         if (includeItem) {
@@ -3784,7 +3812,7 @@
         this.resizeComposer();
         this.renderContextAttachment();
         this.updateComposerState();
-        this.appendOptimisticUser(text, images);
+        this.appendOptimisticUser(text, images, selections);
         this.streamingText = "";
         this.streamingNode = null;
         this.streamingItemID = "";
@@ -3827,6 +3855,7 @@
           text,
           images,
           context: additionalContext,
+          selections,
           model: this.selectedModel,
           effort: this.selectedEffort,
           serviceTier: this.selectedServiceTier,

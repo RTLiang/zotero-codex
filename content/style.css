@@ -1485,6 +1485,37 @@ display: flex;
   background: color-mix(in srgb, AccentColor 7%, Field);
 }
 
+.zcs-attachments:has(.zcs-selection-attachment) {
+  max-height: 220px;
+}
+
+.zcs-selection-attachment {
+  align-items: flex-start;
+}
+
+.zcs-selection-text {
+  display: block;
+  margin-top: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: 11px;
+  line-height: 1.5;
+  user-select: text !important;
+  scrollbar-width: thin;
+}
+
+.zcs-message-selection {
+  margin: 0 0 9px;
+  padding: 0 0 0 9px;
+  border-inline-start: 2px solid var(--zcs-border-strong);
+}
+
+.zcs-message-selection .zcs-selection-text {
+  max-height: 180px;
+}
+
 .zcs-selection-attachment[data-new="true"] {
   animation: zcs-selection-added 1.15s ease-out;
 }

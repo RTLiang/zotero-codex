@@ -58,6 +58,7 @@ interface TurnRequest {
   text: unknown;
   images: unknown;
   context: unknown;
+  selections?: ContextSelection[];
   model?: string;
   effort?: string;
   serviceTier?: "default" | "priority";
@@ -507,15 +508,64 @@ interface TurnRequest {
 
     private uiStores = new Map<string, InteractiveUIStore>();
 
-    interactiveUIStore(): InteractiveUIStore {
-      const root = this.getPreference("codexHome") || global.Services.env.get("CODEX_HOME")
+    private storageRoot(): string {
+      return this.getPreference("codexHome") || global.Services.env.get("CODEX_HOME")
         || global.PathUtils.join(getHomeDirectory(), ".codex");
+    }
+
+    interactiveUIStore(): InteractiveUIStore {
+      const root = this.storageRoot();
       let store = this.uiStores.get(root);
       if (!store) {
         store = InteractiveUI.createStore(root);
         this.uiStores.set(root, store);
       }
       return store;
+    }
+
+    private selectionWrites = new Map<string, Promise<void>>();
+
+    private selectionPath(turnID: string): string {
+      if (!/^[a-zA-Z0-9_-]{1,128}$/u.test(turnID)) throw new Error("Invalid selection history identity");
+      return global.PathUtils.join(this.storageRoot(), "selected-text", `${turnID}.json`);
+    }
+
+    private async saveSelections(turnID: string, text: unknown, selections: ContextSelection[]): Promise<void> {
+      try {
+        const path = this.selectionPath(turnID);
+        const write = (async () => {
+          await global.IOUtils.makeDirectory(global.PathUtils.join(this.storageRoot(), "selected-text"),
+            { createAncestors: true, permissions: 0o700 });
+          await global.IOUtils.writeJSON(path, { text: String(text || ""), selections },
+            { tmpPath: `${path}.tmp`, flush: true });
+        })();
+        this.selectionWrites.set(path, write);
+        try { await write; }
+        finally { this.selectionWrites.delete(path); }
+      }
+      catch (error) {
+        // The server has accepted the turn. A display-history failure must not
+        // report a failed send and cause the same question to be sent twice.
+        this.log("Could not save selected text for message history", error);
+      }
+    }
+
+    private async restoreSelections(turn: unknown): Promise<void> {
+      const row = Protocol.asRecord(turn);
+      if (typeof row.id !== "string" || !global.IOUtils?.exists) return;
+      try {
+        const path = this.selectionPath(row.id);
+        await this.selectionWrites.get(path);
+        if (!await global.IOUtils.exists(path)) return;
+        const saved = Protocol.asRecord(await global.IOUtils.readJSON(path));
+        const selections = Protocol.mergeContextSelections(null, saved.selections);
+        for (const item of Array.isArray(row.items) ? row.items : []) {
+          if (item?.type === "userMessage" && Protocol.userInputText(item.content) === saved.text) {
+            item.selections = selections;
+          }
+        }
+      }
+      catch (error) { this.log("Could not read selected text for message history", error); }
     }
 
     respondError(id: unknown, message: unknown, code = -32601): void {
@@ -603,6 +653,7 @@ interface TurnRequest {
         cursor = page?.nextCursor || null;
         if (!cursor) break;
       }
+      await Promise.all(turns.map(turn => this.restoreSelections(turn)));
       return { ...thread, turns } as ThreadSummary & { turns: unknown[] };
     }
 
@@ -840,6 +891,7 @@ interface TurnRequest {
       text,
       images,
       context,
+      selections = [],
       model,
       effort,
       serviceTier,
@@ -897,6 +949,9 @@ interface TurnRequest {
           null,
           "Codex App Server did not return a turn ID",
         );
+        if (typeof turn.id === "string" && selections.length) {
+          await this.saveSelections(turn.id, text, selections);
+        }
         return turn;
       }
       finally { this.sendingThreads.delete(threadID); }

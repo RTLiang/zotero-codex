@@ -49,6 +49,7 @@ function viewFor(manager, id = "A") {
     "modelChoice", "effortChoice", "modelNextTurnHint", "reconnectButton", "transcript",
   ].map((name) => [name, element()]));
   const view = {
+    draftPinnedSelections: SidebarView.prototype.draftPinnedSelections,
     manager, client: manager.client, elements, threadID: id, thread: { id, name: `Chat ${id}` },
     context: { itemID: 1, attachmentID: 2, title: "Test document" }, contextEpoch: 1,
     loadSerial: 0, threadRefreshSerial: 0, models: [], images: [], pendingRequests: new Map(),

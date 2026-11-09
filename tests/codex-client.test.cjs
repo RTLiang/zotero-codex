@@ -8,6 +8,68 @@ require("../content/codex-client.js");
 
 const { CodexAppServerClient } = global.ZoteroCodexModules.CodexClient;
 
+test("selected passages survive a new client, stay with their own turn and storage root", async t => {
+  const fs = require("node:fs/promises");
+  const path = require("node:path");
+  const { spawnSync } = require("node:child_process");
+  const root = await fs.mkdtemp(path.join(require("node:os").tmpdir(), "zcs-selected-text-"));
+  const previous = { IOUtils: global.IOUtils, PathUtils: global.PathUtils };
+  t.after(() => {
+    Object.assign(global, previous);
+    assert.equal(spawnSync("trash", [root]).status, 0);
+  });
+  global.PathUtils = path;
+  global.IOUtils = {
+    exists: async target => { try { await fs.access(target); return true; } catch (error) {
+      if (error.code === "ENOENT") return false; throw error;
+    } },
+    makeDirectory: (target, options) => fs.mkdir(target, { recursive: options.createAncestors, mode: options.permissions }),
+    writeJSON: async (target, value, options) => {
+      await fs.writeFile(options.tmpPath, JSON.stringify(value));
+      await fs.rename(options.tmpPath, target);
+    },
+    readJSON: async target => JSON.parse(await fs.readFile(target, "utf8")),
+  };
+  const create = (storage = root) => {
+    const client = new CodexAppServerClient({ getPreference: key => key === "codexHome" ? storage : "" });
+    client.connect = async () => client;
+    client.request = async method => {
+      if (method === "thread/read") return { thread: { id: "fixture-chat" } };
+      if (method === "thread/turns/list") return { data: [
+        { id: "quoted-turn", items: [{ type: "userMessage", content: [{ type: "text", text: "Explain this" }] }] },
+        { id: "other-turn", items: [{ type: "userMessage", content: [{ type: "text", text: "Next question" }] }] },
+      ] };
+      return { turn: { id: "quoted-turn" } };
+    };
+    return client;
+  };
+  const selections = Protocol.mergeContextSelections(null, [
+    { text: "A synthetic passage with <plain> text.\nThe full second line.", pageNumber: 7, pageLabel: "vii" },
+  ]);
+  await create().startTurn({ threadID: "fixture-chat", text: "Explain this", selections });
+  const entries = Protocol.flattenTurns((await create().readThread("fixture-chat")).turns);
+  assert.deepEqual(entries[0].selections, selections);
+  assert.deepEqual(entries[1].selections, []);
+  assert.deepEqual(Protocol.flattenTurns((await create(path.join(root, "other-storage")).readThread("fixture-chat")).turns)[0].selections, []);
+  await fs.writeFile(path.join(root, "selected-text", "quoted-turn.json"), JSON.stringify({ text: "Different question", selections }));
+  assert.deepEqual(Protocol.flattenTurns((await create().readThread("fixture-chat")).turns)[0].selections, []);
+});
+
+test("a display-history write failure never retries an already accepted question", async t => {
+  const previous = { IOUtils: global.IOUtils, PathUtils: global.PathUtils };
+  t.after(() => Object.assign(global, previous));
+  global.PathUtils = require("node:path");
+  global.IOUtils = { makeDirectory: async () => { throw new Error("Fixture storage unavailable"); } };
+  const errors = [];
+  const client = new CodexAppServerClient({ getPreference: () => "/fixtures/storage", log: message => errors.push(message) });
+  client.connect = async () => client;
+  let sends = 0;
+  client.request = async method => { if (method === "turn/start") sends++; return { turn: { id: "accepted-turn" } }; };
+  assert.equal((await client.startTurn({ threadID: "fixture-chat", text: "Explain", selections: [{ text: "A sample passage." }] })).id, "accepted-turn");
+  assert.equal(sends, 1);
+  assert.deepEqual(errors, ["Could not save selected text for message history"]);
+});
+
 async function withImmediateLockWait(run) {
   const original = global.setTimeout;
   global.setTimeout = (callback, delay, ...args) => original(callback, delay === 500 ? 0 : delay, ...args);

@@ -100,7 +100,7 @@ interface Creator {
 
 type TranscriptEntry =
   | { id: string; turnID: string; role: "interactiveUI"; document: InteractiveUIDocument }
-  | { id: unknown; turnID: string; role: "user"; text: string; images: InputImage[] }
+  | { id: unknown; turnID: string; role: "user"; text: string; images: InputImage[]; selections: ContextSelection[] }
   | { id: unknown; turnID: string; role: "assistant"; phase: string | null; text: string }
   | { id: unknown; turnID: string; role: "generatedImage"; images: { url: string; name: string }[] }
   | { id: string; turnID: string; role: "activity"; text: string; item: unknown };
@@ -459,7 +459,8 @@ interface ProtocolModule {
         if (item.type === "userMessage") {
           const text = userInputText(item.content);
           const images = userInputImages(item.content);
-          if (text || images.length) output.push({ id: item.id, turnID, role: "user", text, images });
+          const selections = mergeContextSelections(null, item.selections);
+          if (text || images.length || selections.length) output.push({ id: item.id, turnID, role: "user", text, images, selections });
           continue;
         }
         if (item.type === "agentMessage") {

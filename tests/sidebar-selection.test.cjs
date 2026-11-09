@@ -31,6 +31,7 @@ function titleSendView(includeItem = true) {
     resizeComposer() {}, renderContextAttachment() {}, appendOptimisticUser() {},
     showPendingResponse() {}, setRunning() {}, showError(error) { throw error; },
     createThreadForMessage: SidebarView.prototype.createThreadForMessage,
+    draftPinnedSelections: SidebarView.prototype.draftPinnedSelections,
   };
   view.manager.setPreference("includeItemContext", includeItem);
   return view;
@@ -360,6 +361,36 @@ test("removes the live and pinned selections after they are sent", () => {
 
   assert.deepEqual(manager.getSelections(11), []);
   assert.equal(manager.getLiveSelection(11), null);
+});
+
+test("sending snapshots visible selections into both the message and history request", async () => {
+  const view = titleSendView(false);
+  view.manager.addSelection(2, { text: "A pinned sample passage.", pageNumber: 3 });
+  view.manager.setLiveSelection(2, { text: "A current sample passage.", pageNumber: 4 });
+  let optimistic;
+  let sent;
+  view.appendOptimisticUser = (text, images, selections) => { optimistic = { text, images, selections }; };
+  view.client.startTurn = async args => { sent = args; return { id: "selection-turn" }; };
+  await SidebarView.prototype.send.call(view);
+  assert.deepEqual(optimistic.selections, sent.selections);
+  assert.deepEqual(sent.selections.map(selection => selection.text), [
+    "A current sample passage.", "A pinned sample passage.",
+  ]);
+  assert.match(sent.context.zotero.value, /A current sample passage/u);
+  assert.deepEqual(view.manager.getSelections(2), []);
+  assert.equal(view.manager.getLiveSelection(2), null);
+});
+
+test("editing retains the original quotes even when preparing the edited chat clears edit state", async () => {
+  const view = titleSendView(false);
+  const selection = { id: "original", text: "An original quoted passage.", pageNumber: 2 };
+  view.editingMessage = { selections: [selection] };
+  view.threadID = "existing-chat";
+  view.prepareEditedThread = async () => { view.editingMessage = null; return {}; };
+  let sent;
+  view.client.startTurn = async args => { sent = args; return { id: "edited-turn" }; };
+  await SidebarView.prototype.send.call(view);
+  assert.equal(sent.selections[0].text, selection.text);
 });
 
 test("bounds selection state and removes empty attachment buckets", () => {

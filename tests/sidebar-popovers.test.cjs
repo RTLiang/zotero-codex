@@ -35,6 +35,7 @@ function mountedView() {
           for (const child of children) { child.parentNode = this; this.children.push(child); }
         },
         appendChild(child) { this.append(child); return child; },
+        prepend(...children) { this.children.unshift(...children); },
         replaceChildren(...children) { this.children = []; this.append(...children); },
         remove() { this.parentNode.children = this.parentNode.children.filter(child => child !== this); },
         contains(target) {
@@ -62,6 +63,31 @@ function mountedView() {
   view.mount();
   return view;
 }
+
+test("composer and sent messages expose complete selected text as plain text", () => {
+  const view = mountedView();
+  const selection = { id: "sample-selection", pageNumber: 3, text: `${"A sample passage. ".repeat(12)}\n<plain text>` };
+  view.context = { attachmentID: 2 };
+  view.images = [];
+  view.manager.getSelections = () => [selection];
+  view.manager.getLiveSelection = () => null;
+  const removed = [];
+  view.manager.removeSelection = (attachment, id) => removed.push([attachment, id]);
+  SidebarView.prototype.renderContextAttachment.call(view);
+  const flatten = node => [node, ...node.children.flatMap(flatten)];
+  const nodes = flatten(view.elements.attachments);
+  assert.equal(view.elements.attachments.hidden, false);
+  const text = nodes.find(node => node.className === "zcs-selection-text");
+  assert.equal(text.textContent, selection.text);
+  assert.equal(text.children.length, 0);
+  nodes.find(node => node.className === "zcs-attachment-remove").click();
+  assert.deepEqual(removed, [[2, selection.id]]);
+
+  const entry = view.appendEntry({ role: "user", text: "", selections: [selection] });
+  const quote = flatten(entry).find(node => node.className === "zcs-selection-text");
+  assert.equal(quote.textContent, selection.text);
+  assert.equal(quote.children.length, 0);
+});
 
 test("opening the chat picker loads history on demand", () => {
   const view = mountedView();
