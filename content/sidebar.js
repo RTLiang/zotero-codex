@@ -3194,16 +3194,20 @@
       this.manager.log(message, error);
     }
 
-    renderTranscript(entries, { preserveScroll = false } = {}) {
-      this.disposeInteractiveViews();
-      const transcript = this.elements.transcript;
-      this.clearResponseScrollSpace();
-      transcript.replaceChildren();
-      const messages = Protocol.groupTranscriptEntries(entries);
-      if (!messages.length) {
-        this.renderEmpty("", "");
-        return;
+    transcriptEntrySignature(entry) {
+      const { id, turnID, ...content } = entry;
+      if (entry.role === "interactiveUI") content.id = id;
+      if (entry.role === "assistant") content.phase = Protocol.normalizeMessagePhase(entry.phase);
+      if (entry.role === "user") {
+        content.images ||= [];
+        content.selections ||= [];
       }
+      return JSON.stringify(Object.fromEntries(Object.keys(content).sort().map(key => [key, content[key]])));
+    }
+
+    renderTranscript(entries, { preserveScroll = false } = {}) {
+      const transcript = this.elements.transcript;
+      const messages = Protocol.groupTranscriptEntries(entries);
       const latestUserIndex = messages.findLastIndex?.((entry) => entry.role === "user")
         ?? (() => {
           for (let index = messages.length - 1; index >= 0; index--) {
@@ -3211,8 +3215,29 @@
           }
           return -1;
         })();
-      messages.forEach((entry, index) => this.appendEntry(entry, {
-        editMode: index === latestUserIndex ? "revert" : "fork",
+      const existing = preserveScroll ? Array.from(transcript.children) : [];
+      let retained = 0;
+      const retainedViews = new Set();
+      for (const [index, entry] of messages.entries()) {
+        const node = existing[index];
+        const record = this.transcriptEntries?.get(node);
+        if (!record || this.transcriptEntrySignature(record.entry) !== this.transcriptEntrySignature(entry)) break;
+        this.updateMessageActions(node, entry, { editMode: index === latestUserIndex ? "revert" : "fork" });
+        record.entry = entry;
+        for (const view of record.views) retainedViews.add(view);
+        retained++;
+      }
+      this.disposeInteractiveViews(retainedViews);
+      this.clearResponseScrollSpace();
+      if (retained) {
+        while (transcript.lastElementChild !== existing[retained - 1]) transcript.lastElementChild.remove();
+      } else transcript.replaceChildren();
+      if (!messages.length) {
+        this.renderEmpty("", "");
+        return;
+      }
+      messages.slice(retained).forEach((entry, offset) => this.appendEntry(entry, {
+        editMode: retained + offset === latestUserIndex ? "revert" : "fork",
       }));
       if (!preserveScroll) transcript.scrollTop = transcript.scrollHeight;
     }
@@ -3458,12 +3483,20 @@
       parent.append(gallery);
     }
 
-    disposeInteractiveViews() {
-      for (const view of this.interactiveViews || []) view.dispose();
-      this.interactiveViews = [];
+    disposeInteractiveViews(retained = new Set()) {
+      for (const view of this.interactiveViews || []) if (!retained.has(view)) view.dispose();
+      this.interactiveViews = (this.interactiveViews || []).filter(view => retained.has(view));
     }
 
     appendEntry(entry, { streaming = false, editMode = "fork" } = {}) {
+      const viewCount = this.interactiveViews?.length || 0;
+      const node = this.createTranscriptEntry(entry, { streaming, editMode });
+      this.transcriptEntries ||= new WeakMap();
+      this.transcriptEntries.set(node, { entry, views: this.interactiveViews?.slice(viewCount) || [] });
+      return node;
+    }
+
+    createTranscriptEntry(entry, { streaming = false, editMode = "fork" } = {}) {
       const transcript = this.elements.transcript;
       if (entry.role === "process") return this.appendProcessGroup(entry.entries || []);
       if (entry.role === "interactiveUI") {
@@ -3548,7 +3581,15 @@
       }
       if (entry.text) body.append(content);
       this.appendMessageImages(body, entry.images);
-      if (!streaming && (entry.role === "user" || entry.role === "assistant")) {
+      this.updateMessageActions(article, entry, { streaming, editMode });
+      article.prepend(body);
+      transcript.append(article);
+      return article;
+    }
+
+    updateMessageActions(article, entry, { streaming = false, editMode = "fork" } = {}) {
+      article.querySelector(".zcs-message-actions")?.remove();
+      if (!streaming && (entry.role === "user" || entry.role === "assistant") && entry.phase !== "commentary") {
         const actions = create(this.doc, "div", "zcs-message-actions");
         if (entry.text) {
           const copyButton = createL10n(
@@ -3583,10 +3624,7 @@
         }
         if (actions.childElementCount) article.append(actions);
       }
-      article.prepend(body);
-      if (streaming) article.classList.add("zcs-streaming");
-      transcript.append(article);
-      return article;
+      article.classList.toggle("zcs-streaming", streaming);
     }
 
     appendOptimisticUser(text, images = [], selections = []) {
@@ -3709,6 +3747,7 @@
         appendMarkdown(this.doc, content, this.streamingText,
           (reference, attachmentID) => this.openPdfReference(reference, attachmentID),
           this.context, (source, opener) => this.openDiagramPreview(source, opener));
+        this.transcriptEntries.get(this.streamingNode).entry.text = this.streamingText;
       }
     }
 
