@@ -9,26 +9,17 @@ require("../content/codex-client.js");
 const { CodexAppServerClient } = global.ZoteroCodexModules.CodexClient;
 
 test("selected passages survive a new client, stay with their own turn and storage root", async t => {
-  const fs = require("node:fs/promises");
-  const path = require("node:path");
-  const { spawnSync } = require("node:child_process");
-  const root = await fs.mkdtemp(path.join(require("node:os").tmpdir(), "zcs-selected-text-"));
+  const path = require("node:path").posix;
+  const root = "/fixtures/selected-text-storage";
+  const files = new Map();
   const previous = { IOUtils: global.IOUtils, PathUtils: global.PathUtils };
-  t.after(() => {
-    Object.assign(global, previous);
-    assert.equal(spawnSync("trash", [root]).status, 0);
-  });
+  t.after(() => Object.assign(global, previous));
   global.PathUtils = path;
   global.IOUtils = {
-    exists: async target => { try { await fs.access(target); return true; } catch (error) {
-      if (error.code === "ENOENT") return false; throw error;
-    } },
-    makeDirectory: (target, options) => fs.mkdir(target, { recursive: options.createAncestors, mode: options.permissions }),
-    writeJSON: async (target, value, options) => {
-      await fs.writeFile(options.tmpPath, JSON.stringify(value));
-      await fs.rename(options.tmpPath, target);
-    },
-    readJSON: async target => JSON.parse(await fs.readFile(target, "utf8")),
+    exists: async target => files.has(target),
+    makeDirectory: async () => {},
+    writeJSON: async (target, value) => { files.set(target, JSON.stringify(value)); },
+    readJSON: async target => JSON.parse(files.get(target)),
   };
   const create = (storage = root) => {
     const client = new CodexAppServerClient({ getPreference: key => key === "codexHome" ? storage : "" });
@@ -51,7 +42,7 @@ test("selected passages survive a new client, stay with their own turn and stora
   assert.deepEqual(entries[0].selections, selections);
   assert.deepEqual(entries[1].selections, []);
   assert.deepEqual(Protocol.flattenTurns((await create(path.join(root, "other-storage")).readThread("fixture-chat")).turns)[0].selections, []);
-  await fs.writeFile(path.join(root, "selected-text", "quoted-turn.json"), JSON.stringify({ text: "Different question", selections }));
+  files.set(path.join(root, "selected-text", "quoted-turn.json"), JSON.stringify({ text: "Different question", selections }));
   assert.deepEqual(Protocol.flattenTurns((await create().readThread("fixture-chat")).turns)[0].selections, []);
 });
 
