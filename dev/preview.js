@@ -11,7 +11,7 @@
     pdfPath: "/papers/CREATE/paper.pdf",
   };
   const preferences = new Map(Object.entries({
-    includeItemContext: true, paperOnlyChats: false, paperThreads: "{}", sidebarHeight: Math.min(innerHeight, 840),
+    paperOnlyChats: false, paperThreads: "{}", sidebarHeight: Math.min(innerHeight, 840),
   }));
   const listeners = new Set();
   const threads = new Map([

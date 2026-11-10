@@ -89,6 +89,26 @@ test("composer and sent messages expose complete selected text as plain text", (
   assert.equal(quote.children.length, 0);
 });
 
+test("the current paper stays attached and the composer exposes only the add menu", () => {
+  const view = mountedView();
+  view.context = { attachmentID: 2, title: "Sample document", pdfPath: "/fixtures/document.pdf" };
+  view.images = [];
+  view.manager.getPreference = () => false;
+  view.manager.getSelections = () => [];
+  view.manager.getLiveSelection = () => null;
+  SidebarView.prototype.renderContextAttachment.call(view);
+  const flatten = node => [node, ...node.children.flatMap(flatten)];
+  const attachment = flatten(view.elements.attachments);
+  assert.equal(view.elements.attachments.hidden, false);
+  assert.ok(attachment.some(node => node.textContent === "Sample document"));
+  assert.ok(!attachment.some(node => node.className === "zcs-attachment-remove"));
+  assert.ok(!flatten(view.elements.root).some(node => /zcs-context-mode|zcs-context-option/u.test(node.className || "")));
+  view.elements.contextAddButton.click();
+  assert.equal(view.elements.contextPopover.hidden, false);
+  assert.ok(view.elements.contextPopover.children.includes(view.elements.imageOption));
+  assert.ok(view.elements.contextPopover.children.includes(view.elements.generateImageOption));
+});
+
 test("opening the chat picker loads history on demand", () => {
   const view = mountedView();
   let loads = 0;

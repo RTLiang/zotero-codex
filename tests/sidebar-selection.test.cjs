@@ -117,7 +117,7 @@ test("this page uses the reader position captured before async chat creation", a
   assert.match(sent.context.zotero.value, /Current page text:\nConclusion/u);
 });
 
-test("current reader page never leaks through library, another attachment, or disabled context", async t => {
+test("current reader page never leaks through library, another attachment, or an uninitialized reader", async t => {
   const reader = { itemID: 2, _internalReader: { _primaryView: {
     _iframeWindow: { PDFViewerApplication: { pdfViewer: { currentPageNumber: 2 } } },
   } } };
@@ -127,8 +127,8 @@ test("current reader page never leaks through library, another attachment, or di
     Reader: { getByTabID: () => reader },
     PDFWorker: { getFullText: async () => ({ text: "First\fSecond", extractedPages: 2 }) },
   };
-  for (const mode of ["library", "other-attachment", "disabled", "uninitialized"]) {
-    const view = titleSendView(mode !== "disabled");
+  for (const mode of ["library", "other-attachment", "uninitialized"]) {
+    const view = titleSendView();
     view.context.tabType = mode === "library" ? "library" : "reader";
     view.doc = { defaultView: { Zotero_Tabs: { selectedID: "active-pdf" } } };
     reader.itemID = mode === "other-attachment" ? 99 : 2;
@@ -138,7 +138,6 @@ test("current reader page never leaks through library, another attachment, or di
     view.client.startTurn = async args => { sent = args; return { id: "first-turn" }; };
     await SidebarView.prototype.send.call(view);
     assert.doesNotMatch(sent.context?.zotero.value || "", /Currently viewed page|Current page text/u, mode);
-    if (mode === "disabled") assert.equal(sent.context, null);
   }
 });
 
@@ -170,11 +169,15 @@ test("MCP access prompts explain the requested access when the server provides a
   assert.deepEqual(description, { text: "Allow access to Zotero" });
 });
 
-test("title generation respects disabled item context", async () => {
+test("legacy disabled context cannot suppress the current item or document-based naming", async () => {
   const view = titleSendView(false);
+  let sent;
+  view.client.startTurn = async args => { sent = args; return { id: "first-turn" }; };
   await SidebarView.prototype.send.call(view);
-  assert.equal(view.thread.name, "这是什么");
-  assert.equal(view.manager.runningTurns.get(view.threadID).titleRequest.context, null);
+  assert.equal(view.thread.name, view.context.title);
+  assert.match(sent.context.zotero.value, /Sample document/u);
+  assert.match(sent.context.zotero.value, /\/fixtures\/document.pdf/u);
+  assert.match(view.manager.runningTurns.get(view.threadID).titleRequest.context.zotero.value, /Sample document/u);
 });
 
 test("auto naming uses the first final answer and preserves manual renames during generation", async () => {

@@ -61,13 +61,6 @@ zotero-codex-remove-image =
 zotero-codex-error-image-count = You can attach up to { $count } images.
 zotero-codex-error-image-type = Use a PNG, JPEG, WebP, or GIF image.
 zotero-codex-error-image-size = Each image must be { $size } MB or smaller.
-zotero-codex-context-settings =
-    .title = Zotero context settings
-zotero-codex-context-on =
-    .title = Include the current item when sending
-zotero-codex-context-off =
-    .title = Do not include Zotero context when sending
-zotero-codex-item = Item
 zotero-codex-model-settings =
     .title = Choose model, reasoning effort and speed
     .aria-label = Choose model, reasoning effort and speed
@@ -119,12 +112,6 @@ zotero-codex-creating-task =
     .title = Starting chat
     .aria-label = Starting chat
 
-zotero-codex-include-current-item = Include current item
-zotero-codex-reading-current-item = Reading current item…
-zotero-codex-no-recognized-item = No recognized item selected
-zotero-codex-no-item-to-include = No item available to include
-zotero-codex-pdf-available = PDF available
-zotero-codex-no-local-pdf = No local PDF
 zotero-codex-pdf-context = PDF context
 zotero-codex-added-pdf-selections = Added PDF selections
 zotero-codex-current-selection = Current selection
@@ -150,9 +137,6 @@ zotero-codex-attachment-meta-item =
         [one] Item · 1 selection
        *[other] Item · { $count } selections
     }
-zotero-codex-remove-context =
-    .title = Do not include Zotero context this time
-    .aria-label = Do not include Zotero context this time
 
 zotero-codex-no-matching-tasks = No matching conversations
 zotero-codex-no-tasks = No conversations yet

@@ -15,7 +15,7 @@ Users create, search, resume and manage chats while replies stream. Chats can co
 - `background` keeps a reply running while users switch chats and restores its Stop button.
 - `history-edit` copies messages, edits the latest turn, or branches an earlier turn.
 - `manage` archives/deletes a chat and clears its paper bindings after success.
-- `title` begins with the paper title when Include current item is enabled, then may generate a paper-related name. The native Codex section summary follows the active chat title; blank chats use the localized New chat label.
+- `title` begins with the paper title for the current item, then may generate a paper-related name. The native Codex section summary follows the active chat title; blank chats use the localized New chat label.
 
 ## How to get to it (user POV)
 

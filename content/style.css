@@ -1764,10 +1764,6 @@ display: flex;
   line-height: 1;
 }
 
-.zcs-context-mode:not(.zcs-context-off) {
-  color: CanvasText;
-}
-
 .zcs-model-trigger {
   display: flex;
   min-width: 0;
@@ -1860,16 +1856,6 @@ display: flex;
 
 .zcs-context-popover .zcs-menu-row + .zcs-menu-row {
   margin-top: 3px;
-}
-
-.zcs-context-popover .zcs-context-option {
-  padding-top: 12px;
-  padding-bottom: 12px;
-}
-
-.zcs-context-option .zcs-row-meta {
-  margin-top: 5px;
-  line-height: 1.4;
 }
 
 
@@ -1978,10 +1964,6 @@ display: flex;
   width: 16px;
   flex: 0 0 16px;
   text-align: center;
-}
-
-.zcs-context-option[data-selected="true"] .zcs-context-check {
-  color: CanvasText;
 }
 
 .zcs-context-selections {
@@ -2159,10 +2141,6 @@ display: flex;
 @media (max-width: 340px) {
   .zcs-shell {
     font-size: 12.5px;
-  }
-
-  .zcs-context-mode-label {
-    display: none;
   }
 
   .zcs-thread-popover,

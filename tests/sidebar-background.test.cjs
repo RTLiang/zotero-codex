@@ -45,7 +45,7 @@ function session() {
 function viewFor(manager, id = "A") {
   const elements = Object.fromEntries([
     "input", "sendButton", "newThreadButton", "threadButton", "contextAddButton",
-    "contextModeButton", "imageOption", "generateImageOption", "imageInput", "modelTrigger",
+    "imageOption", "generateImageOption", "imageInput", "modelTrigger",
     "modelChoice", "effortChoice", "modelNextTurnHint", "reconnectButton", "transcript",
   ].map((name) => [name, element()]));
   const view = {

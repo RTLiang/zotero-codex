@@ -61,13 +61,6 @@ zotero-codex-remove-image =
 zotero-codex-error-image-count = 最多可添加 { $count } 张图片。
 zotero-codex-error-image-type = 请选择 PNG、JPEG、WebP 或 GIF 图片。
 zotero-codex-error-image-size = 每张图片不能超过 { $size } MB。
-zotero-codex-context-settings =
-    .title = Zotero 上下文设置
-zotero-codex-context-on =
-    .title = 发送时会附带当前文献
-zotero-codex-context-off =
-    .title = 发送时不附带 Zotero 上下文
-zotero-codex-item = 文献
 zotero-codex-model-settings =
     .title = 选择模型、思考强度与速度
     .aria-label = 选择模型、思考强度与速度
@@ -119,12 +112,6 @@ zotero-codex-creating-task =
     .title = 正在开始对话
     .aria-label = 正在开始对话
 
-zotero-codex-include-current-item = 附带当前文献
-zotero-codex-reading-current-item = 正在读取当前条目…
-zotero-codex-no-recognized-item = 未选择可识别的文献条目
-zotero-codex-no-item-to-include = 当前没有可附带的文献
-zotero-codex-pdf-available = PDF 可用
-zotero-codex-no-local-pdf = 无本地 PDF
 zotero-codex-pdf-context = PDF 上下文
 zotero-codex-added-pdf-selections = 已添加的 PDF 选区
 zotero-codex-current-selection = 当前选区
@@ -150,9 +137,6 @@ zotero-codex-attachment-meta-item =
         [1] 文献 · 1 个选区
        *[other] 文献 · { $count } 个选区
     }
-zotero-codex-remove-context =
-    .title = 本次不附带 Zotero 上下文
-    .aria-label = 本次不附带 Zotero 上下文
 
 zotero-codex-no-matching-tasks = 没有匹配的对话
 zotero-codex-no-tasks = 还没有对话

@@ -951,20 +951,11 @@
       const composerTools = create(doc, "div", "zcs-composer-tools");
       const contextAddButton = create(doc, "button", "zcs-composer-tool zcs-add-button", "+");
       contextAddButton.type = "button";
-      contextAddButton.title = "Add Zotero context";
-      contextAddButton.setAttribute("aria-label", "Add Zotero context");
+      contextAddButton.title = "Add content";
+      contextAddButton.setAttribute("aria-label", "Add content");
       setL10n(contextAddButton, "zotero-codex-add-context");
       contextAddButton.setAttribute("aria-expanded", "false");
-      const contextModeButton = create(doc, "button", "zcs-composer-tool zcs-context-mode");
-      contextModeButton.type = "button";
-      contextModeButton.title = "Zotero context settings";
-      contextModeButton.setAttribute("aria-expanded", "false");
-      setL10n(contextModeButton, "zotero-codex-context-settings");
-      contextModeButton.append(
-        createDocumentIcon(doc),
-        createL10n(doc, "span", "zcs-context-mode-label", "zotero-codex-item", "Item"),
-      );
-      composerTools.append(contextAddButton, contextModeButton);
+      composerTools.append(contextAddButton);
       const modelTrigger = create(doc, "button", "zcs-model-trigger");
       modelTrigger.type = "button";
       modelTrigger.setAttribute("aria-haspopup", "dialog");
@@ -1014,28 +1005,8 @@
         generateImageIcon,
         createL10n(doc, "span", "zcs-row-copy", "zotero-codex-generate-image", "Generate image"),
       );
-      const contextOption = create(doc, "button", "zcs-menu-row zcs-context-option");
-      contextOption.type = "button";
-      const contextCheck = create(doc, "span", "zcs-row-icon zcs-context-check", "✓");
-      const contextCopy = create(doc, "span", "zcs-row-copy");
-      const contextTitle = createL10n(
-        doc,
-        "span",
-        "zcs-row-title",
-        "zotero-codex-include-current-item",
-        "Include current item",
-      );
-      const contextMeta = createL10n(
-        doc,
-        "span",
-        "zcs-row-meta",
-        "zotero-codex-reading-current-item",
-        "Reading current item…",
-      );
-      contextCopy.append(contextTitle, contextMeta);
-      contextOption.append(contextCheck, contextCopy);
       const selections = create(doc, "div", "zcs-context-selections");
-      contextPopover.append(imageOption, generateImageOption, contextOption, selections);
+      contextPopover.append(imageOption, generateImageOption, selections);
 
       const modelPopover = create(doc, "section", "zcs-popover zcs-model-popover");
       modelPopover.hidden = true;
@@ -1136,13 +1107,8 @@
         resizeHandles,
         contextPopover,
         contextAddButton,
-        contextModeButton,
         imageOption,
         generateImageOption,
-        contextOption,
-        contextCheck,
-        contextTitle,
-        contextMeta,
         selections,
         attachments,
         transcript,
@@ -1226,7 +1192,6 @@
         loadMoreThreads: () => this.loadMoreThreads(),
         archiveThread: () => void this.manageThread("archive"),
         deleteThread: () => void this.manageThread("delete"),
-        toggleContext: () => this.toggleItemContext(),
         chooseImages: () => {
           this.closePopovers();
           imageInput.click();
@@ -1315,7 +1280,6 @@
       threadButton.addEventListener("contextmenu", this.handlers.threadHeaderContextMenu);
       moreButton.addEventListener("click", this.handlers.toggleSettings);
       contextAddButton.addEventListener("click", this.handlers.toggleContextMenu);
-      contextModeButton.addEventListener("click", this.handlers.toggleContextMenu);
       modelTrigger.addEventListener("click", this.handlers.toggleModelMenu);
       for (const choice of Object.values(choices)) {
         choice.button.addEventListener("click", this.handlers.choiceToggle);
@@ -1332,7 +1296,6 @@
       threadList.addEventListener("scroll", this.handlers.loadMoreThreads);
       archiveThreadButton.addEventListener("click", this.handlers.archiveThread);
       deleteThreadButton.addEventListener("click", this.handlers.deleteThread);
-      contextOption.addEventListener("click", this.handlers.toggleContext);
       imageOption.addEventListener("click", this.handlers.chooseImages);
       generateImageOption.addEventListener("click", this.handlers.chooseImageGeneration);
       sendButton.addEventListener("click", this.handlers.sendOrStop);
@@ -1497,7 +1460,6 @@
         if (name === except) continue;
         popover.hidden = true;
         trigger.setAttribute("aria-expanded", "false");
-        if (name === "context") this.elements.contextModeButton.setAttribute("aria-expanded", "false");
       }
     }
 
@@ -1519,7 +1481,6 @@
         popover.style.bottom = `${Math.max(8, root.bottom - anchor.top + 8)}px`;
         popover.style.maxHeight = `${Math.max(80, anchor.top - root.top - 12)}px`;
       }
-      if (name === "context") this.elements.contextModeButton.setAttribute("aria-expanded", String(willOpen));
       if (willOpen && name === "model") {
         this.renderModelControls();
         this.elements.modelChoice.focus();
@@ -1549,7 +1510,6 @@
         this.elements.threadButton,
         this.elements.moreButton,
         this.elements.contextAddButton,
-        this.elements.contextModeButton,
         this.elements.modelTrigger,
         this.elements.commandMenu,
         this.elements.input,
@@ -1566,7 +1526,6 @@
       if (this.elements.headerNewButton) this.elements.headerNewButton.disabled = unavailable;
       this.elements.threadButton.disabled = unavailable;
       this.elements.contextAddButton.disabled = this.running || this.contextTransitioning;
-      this.elements.contextModeButton.disabled = this.running || this.contextTransitioning;
       this.elements.imageOption.disabled = this.running || this.contextTransitioning;
       this.elements.generateImageOption.disabled = this.running || this.contextTransitioning;
       this.elements.imageInput.disabled = this.running || this.contextTransitioning;
@@ -2139,23 +2098,6 @@
       const context = await resolveItemContext(item, this.tabType);
       if (this.destroyed || epoch !== this.contextEpoch || item !== this.item) return null;
       this.context = context;
-      if (context.title) setPlainText(this.elements.contextMeta, context.title);
-      else setLocalizedText(
-        this.elements.contextMeta,
-        "zotero-codex-no-recognized-item",
-        "No recognized item selected",
-      );
-      const [pdfAvailable, noLocalPDF] = await Promise.all([
-        formatValue(this.doc, "zotero-codex-pdf-available", null, "PDF available"),
-        formatValue(this.doc, "zotero-codex-no-local-pdf", null, "No local PDF"),
-      ]);
-      if (this.destroyed || epoch !== this.contextEpoch || item !== this.item) return null;
-      const meta = [
-        Protocol.firstLine(context.creators, 58),
-        context.date,
-        context.pdfPath ? pdfAvailable : noLocalPDF,
-      ].filter(Boolean);
-      this.elements.contextMeta.title = [context.title, ...meta].filter(Boolean).join("\n");
       this.renderSelections();
       this.renderContextAttachment();
       return context;
@@ -2623,7 +2565,6 @@
 
     renderContextAttachment({ highlightSelectionID = "" } = {}) {
       if (!this.elements) return;
-      const enabled = Boolean(this.manager.getPreference("includeItemContext"));
       const selections = this.draftPinnedSelections();
       const liveSelection = this.context
         ? this.manager.getLiveSelection(this.context.attachmentID)
@@ -2633,27 +2574,10 @@
         liveSelection && mergedSelections.length > selections.length,
       );
       const itemAvailable = Boolean(this.context?.title);
-      this.elements.contextOption.disabled = !itemAvailable;
-      this.elements.contextOption.dataset.selected = String(enabled && itemAvailable);
-      this.elements.contextCheck.textContent = enabled && itemAvailable ? "✓" : "";
-      if (this.context?.title) setPlainText(this.elements.contextMeta, this.context.title);
-      else setLocalizedText(
-        this.elements.contextMeta,
-        "zotero-codex-no-item-to-include",
-        "No item available to include",
-      );
-      this.elements.contextModeButton.classList.toggle("zcs-context-off", !enabled || !itemAvailable);
-      this.elements.contextModeButton.title = enabled && itemAvailable
-        ? "Include the current item when sending"
-        : "Do not include Zotero context when sending";
-      setL10n(
-        this.elements.contextModeButton,
-        enabled && itemAvailable ? "zotero-codex-context-on" : "zotero-codex-context-off",
-      );
 
       const attachments = this.elements.attachments;
       attachments.replaceChildren();
-      const showItem = enabled && itemAvailable;
+      const showItem = itemAvailable;
       attachments.hidden = !this.images.length && !showItem && !showLiveSelection && !selections.length;
 
       for (const image of this.images) {
@@ -2700,16 +2624,7 @@
             { count: 0 },
           ),
         );
-        const remove = create(this.doc, "button", "zcs-attachment-remove", "×");
-        remove.type = "button";
-        remove.title = "Do not include Zotero context this time";
-        remove.setAttribute("aria-label", remove.title);
-        setL10n(remove, "zotero-codex-remove-context");
-        remove.addEventListener("click", () => {
-          this.manager.setPreference("includeItemContext", false);
-          this.renderContextAttachment();
-        });
-        chip.append(icon, copy, remove);
+        chip.append(icon, copy);
         attachments.append(chip);
       }
 
@@ -2804,14 +2719,6 @@
           .filter(selection => selection.id !== selectionID);
       }
       this.manager.removeSelection(this.context?.attachmentID, selectionID);
-    }
-
-    toggleItemContext() {
-      if (this.elements.contextOption.disabled) return;
-      const next = !Boolean(this.manager.getPreference("includeItemContext"));
-      this.manager.setPreference("includeItemContext", next);
-      this.renderContextAttachment();
-      this.closePopovers();
     }
 
     async refreshThreads({ reloadCurrent = false } = {}) {
@@ -3803,7 +3710,7 @@
         if (!context || !this.isCurrentContext(epoch, context)) return null;
         this.setStatus("busy", "");
         const title = Protocol.firstLine(
-          this.manager.getPreference("includeItemContext") ? context.title || text : text,
+          context.title || text,
           58,
         ) || "Zotero research";
         const thread = await this.client.startThread({
@@ -3880,20 +3787,15 @@
         sendingThreadID = threadID;
         if (this.manager.runningTurns.has(threadID)) return;
 
-        const includeItem = Boolean(this.manager.getPreference("includeItemContext"));
         let pdfEvidence = "";
-        if (includeItem) {
-          try {
-            pdfEvidence = await pdfEvidenceForQuestion(paperContext, text, currentPage);
-          }
-          catch (error) {
-            this.manager.log("Could not extract current PDF text", error);
-          }
-          if (!this.isCurrentContext(contextEpoch, paperContext)) return;
+        try {
+          pdfEvidence = await pdfEvidenceForQuestion(paperContext, text, currentPage);
         }
-        let additionalContext = includeItem || selections.length
-          ? Protocol.buildZoteroContext(paperContext, selections, { includeItem, pdfEvidence })
-          : null;
+        catch (error) {
+          this.manager.log("Could not extract current PDF text", error);
+        }
+        if (!this.isCurrentContext(contextEpoch, paperContext)) return;
+        let additionalContext = Protocol.buildZoteroContext(paperContext, selections, { pdfEvidence });
         if (this.interactiveViews?.length) {
           const interactive = await Promise.all(this.interactiveViews.slice(-4).map(view => view.context()));
           if (!this.isCurrentContext(contextEpoch, paperContext) || this.threadID !== threadID) return;
@@ -3928,14 +3830,12 @@
           titleRequest = {
             threadID,
             text: text || images[0]?.name || "Image",
-            context: includeItem || selections.length
-              ? Protocol.buildZoteroContext({
-                title: paperContext.title,
-                creators: paperContext.creators,
-                date: paperContext.date,
-                abstract: paperContext.abstract,
-              }, selections, { includeItem })
-              : null,
+            context: Protocol.buildZoteroContext({
+              title: paperContext.title,
+              creators: paperContext.creators,
+              date: paperContext.date,
+              abstract: paperContext.abstract,
+            }, selections),
             initialName: this.thread?.name || "",
             model: this.selectedModel,
             effort: titleEffort,
@@ -4039,7 +3939,6 @@
       this.elements.newThreadButton.disabled = this.creatingTask || this.contextTransitioning;
       this.elements.threadButton.disabled = this.creatingTask || this.contextTransitioning;
       this.elements.contextAddButton.disabled = running || this.contextTransitioning;
-      this.elements.contextModeButton.disabled = running || this.contextTransitioning;
       this.elements.imageOption.disabled = running || this.contextTransitioning;
       this.elements.generateImageOption.disabled = running || this.contextTransitioning;
       this.elements.imageInput.disabled = running || this.contextTransitioning;
@@ -4373,7 +4272,6 @@
       e.threadButton.removeEventListener("contextmenu", this.handlers.threadHeaderContextMenu);
       e.moreButton.removeEventListener("click", this.handlers.toggleSettings);
       e.contextAddButton.removeEventListener("click", this.handlers.toggleContextMenu);
-      e.contextModeButton.removeEventListener("click", this.handlers.toggleContextMenu);
       e.modelTrigger.removeEventListener("click", this.handlers.toggleModelMenu);
       for (const choice of Object.values(e.choices)) {
         choice.button.removeEventListener("click", this.handlers.choiceToggle);
@@ -4390,7 +4288,6 @@
       e.threadList.removeEventListener("scroll", this.handlers.loadMoreThreads);
       e.archiveThreadButton.removeEventListener("click", this.handlers.archiveThread);
       e.deleteThreadButton.removeEventListener("click", this.handlers.deleteThread);
-      e.contextOption.removeEventListener("click", this.handlers.toggleContext);
       e.imageOption.removeEventListener("click", this.handlers.chooseImages);
       e.generateImageOption.removeEventListener("click", this.handlers.chooseImageGeneration);
       e.sendButton.removeEventListener("click", this.handlers.sendOrStop);
