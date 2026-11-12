@@ -52,5 +52,5 @@ Preconditions:
 - Automatic title generation can create an extra model request. Record the final name after completion, and preserve a manual name if that path is under test.
 - Background reply, OS notification delivery and notification-click navigation are separate claims.
 - Contention retries apply only to the active-writer resume error, for about ten seconds. A reader that retains ownership longer still blocks sending; the plugin cannot force another session to release it. Other resume errors fail immediately.
-- Picker search depends on the actual loaded chat title/text, not necessarily the literal prompt. Use the displayed title when the prompt term is absent.
+- Picker search depends on the loaded chat title, preview, or working directory, not necessarily the literal prompt. Use the displayed title when the prompt term is absent.
 - Archive and delete differ: only deletion asks for confirmation. Verify the selected operation and deletion cancellation; screenshots of a disappearing row alone do not establish backend success.
