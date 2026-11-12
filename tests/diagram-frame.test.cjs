@@ -97,7 +97,7 @@ test("diagram text stays sandboxed and frame status uses a private message chann
   assert.equal(wrapper.dataset.state, "loading");
   f.channels[0].port1.onmessage({ data: { type: "zcs-mermaid", state: "ready", height: 300 } });
   assert.equal(wrapper.dataset.state, "ready");
-  assert.equal(frame.style.height, "300px");
+  assert.equal(frame.style.height, "256px");
   assert.equal(wrapper.children[0].hidden, true);
   f.DiagramFrame.shutdown();
   assert.equal(f.channels[0].port1.closed, true);

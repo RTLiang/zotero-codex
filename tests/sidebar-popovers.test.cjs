@@ -89,7 +89,7 @@ test("composer and sent messages expose complete selected text as plain text", (
   assert.equal(quote.children.length, 0);
 });
 
-test("the current paper stays attached and the composer exposes only the add menu", () => {
+test("paper context stays out of the composer while the add menu remains available", () => {
   const view = mountedView();
   view.context = { attachmentID: 2, title: "Sample document", pdfPath: "/fixtures/document.pdf" };
   view.images = [];
@@ -99,8 +99,8 @@ test("the current paper stays attached and the composer exposes only the add men
   SidebarView.prototype.renderContextAttachment.call(view);
   const flatten = node => [node, ...node.children.flatMap(flatten)];
   const attachment = flatten(view.elements.attachments);
-  assert.equal(view.elements.attachments.hidden, false);
-  assert.ok(attachment.some(node => node.textContent === "Sample document"));
+  assert.equal(view.elements.attachments.hidden, true);
+  assert.ok(!attachment.some(node => node.textContent === "Sample document"));
   assert.ok(!attachment.some(node => node.className === "zcs-attachment-remove"));
   assert.ok(!flatten(view.elements.root).some(node => /zcs-context-mode|zcs-context-option/u.test(node.className || "")));
   view.elements.contextAddButton.click();

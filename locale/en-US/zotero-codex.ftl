@@ -284,3 +284,5 @@ zotero-codex-diagram-zoom-out =
     .title = Zoom out
     .aria-label = Zoom out
 zotero-codex-diagram-fit = Fit
+zotero-codex-diagram-pan-hint =
+    .title = Drag to pan · Two-finger pan · Pinch to zoom

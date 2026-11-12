@@ -2573,12 +2573,9 @@
       const showLiveSelection = Boolean(
         liveSelection && mergedSelections.length > selections.length,
       );
-      const itemAvailable = Boolean(this.context?.title);
-
       const attachments = this.elements.attachments;
       attachments.replaceChildren();
-      const showItem = itemAvailable;
-      attachments.hidden = !this.images.length && !showItem && !showLiveSelection && !selections.length;
+      attachments.hidden = !this.images.length && !showLiveSelection && !selections.length;
 
       for (const image of this.images) {
         const chip = create(this.doc, "div", "zcs-attachment-chip zcs-image-attachment");
@@ -2603,28 +2600,6 @@
         setL10n(remove, "zotero-codex-remove-image");
         remove.addEventListener("click", () => this.removeImage(image.id));
         chip.append(preview, copy, remove);
-        attachments.append(chip);
-      }
-
-      if (showItem) {
-        const chip = create(this.doc, "div", "zcs-attachment-chip");
-        const icon = create(this.doc, "span", "zcs-attachment-icon");
-        icon.append(createDocumentIcon(this.doc));
-        const copy = create(this.doc, "span", "zcs-attachment-copy");
-        copy.append(
-          create(this.doc, "span", "zcs-attachment-title", Protocol.firstLine(this.context.title, 44)),
-          createL10n(
-            this.doc,
-            "span",
-            "zcs-attachment-meta",
-            this.context?.pdfPath
-              ? "zotero-codex-attachment-meta-pdf"
-              : "zotero-codex-attachment-meta-item",
-            this.context?.pdfPath ? "PDF" : "Item",
-            { count: 0 },
-          ),
-        );
-        chip.append(icon, copy);
         attachments.append(chip);
       }
 
@@ -3308,7 +3283,10 @@
       let removeResize = () => {};
       if (diagram) {
         stage.classList.add("zcs-diagram-dialog-stage");
+        stage.title = "Drag to pan · Two-finger pan · Pinch to zoom";
+        setL10n(stage, "zotero-codex-diagram-pan-hint");
         canvas = create(doc, "div", "zcs-diagram-dialog-canvas");
+        image.draggable = false;
         canvas.append(image);
         stage.append(canvas);
         const zoomOut = create(doc, "button", "zcs-diagram-zoom-out", "−");
@@ -3331,25 +3309,97 @@
         toolbar.insertBefore(zoomIn, close);
         toolbar.insertBefore(fit, close);
         let scale = 1;
+        let offsetX = 0;
+        let offsetY = 0;
         let fitting = true;
-        const zoom = (value) => {
-          if (!image.naturalWidth || !image.naturalHeight) return;
-          scale = Math.max(0.1, Math.min(8, value));
-          image.style.width = `${image.naturalWidth * scale}px`;
-          image.style.height = `${image.naturalHeight * scale}px`;
+        let drag = null;
+        const paint = () => {
+          canvas.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+          this.diagramPreviewStates ||= new Map();
+          this.diagramPreviewStates.delete(source);
+          this.diagramPreviewStates.set(source, { scale, fitting,
+            centerX: (stage.clientWidth / 2 - offsetX) / scale,
+            centerY: (stage.clientHeight / 2 - offsetY) / scale });
+          if (this.diagramPreviewStates.size > 50) this.diagramPreviewStates.delete(this.diagramPreviewStates.keys().next().value);
           level.textContent = `${Math.round(scale * 100)}%`;
           zoomOut.disabled = scale <= 0.1;
           zoomIn.disabled = scale >= 8;
         };
-        const fitImage = () => {
-          zoom(Math.min(stage.clientWidth / image.naturalWidth, stage.clientHeight / image.naturalHeight));
-          stage.scrollLeft = 0;
-          stage.scrollTop = 0;
+        const zoom = (value, x = stage.clientWidth / 2, y = stage.clientHeight / 2) => {
+          if (!image.naturalWidth || !image.naturalHeight) return;
+          const next = Math.max(0.1, Math.min(8, value));
+          const ratio = next / scale;
+          offsetX = x - (x - offsetX) * ratio;
+          offsetY = y - (y - offsetY) * ratio;
+          scale = next;
+          fitting = false;
+          paint();
         };
-        zoomOut.addEventListener("click", () => { fitting = false; zoom(scale / 1.25); });
-        zoomIn.addEventListener("click", () => { fitting = false; zoom(scale * 1.25); });
-        fit.addEventListener("click", () => { fitting = true; fitImage(); });
-        image.addEventListener("load", fitImage, { once: true });
+        const fitImage = () => {
+          if (!image.naturalWidth || !image.naturalHeight) return;
+          image.style.width = `${image.naturalWidth}px`;
+          image.style.height = `${image.naturalHeight}px`;
+          scale = Math.max(0.1, Math.min(8, stage.clientWidth / image.naturalWidth,
+            stage.clientHeight / image.naturalHeight));
+          offsetX = (stage.clientWidth - image.naturalWidth * scale) / 2;
+          offsetY = (stage.clientHeight - image.naturalHeight * scale) / 2;
+          fitting = true;
+          paint();
+        };
+        zoomOut.addEventListener("click", () => zoom(scale / 1.25));
+        zoomIn.addEventListener("click", () => zoom(scale * 1.25));
+        fit.addEventListener("click", fitImage);
+        stage.addEventListener("dblclick", fitImage);
+        stage.addEventListener("wheel", (event) => {
+          event.preventDefault();
+          const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? stage.clientHeight : 1;
+          if (event.ctrlKey || event.metaKey) {
+            const rect = stage.getBoundingClientRect();
+            zoom(scale * Math.exp(-event.deltaY * unit * 0.002), event.clientX - rect.left,
+              event.clientY - rect.top);
+          } else {
+            fitting = false;
+            offsetX -= (event.shiftKey && !event.deltaX ? event.deltaY : event.deltaX) * unit;
+            offsetY -= (event.shiftKey && !event.deltaX ? 0 : event.deltaY) * unit;
+            paint();
+          }
+        }, { passive: false });
+        stage.addEventListener("pointerdown", (event) => {
+          if (event.button !== 0 || event.isPrimary === false) return;
+          event.preventDefault();
+          drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
+          stage.setPointerCapture(event.pointerId);
+          stage.classList.add("zcs-diagram-dragging");
+        });
+        stage.addEventListener("pointermove", (event) => {
+          if (!drag || drag.id !== event.pointerId) return;
+          offsetX += event.clientX - drag.x;
+          offsetY += event.clientY - drag.y;
+          drag.x = event.clientX;
+          drag.y = event.clientY;
+          fitting = false;
+          paint();
+        });
+        const endDrag = (event) => {
+          if (!drag || drag.id !== event.pointerId) return;
+          drag = null;
+          if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+          stage.classList.remove("zcs-diagram-dragging");
+        };
+        stage.addEventListener("pointerup", endDrag);
+        stage.addEventListener("pointercancel", endDrag);
+        stage.addEventListener("lostpointercapture", endDrag);
+        image.addEventListener("load", () => {
+          const saved = this.diagramPreviewStates?.get(source);
+          if (!saved || saved.fitting) { fitImage(); return; }
+          image.style.width = `${image.naturalWidth}px`;
+          image.style.height = `${image.naturalHeight}px`;
+          scale = saved.scale;
+          offsetX = stage.clientWidth / 2 - saved.centerX * scale;
+          offsetY = stage.clientHeight / 2 - saved.centerY * scale;
+          fitting = false;
+          paint();
+        }, { once: true });
         const resized = () => { if (fitting) fitImage(); };
         doc.defaultView.addEventListener("resize", resized);
         removeResize = () => doc.defaultView.removeEventListener("resize", resized);
@@ -3358,7 +3408,7 @@
       const dismiss = () => dialog.close();
       close.addEventListener("click", dismiss);
       dialog.addEventListener("click", (event) => {
-        if (event.target === dialog || event.target === canvas || (!diagram && event.target === stage)) dismiss();
+        if (event.target === dialog || (!diagram && event.target === stage)) dismiss();
       });
       dialog.addEventListener("close", () => {
         removeResize();

@@ -910,19 +910,27 @@ width: fit-content;
 
 .zcs-diagram-dialog-stage {
   display: block;
-  overflow: auto;
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.zcs-diagram-dialog-stage.zcs-diagram-dragging {
+  cursor: grabbing;
 }
 
 .zcs-diagram-dialog-canvas {
-  display: flex;
+  position: absolute;
+  top: 0;
+  left: 0;
   width: max-content;
-  min-width: 100%;
-  min-height: 100%;
-  align-items: center;
-  justify-content: center;
+  transform-origin: 0 0;
 }
 
 .zcs-diagram-dialog .zcs-image-dialog-image {
+  display: block;
   max-width: none;
   max-height: none;
   flex: none;

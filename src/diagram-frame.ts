@@ -77,6 +77,7 @@ interface Window { MutationObserver: typeof MutationObserver }
     modules.Localization?.setAttributes(frame, "zotero-codex-diagram-frame");
     frame.setAttribute("sandbox", "allow-scripts");
     frame.setAttribute("type", "content");
+    frame.setAttribute("scrolling", "no");
     frame.setAttribute("referrerpolicy", "no-referrer");
     const enlarge = doc.createElement("button");
     enlarge.className = "zcs-diagram-enlarge";
@@ -109,7 +110,7 @@ interface Window { MutationObserver: typeof MutationObserver }
       else if (data.state === "ready" && "height" in data && typeof data.height === "number" && Number.isFinite(data.height)) {
         win.clearTimeout(timeout);
         frame.hidden = false;
-        frame.style.height = `${Math.max(80, Math.min(1200, Math.ceil(data.height)))}px`;
+        frame.style.height = `${Math.max(80, Math.min(256, Math.ceil(data.height)))}px`;
         status.hidden = true;
         enlarge.hidden = !openPreview;
         wrapper.dataset.state = "ready";
@@ -146,11 +147,19 @@ interface Window { MutationObserver: typeof MutationObserver }
         document.getElementById('diagram-root').innerHTML = svgText.replace(/@import\\s+url\\([^)]*\\);?/gi, '');
         const svg = document.querySelector('svg');
         if (!svg) throw new Error('Missing diagram');
-        svg.style.maxWidth = 'none';
-        svg.style.width = svg.viewBox.baseVal.width + 'px';
-        svg.style.height = svg.viewBox.baseVal.height + 'px';
+        svg.style.width = '100%';
+        svg.style.height = 'auto';
+        svg.style.maxHeight = '240px';
         if (${Boolean(openPreview)}) {
-          const preview = () => port.postMessage({type:'zcs-mermaid',state:'preview',svg:svg.outerHTML});
+          const preview = () => {
+            const full = svg.cloneNode(true);
+            full.style.removeProperty('width');
+            full.style.removeProperty('height');
+            full.style.removeProperty('max-height');
+            full.setAttribute('width', svg.viewBox.baseVal.width);
+            full.setAttribute('height', svg.viewBox.baseVal.height);
+            port.postMessage({type:'zcs-mermaid',state:'preview',svg:full.outerHTML});
+          };
           svg.style.cursor = 'zoom-in';
           svg.setAttribute('role', 'button');
           svg.setAttribute('tabindex', '0');
@@ -167,7 +176,7 @@ interface Window { MutationObserver: typeof MutationObserver }
         report('ready');
       } catch (_) { document.body.replaceChildren(); report('error'); }
     });`;
-    frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><style>html{color-scheme:${dark ? "dark" : "light"};font:14px system-ui;background:Canvas;color:CanvasText}body{margin:0;padding:8px;box-sizing:border-box;width:max-content;min-width:100%}#diagram-root{display:flex;justify-content:center}svg{display:block}*{box-sizing:border-box}</style></head><body><div id="diagram-root"></div><script>${library}</script><script>${render}</script></body></html>`;
+    frame.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><style>html{color-scheme:${dark ? "dark" : "light"};font:14px system-ui;background:Canvas;color:CanvasText;overflow:hidden}body{margin:0;padding:8px;box-sizing:border-box;width:100%;overflow:hidden}#diagram-root{display:flex;justify-content:center}svg{display:block}*{box-sizing:border-box}</style></head><body><div id="diagram-root"></div><script>${library}</script><script>${render}</script></body></html>`;
     wrapper.dataset.state = "loading";
     wrapper.append(status, frame, source, enlarge);
     parent.append(wrapper);

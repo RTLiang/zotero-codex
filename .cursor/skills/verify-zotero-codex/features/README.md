@@ -9,7 +9,7 @@ Before any recipe, follow [contributor privacy](../SKILL.md#contributor-privacy)
 | Feature | User entry points | Proof boundaries |
 | --- | --- | --- |
 | [Commands and permissions](commands-permissions.md) | Bottom permission button, `/approvals`, slash menu, model button, `/model` | Permission button and `/approvals` are the generated smoke; other branches require separate proofs |
-| [Paper context](paper-context.md) | Library item pane, PDF reader sidebar, + menu, required current-paper card, selection popup, current/other saved-paper links | Context controls and extraction differ from authenticated citation clicks; inspect the target heading/object |
+| [Paper context](paper-context.md) | Library item pane, PDF reader sidebar, + menu, automatic paper context, selection popup, current/other saved-paper links | Context controls and extraction differ from authenticated citation clicks; inspect the target heading/object |
 | [Conversations](conversations.md) | Header +, picker New chat, `/new`, picker rows/search/filter, message controls, paper-switch drafts, occupied-chat send, native section title, top/bottom height bars | Reading position, saved height, draft switching, authenticated reply/history, external ownership and notifications need separate observations |
 | [Images and message rendering](images-rendering.md) | + menu, paste, drag/drop, image click, message transcript | Source-mapped; requires image input or real reply evidence |
 | [Connection and storage](connection-storage.md) | Sidebar Settings, default model/reasoning/Fast and model refresh, its Zotero settings link, Zotero Settings → Codex | Model defaults save without reconnect; existing/new chats, connection preferences and reconnect need their own proof |
