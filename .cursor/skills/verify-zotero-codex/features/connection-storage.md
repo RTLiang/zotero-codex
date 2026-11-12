@@ -12,7 +12,7 @@ Users choose the plugin's default model, reasoning effort, Fast mode, CLI execut
 - `storage` keeps Codex storage, working directories and paper bindings associated with the chosen configuration.
 - `reconnect-draft` preserves the current paper's unsent text/images across reconnection.
 - Reconnect drafts are kept in memory and keyed by paper/body while runtime views are detached and recreated; this does not promise durable draft storage across Zotero restarts.
-- `busy-save` disables Save and reconnect while a reply/request is active. Model and language choices still save immediately.
+- `busy-save` disables native connection preferences' Save and reconnect while a reply/request is active. The sidebar Reconnect control checks running turns and reconfiguration. Model and language choices still save immediately.
 - `login-import` optionally copies the existing local login once without overwrite.
 
 ## How to get to it (user POV)
@@ -28,7 +28,7 @@ Users choose the plugin's default model, reasoning effort, Fast mode, CLI execut
 Preconditions:
 
 - Doctor passes and the current fixture sidebar is open. Keep `scratch/runtime` and `scratch/workspace` configured; never point this verification instance at daily Codex storage.
-- Saving/reconnecting needs an actual usable CLI. Proxy reachability needs an actual proxy endpoint, not a guessed address.
+- Local settings, catalog refresh, new-chat defaults and idle reconnect can be checked without a model turn. Existing-chat retention and active-reply busy-save need an authenticated scratch chat. Saving/reconnecting needs an actual usable CLI. Proxy reachability needs an actual proxy endpoint, not a guessed address.
 - Login import needs an existing local login and a dedicated destination different from its source. A successful first import also requires that the destination has no login yet. Check existence and permissions without reading credential contents.
 
 - Enter through `click '.zcs-more-button'` then `click '[data-zcs-l10n-id="zotero-codex-runtime-settings"]'`, with `--run "$verify_run"`. `windows --run "$verify_run"` should list the native preferences URL. Alternatively use native app control to open Zotero Settings → Codex and capture that independent entry.

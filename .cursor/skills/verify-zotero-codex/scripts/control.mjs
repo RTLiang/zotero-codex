@@ -193,7 +193,9 @@ async function launch() {
   fs.writeFileSync(path.join(profile, "user.js"), Object.entries(prefs).map(([key, value]) => `user_pref(${JSON.stringify(key)}, ${JSON.stringify(value)});`).join("\n"));
   const log = fs.openSync(path.join(run, "zotero.log"), "a");
   const args = ["--new-instance", "--profile", profile, "--marionette", "--remote-allow-system-access", "-ZoteroDebugText"];
-  const child = spawn(binary, args, { detached: true, stdio: ["ignore", log, log] });
+  const child = spawn(binary, args, {
+    detached: true, stdio: ["ignore", log, log], env: { ...process.env, MOZ_NO_REMOTE: "1" },
+  });
   child.on("error", error => record("launch-error", error.message));
   child.unref(); fs.closeSync(log);
   assert.ok(child.pid, "Zotero did not start");
@@ -201,7 +203,7 @@ async function launch() {
     sourceHash, xpiHash: crypto.createHash("sha256").update(fs.readFileSync(xpi)).digest("hex"), started: new Date().toISOString() });
   record("launch", { pid: child.pid, binary, args });
   try {
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 120; i++) {
       if (fs.existsSync(path.join(profile, "MarionetteActivePort")) && fs.existsSync(path.join(profile, "extensions.json"))) {
         const c = await connect();
         try {
@@ -209,7 +211,7 @@ async function launch() {
           json(path.join(run, "doctor.json"), result);
           console.log(JSON.stringify({ run, pid: child.pid, ready: true, doctor: result }, null, 2));
           return;
-        } catch (error) { if (i === 59) throw error; }
+        } catch (error) { if (i === 119) throw error; }
         finally { await c.close(); }
       }
       await delay(500);
@@ -236,22 +238,32 @@ const elementScript = `
   if (!e.getClientRects().length || e.closest('[hidden],[collapsed="true"]') || !e.getBoundingClientRect().width) throw new Error("Hidden element: " + arguments[0]);
   if (e.disabled) throw new Error("Disabled element: " + arguments[0]);
 `;
-async function drive(client, action, selector, value = "") {
+async function drive(client, action, selector, value = "", secondValue = "") {
   const scripts = {
     click: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
     dblclick: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
     drag: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
-    fill: `${elementScript} e.focus(); e.value = arguments[1]; e.dispatchEvent(new e.ownerDocument.defaultView.Event('input', {bubbles:true})); return e.value;`,
+    drag2d: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
+    wheel: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
+    zoom: `${elementScript} e.scrollIntoView({block:'nearest'}); return true;`,
+    "native-key": `${elementScript} e.focus(); return true;`,
+    fill: `${elementScript} e.focus(); e.value = arguments[1]; for(const type of ['input','change'])e.dispatchEvent(new e.ownerDocument.defaultView.Event(type, {bubbles:true})); return e.value;`,
     select: `${elementScript} if (![...e.options].some(o=>o.value===arguments[1])) throw new Error('Unknown option'); e.value=arguments[1]; e.dispatchEvent(new e.ownerDocument.defaultView.Event('change',{bubbles:true})); return e.value;`,
     key: `${elementScript} e.focus(); e.dispatchEvent(new e.ownerDocument.defaultView.KeyboardEvent('keydown',{key:arguments[1],bubbles:true,cancelable:true})); return true;`,
     check: `${elementScript} if(e.checked !== (arguments[1]==='true')) e.click(); return e.checked;`,
   };
   assert.ok(scripts[action], `Unknown action ${action}`);
-  if (action === "drag") assert.ok(/^-?\d{1,4}$/.test(value) && Math.abs(Number(value)) <= 1000,
-    "Drag distance must be an integer from -1000 to 1000 CSS pixels");
-  record("action", { action, selector, value });
+  if (["drag", "drag2d", "wheel", "zoom"].includes(action)) {
+    const distances = [value, ...(["drag2d", "wheel"].includes(action) ? [secondValue] : [])];
+    assert.ok(distances.every(distance => /^-?\d{1,4}$/.test(distance) && Math.abs(Number(distance)) <= 1000),
+      "Distances must be integers from -1000 to 1000 CSS pixels");
+  }
+  const nativeKeys = { Enter: "\uE007", Escape: "\uE00C", Tab: "\uE004", Space: "\uE00D",
+    ArrowLeft: "\uE012", ArrowUp: "\uE013", ArrowRight: "\uE014", ArrowDown: "\uE015" };
+  if (action === "native-key") assert.ok(nativeKeys[value], "Unsupported native key");
+  record("action", { action, selector, value, secondValue });
   let result = await client.evaluate(scripts[action], [selector, value]);
-  if (action === "click" || action === "dblclick" || action === "drag") {
+  if (["click", "dblclick", "drag", "drag2d", "wheel", "zoom"].includes(action)) {
     const point = await client.evaluate(`${elementScript}
       let point;
       const rects=[...e.getClientRects()];
@@ -268,19 +280,41 @@ async function drive(client, action, selector, value = "") {
       for (const offset of frameOffsets) {x+=offset.x; y+=offset.y;}
       return {x:Math.round(x), y:Math.round(y), rectangle:point.rectangle, rectangles:rects.length};`, [selector]);
     record("pointer-target", { selector, ...point });
-    await client.call("WebDriver:PerformActions", { actions: [{ type: "pointer", id: "verification-mouse",
+    let actions;
+    if (action === "wheel" || action === "zoom") {
+      actions = [
+        ...(action === "zoom" ? [{type:"key",id:"verification-zoom-modifier",actions:[
+          {type:"keyDown",value:"\uE009"},{type:"pause",duration:200},{type:"keyUp",value:"\uE009"},
+        ]}] : []),
+        {type:"wheel",id:"verification-wheel",actions:[
+          ...(action === "zoom" ? [{type:"pause",duration:0}] : []),
+          {type:"scroll",origin:"viewport",x:point.x,y:point.y,
+            deltaX:action === "zoom" ? 0 : Number(value), deltaY:Number(action === "zoom" ? value : secondValue),duration:200},
+        ]},
+      ];
+    } else actions = [{ type: "pointer", id: "verification-mouse",
       parameters: { pointerType: "mouse" }, actions: [
         { type: "pointerMove", origin: "viewport", x: point.x, y: point.y, duration: 0 },
-        ...(action === "drag" ? [
+        ...(["drag", "drag2d"].includes(action) ? [
           { type: "pointerDown", button: 0 }, { type: "pause", duration: 100 },
-          { type: "pointerMove", origin: "viewport", x: point.x, y: point.y + Number(value), duration: 400 },
+          { type: "pointerMove", origin: "viewport", x: point.x + (action === "drag2d" ? Number(value) : 0),
+            y: point.y + Number(action === "drag2d" ? secondValue : value), duration: 400 },
           { type: "pause", duration: 100 }, { type: "pointerUp", button: 0 },
         ] : Array.from({length:action === "dblclick" ? 2 : 1},()=>[
           { type: "pointerDown", button: 0 }, { type: "pause", duration: 100 },
           { type: "pointerUp", button: 0 },
         ]).flat()),
-      ] }] });
-    await client.call("WebDriver:ReleaseActions");
+      ] }];
+    try { await client.call("WebDriver:PerformActions", { actions }); }
+    finally { await client.call("WebDriver:ReleaseActions"); }
+    result = true;
+  }
+  else if (action === "native-key") {
+    try {
+      await client.call("WebDriver:PerformActions", {actions:[{type:"key",id:"verification-keyboard",actions:[
+        {type:"keyDown",value:nativeKeys[value]},{type:"keyUp",value:nativeKeys[value]},
+      ]}]});
+    } finally { await client.call("WebDriver:ReleaseActions"); }
     result = true;
   }
   await delay(250);
@@ -423,6 +457,18 @@ async function prove(client) {
     approvalPolicy:"on-request", approvalsReviewer:"auto_review", sandbox:"read-only", networkAccess:true,
   }, "Fresh profile permission defaults differ from the documented defaults");
   await snapshot(client, "permissions-button-entry");
+  const networkSelections = [];
+  for (const value of [false, true]) {
+    await drive(client, "click", ui(".zcs-permission-network input"));
+    const selected = await client.evaluate(`${elementScript} return {checked:e.checked,
+      disabled:e.disabled,stored:Zotero.Prefs.get('extensions.zotero.codexSidebar.networkAccess',true)};`,
+      [ui(".zcs-permission-network input")]);
+    assert.equal(selected.checked, value);
+    assert.equal(selected.stored, value);
+    assert.equal(selected.disabled, false);
+    networkSelections.push(selected);
+    await snapshot(client, `permissions-network-${value ? "on" : "off"}`);
+  }
   const selections = [];
   for (const [key, values] of [
     ["approvalPolicy", ["untrusted", "never", "on-request"]],
@@ -486,7 +532,7 @@ async function prove(client) {
   assert.ok(disk.includes('user_pref("extensions.zotero.codexSidebar.sandbox", "workspace-write");'));
   const sessions = path.join(scratch, "runtime/sessions");
   assert.ok(!fs.existsSync(sessions) || fs.readdirSync(sessions).length === 0, "Local command created a session");
-  json(path.join(run, "permissions-proof.json"), {feature:"commands-permissions",entry,entries:["bottom permission button","/approvals"],defaults,selections,result, persisted:true, sessionDirectoryEmpty:true, scope:"Native pointer clicks through all three permission choice lists and preference persistence; no model response or approval request was tested"});
+  json(path.join(run, "permissions-proof.json"), {feature:"commands-permissions",entry,entries:["bottom permission button","/approvals"],defaults,networkSelections,selections,result, persisted:true, sessionDirectoryEmpty:true, scope:"Native pointer clicks through permission choices and the network toggle, with preference persistence; no model response or approval request was tested"});
   return result;
 }
 
@@ -533,7 +579,7 @@ async function cleanup() {
 async function main() {
   if (command === "launch") return launch();
   if (command === "cleanup") return cleanup();
-  assert.ok(["doctor","windows","focus","seed","prove","snapshot","read","click","dblclick","drag","fill","key","select","check","close-window"].includes(command), "Use launch|doctor|windows|focus|seed|prove|snapshot LABEL|read SCRIPT_FILE|click SELECTOR|dblclick SELECTOR|drag SELECTOR DELTA_Y|fill SELECTOR VALUE|key SELECTOR KEY|select SELECTOR VALUE|check SELECTOR true|close-window --window preferences|cleanup --run DIRECTORY [--entry library|reader]");
+  assert.ok(["doctor","windows","focus","seed","prove","snapshot","read","click","dblclick","drag","drag2d","wheel","zoom","fill","key","native-key","select","check","close-window"].includes(command), "Use launch|doctor|windows|focus|seed|prove|snapshot LABEL|read SCRIPT_FILE|click SELECTOR|dblclick SELECTOR|drag SELECTOR DELTA_Y|drag2d SELECTOR DELTA_X DELTA_Y|wheel SELECTOR DELTA_X DELTA_Y|zoom SELECTOR DELTA_Y|fill SELECTOR VALUE|key SELECTOR KEY|native-key SELECTOR KEY|select SELECTOR VALUE|check SELECTOR true|close-window --window preferences|cleanup --run DIRECTORY [--entry library|reader]");
   const client = await connect();
   try {
     let result;
@@ -550,7 +596,7 @@ async function main() {
       record("close-window", { window: "preferences", result });
     }
     else {
-      result = await drive(client, command, argv[0], argv[1]);
+      result = await drive(client, command, argv[0], argv[1], argv[2]);
       if (captureLabel) {
         if (captureWhen) {
           const observation = fs.readFileSync(captureWhen, "utf8");
