@@ -3647,34 +3647,19 @@
     }
 
     showPendingResponse(phase = "working") {
-      const startedAt = this.pendingResponseStartedAt
-        ?? this.manager.runningTurns?.get(this.threadID)?.startedAt ?? Date.now();
       this.hidePendingResponse();
-      this.pendingResponseStartedAt = startedAt;
       const pending = create(this.doc, "div", "zcs-pending-response");
       const label = createL10n(this.doc, "span", "zcs-pending-response-label",
         phase === "interactive" ? "zotero-codex-ui-generating" : "zotero-codex-working",
         phase === "interactive" ? "Generating interactive view…" : "Working…");
       label.setAttribute("role", "status");
-      const elapsed = create(this.doc, "span", "zcs-pending-response-elapsed");
-      elapsed.setAttribute("aria-hidden", "true");
-      const update = () => {
-        const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-        setLocalizedText(elapsed, "zotero-codex-waiting-elapsed", `${seconds}s`, { seconds });
-      };
-      update();
-      pending.append(label, elapsed);
+      pending.append(label);
       this.elements.waitingArea.append(pending);
       this.elements.waitingArea.hidden = false;
       this.pendingResponseNode = pending;
-      this.pendingResponseClock = this.doc.defaultView || global;
-      this.pendingResponseTimer = this.pendingResponseClock.setInterval(update, 1000);
     }
 
     hidePendingResponse() {
-      if (this.pendingResponseTimer != null) this.pendingResponseClock.clearInterval(this.pendingResponseTimer);
-      this.pendingResponseTimer = null;
-      this.pendingResponseStartedAt = null;
       this.pendingResponseNode?.remove();
       this.pendingResponseNode = null;
       if (this.elements?.waitingArea) this.elements.waitingArea.hidden = true;

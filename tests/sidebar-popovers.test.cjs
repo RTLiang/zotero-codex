@@ -355,7 +355,7 @@ test("only one permission list opens at a time and full access keeps network acc
 });
 
 
-test("waiting feedback advances, preserves elapsed time across phases, and stops on dismissal", t => {
+test("waiting feedback shows only status without elapsed time across phases", t => {
   t.mock.timers.enable({ apis: ["Date", "setInterval"], now: 1000 });
   const view = mountedView();
   view.showPendingResponse();
@@ -364,24 +364,26 @@ test("waiting feedback advances, preserves elapsed time across phases, and stops
   const elapsed = () => view.pendingResponseNode.children.find(child => child.className === "zcs-pending-response-elapsed");
   const hint = () => view.pendingResponseNode.children.find(child => child.className === "zcs-pending-response-hint");
   assert.equal(label().textContent, "Working…");
-  assert.equal(elapsed().textContent, "0s");
+  assert.equal(elapsed(), undefined);
   assert.equal(hint(), undefined);
   assert.equal(view.pendingResponseNode.parentNode, view.elements.waitingArea);
   assert.equal(view.elements.waitingArea.hidden, false);
-  t.mock.timers.tick(21000);
-  assert.equal(elapsed().textContent, "21s");
+  t.mock.timers.tick(20000);
+  assert.equal(elapsed(), undefined);
+  t.mock.timers.tick(1000);
+  assert.equal(elapsed(), undefined);
   assert.equal(hint(), undefined);
   view.showPendingResponse("interactive");
   assert.equal(label().textContent, "Generating interactive view…");
-  assert.equal(elapsed().textContent, "21s");
+  assert.equal(elapsed(), undefined);
   const pending = view.pendingResponseNode;
   view.hidePendingResponse();
   t.mock.timers.tick(5000);
-  assert.equal(pending.children.find(child => child.className === "zcs-pending-response-elapsed").textContent, "21s");
+  assert.equal(pending.children.length, 1);
   assert.equal(view.elements.transcript.children.includes(pending), false);
   assert.equal(view.elements.waitingArea.hidden, true);
   view.showPendingResponse();
-  assert.equal(elapsed().textContent, "0s");
+  assert.equal(elapsed(), undefined);
 });
 
 test("settings select only catalog models and keep the choice inside the plugin", async () => {
