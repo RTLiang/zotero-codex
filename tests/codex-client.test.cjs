@@ -233,6 +233,8 @@ test("new, resumed and forked chats receive the same trusted PDF citation contra
   assert.match(instructions, /audit every citation's document identity and locator together/u);
   assert.match(instructions, /treat the attachment as a possible scan/iu);
   assert.match(instructions, /never upload the paper to an external OCR service/u);
+  assert.match(instructions, /clickable Markdown link for every local deliverable/u);
+  assert.match(instructions, /\[Results CSV\]\(<\/tmp\/Example results \(final\)\.csv>\)/u);
   const context = Protocol.buildZoteroContext({ title: "Document", pdfPath: "/fixtures/document.pdf" });
   await client.startTurn({ threadID: "fixture-chat", text: "Explain the method", context });
   assert.deepEqual(calls[2].params.additionalContext, context);

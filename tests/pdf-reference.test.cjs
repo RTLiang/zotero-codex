@@ -95,11 +95,13 @@ test("hierarchical web section anchors preserve the complete subsection number",
 function documentStub() {
   return {
     createElement(tag) {
-      return {
+      const element = {
         tag, children: [], listeners: {}, dataset: {}, style: {},
+        classList: { add(name) { element.className += ` ${name}`; } },
         append(...children) { this.children.push(...children); },
         addEventListener(type, handler) { this.listeners[type] = handler; },
       };
+      return element;
     },
     createTextNode(text) { return { tag: "#text", text }; },
   };
@@ -146,6 +148,28 @@ test("external sources remain clickable links in a PDF chat", async () => {
     if (previousZotero === undefined) delete global.Zotero;
     else global.Zotero = previousZotero;
   }
+});
+
+test("a CSV deliverable in a PDF chat opens its exact local path", async (t) => {
+  const doc = documentStub(), root = doc.createElement("div");
+  const path = "/fixtures/Example results (final).csv";
+  const launched = [], pdfOpened = [];
+  const previousZotero = global.Zotero;
+  t.after(() => { global.Zotero = previousZotero; });
+  global.Zotero = { launchFile: file => launched.push(file) };
+
+  appendMarkdown(doc, root,
+    `[Results CSV](<${path}>) [Full text](/fixtures/current.pdf)`,
+    reference => pdfOpened.push(reference),
+    { attachmentID: 42, pdfPath: "/fixtures/current.pdf" });
+
+  const links = root.children[0].children.filter(node => node.tag === "a");
+  assert.equal(links.length, 2);
+  assert.equal(links[0].children[0].text, "Results CSV");
+  assert.match(links[0].className, /\bzcs-local-link\b/u);
+  for (const link of links) await link.listeners.click({ preventDefault() {} });
+  assert.deepEqual(launched, [path]);
+  assert.deepEqual(pdfOpened, [{ pageNumber: 1 }]);
 });
 
 test("a link to another locally saved paper prefers its PDF copy in Zotero", async () => {

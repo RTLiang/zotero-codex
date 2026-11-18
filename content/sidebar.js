@@ -400,6 +400,7 @@
     if (explicit) return { kind: "pdf", reference: explicit };
     if (value.startsWith("#")) return { kind: "text" };
     const sameFile = value === context.pdfPath || value === `file://${context.pdfPath}`;
+    if (!sameFile && (value.startsWith("/") || /^file:\/\//iu.test(value))) return null;
     const identity = paperLinkIdentity(value);
     const samePaper = sameFile || [context.url, context.doi]
       .filter(Boolean).some((candidate) => paperLinkIdentity(candidate) === identity);
