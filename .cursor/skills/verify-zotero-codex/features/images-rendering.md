@@ -42,6 +42,8 @@ Preconditions:
 - Repeat a searchable reference with `click SELECTOR --capture reference-settled --capture-when .cursor/skills/verify-zotero-codex/scripts/pdf-reference-settled.js --run "$verify_run"`. This waits for both the temporary position highlight and Find paint to clear. Compare its annotation count to the baseline and inspect the screenshot. Test missing references and a valid click immediately afterward: the error must be recoverable and must not leave stale paint or a permanent message over the composer.
 - Open `click '.zcs-more-button'`, toggle the checkbox identified by `[data-zcs-l10n-id="zotero-codex-show-work-process-control"]`, and capture the difference after a real turn containing activity. Reopen settings to confirm the preference. A text-only reply cannot prove hidden tool activity.
 
+- To check Mermaid viewport persistence, zoom and pan, record the canvas transform, then close and reopen the preview for that diagram in the same sidebar. Compare the restored transform before using Fit.
+
 ## Gotchas
 
 - The helper does not automate OS file dialogs, clipboard image transfer or drag/drop. Record those routes as untested when native app control is unavailable.

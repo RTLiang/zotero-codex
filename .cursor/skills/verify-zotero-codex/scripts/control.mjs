@@ -569,7 +569,11 @@ async function cleanup() {
     }
     record("stopped-owned-processes", [...owned]);
   }
-  fs.rmSync(scratch, { recursive: true, force: true });
+  if (fs.existsSync(scratch)) {
+    const trash = spawnSync("trash", [scratch], { encoding: "utf8" });
+    assert.equal(trash.status, 0, trash.error?.message || trash.stderr?.trim() || "Could not move scratch to Trash");
+    assert.ok(!fs.existsSync(scratch), "Scratch still exists after moving it to Trash");
+  }
   s.cleaned = new Date().toISOString(); json(statePath, s);
   const artifacts = fs.readdirSync(run).filter(name => name !== "scratch");
   json(path.join(run, "cleanup.json"), {cleaned:s.cleaned,scratchRemoved:!fs.existsSync(scratch),evidence:artifacts});
