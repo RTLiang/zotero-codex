@@ -74,6 +74,20 @@ function viewFor(manager, id = "A") {
   return view;
 }
 
+test("a standalone imagegen command enables send and reaches the client", async () => {
+  const { manager, client } = session();
+  const view = viewFor(manager);
+  view.updateComposerState();
+  assert.equal(view.elements.sendButton.disabled, true);
+  view.elements.input.value = "$imagegen ";
+  view.updateComposerState();
+  assert.equal(view.elements.sendButton.disabled, false);
+  let submitted;
+  client.startTurn = async (request) => { submitted = request; return { id: "image-turn" }; };
+  await SidebarView.prototype.send.call(view);
+  assert.equal(submitted.text, "$imagegen");
+});
+
 test("keeps chat switching available while a reply is running", () => {
   const { manager } = session();
   const view = viewFor(manager);

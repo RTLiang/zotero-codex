@@ -1553,7 +1553,7 @@
         send.classList.add("zcs-send-stop");
         return;
       }
-      const prompt = this.elements.input.value.trim().replace(/^\$imagegen\b\s*/u, "");
+      const prompt = this.elements.input.value.trim();
       send.disabled = !prompt && !this.images.length;
       setButtonLabel(send, "↑", "zotero-codex-send", "Send");
       send.classList.remove("zcs-send-stop");
@@ -3787,9 +3787,8 @@
           this.elements.input.value !== draft) return;
       }
       const images = this.images.map((image) => ({ ...image }));
-      const prompt = text.replace(/^\$imagegen\b\s*/u, "");
       if (
-        (!prompt && !images.length) ||
+        (!text && !images.length) ||
         this.running ||
         this.creatingTask ||
         this.contextTransitioning
