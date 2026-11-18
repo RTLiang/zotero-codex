@@ -23,7 +23,7 @@ Users create, search, resume and manage chats while replies stream. Chats can co
 - Start through the header +, New chat in the chat picker, or `/new`.
 - For paper-scoped drafts, open Codex on fixture paper A, enter disposable text and attach a fixture image, select paper B and confirm its composer is independent, then return to A and verify both text and image are restored. Enter a B draft and repeat in the other direction. Capture each switch and inspect the resulting composer state.
 - Send through the arrow button or Enter; Shift+Enter adds a line. Stop uses the same button while running.
-- Click the chat title to open the picker, search, toggle Current paper, and select a row.
+- Click the chat title to open the picker, search, toggle Only chats for this paper, and select a row. Use Refresh chats in the picker toolbar to reload the current chat.
 - Hover a message for Copy/Edit controls. Right-click a chat row or the current title to archive/delete.
 - Drag the bar above the chat upward to make it taller, or use either bar with the arrow keys.
 
@@ -44,6 +44,8 @@ Preconditions:
 - Open `click '.zcs-thread-trigger'`, then `fill '.zcs-thread-search' VERIFICATION_OK`. Capture matching and empty search states. Toggle `.zcs-paper-only-filter input`. Incremental list display requires at least 41 matching disposable sessions: confirm the first 40 rows, scroll the real list with native control and observe row 41. This expands the locally loaded list; it is not another backend page fetch. A short list cannot prove this branch.
 - Message buttons use `[data-zcs-l10n-id="zotero-codex-copy-message"]` and `[data-zcs-l10n-id="zotero-codex-edit-message"]`. Scope to the target `.zcs-user` message before clicking. Use the composer to resend, reopen history, and confirm the latest-turn update. Repeat on an earlier user turn and verify the original chat remains available. Do not call edit/fork methods directly.
 - Use native context-click on a disposable picker row or title. A picker row also supports `key '<pane-prefix> .zcs-thread-row' ContextMenu`; capture that menu before choosing an operation. Select Archive in `.zcs-thread-context-menu` and inspect the stored chat/binding state; archive runs without a confirmation dialog. On a separate disposable chat, select Delete, capture cancellation in Zotero's confirmation dialog, then confirm deletion and inspect the stored state. Never target the user's real chats.
+
+- With a completed fixture reply open, open `.zcs-thread-trigger` and click `[data-zcs-l10n-id="zotero-codex-refresh-chats-button"]` in the picker. Confirm the picker closes and the current chat returns with the same reply. Reopen the picker and confirm the same chat is selected.
 
 ## Gotchas
 

@@ -118,7 +118,7 @@ test -s "$verify_run/permissions-slash-entry.png"
 test -s "$verify_run/actions.jsonl"
 ```
 
-Cleanup verifies that the recorded PID's command still names this profile, stops that PID and its captured descendants, and permanently removes only the owned test `scratch/` directory. It never kills by process name. If ownership cannot be established or a process does not exit, it preserves scratch state and reports failure. Repeated cleanup is safe. Proof files survive. On a failed run the successful-proof files may not exist; retain its logs and failure captures instead.
+Cleanup verifies that the recorded PID's command still names this profile, stops that PID and its captured descendants, and moves the owned test `scratch/` directory to the macOS Trash. If ownership cannot be established, a process does not exit, or Trash is unavailable, it preserves scratch state and reports failure. Trashed scratch data remains private. Repeated cleanup is safe. Proof files survive. On a failed run, retain the logs and any failure captures.
 
 `prove` captures a failure snapshot and attempts cleanup automatically when it fails. Check the reported cleanup result before starting another iteration; other manually driven commands still need explicit cleanup.
 
