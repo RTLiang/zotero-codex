@@ -636,7 +636,7 @@ interface ProtocolModule {
     }
     const pages = textValue.split("\f");
     if (pages.length !== extractedPages) {
-      return "Zotero extracted PDF text without reliable page boundaries. Use the local PDF path in Zotero context to inspect/OCR relevant pages locally; do not guess page citations or upload it to an external OCR service.";
+      return selectPdfEvidence([{ text: textValue, pageNumber: null }], question);
     }
 
     return selectPdfEvidence(pages.map((text, index) => ({ text, pageNumber: index + 1 })), question);
@@ -652,7 +652,8 @@ interface ProtocolModule {
     return `${header}\nOnly relevant excerpts follow. Other inspected text is omitted to fit the context limit.\n\n${selectPdfEvidence(pages, question)}`.slice(0, 3000);
   }
 
-  function selectPdfEvidence(pages: PdfEvidencePage[], question: unknown): string {
+  function selectPdfEvidence(pages: { text: string; pageNumber: number | null }[], question: unknown): string {
+    const location = (page: number | null) => page === null ? "page unavailable" : `physical PDF page ${page}`;
     const stopWords = new Set([
       "about", "and", "are", "can", "does", "explain", "find", "for", "from", "how",
       "into", "its", "locate", "paper", "please", "section", "show", "study", "summarize",
@@ -666,14 +667,14 @@ interface ProtocolModule {
     ] as [RegExp, string][]) if (pattern.test(question as string)) terms.push(term);
     const queryTerms = [...new Set(terms)];
     const headings: string[] = [];
-    const matches: { page: number; lineIndex: number; score: number; excerpt: string }[] = [];
+    const matches: { page: number | null; lineIndex: number; score: number; excerpt: string }[] = [];
     pages.forEach(({ text: page, pageNumber }) => {
       const lines = page.split(/\r?\n/u);
       lines.forEach((line, lineIndex) => {
         const trimmed = line.trim();
         const heading = trimmed.match(/^([1-9]\d{0,2}(?:\.\d{1,2}){0,2})\s+([A-Z][^\n]{2,90})$/u);
         if (heading && headings.length < 80) {
-          headings.push(`Section ${heading[1]}, physical PDF page ${pageNumber}: ${trimmed}`);
+          headings.push(`Section ${heading[1]}, ${location(pageNumber)}: ${trimmed}`);
         }
         const hits = queryTerms.filter(term => trimmed.toLowerCase().includes(term));
         if (!hits.length) return;
@@ -687,21 +688,23 @@ interface ProtocolModule {
         });
       });
     });
-    matches.sort((a, b) => b.score - a.score || a.page - b.page || a.lineIndex - b.lineIndex);
+    matches.sort((a, b) => b.score - a.score || (a.page ?? 0) - (b.page ?? 0) || a.lineIndex - b.lineIndex);
     const selected: typeof matches = [];
-    const pageCounts = new Map<number, number>();
+    const pageCounts = new Map<number | null, number>();
     for (const match of matches) {
-      if ((pageCounts.get(match.page) || 0) >= 2) continue;
+      if (match.page !== null && (pageCounts.get(match.page) || 0) >= 2) continue;
       selected.push(match);
       pageCounts.set(match.page, (pageCounts.get(match.page) || 0) + 1);
       if (selected.length === 5) break;
     }
-    const result = ["PDF text extracted by Zotero. Page numbers below are physical PDF pages."];
+    const result = [pages[0]?.pageNumber === null
+      ? "Zotero PDF text without reliable page boundaries. Physical page numbers are unavailable. Verify locations in the local PDF before citing pages."
+      : "PDF text extracted by Zotero. Page numbers below are physical PDF pages."];
     if (selected.length) {
-      result.push(...selected.map(match => `Excerpt, physical PDF page ${match.page}:\n${match.excerpt}`));
+      result.push(...selected.map(match => `Excerpt, ${location(match.page)}:\n${match.excerpt}`));
     }
     else {
-      result.push(`Opening text, physical PDF page ${pages[0]!.pageNumber}:\n${pages[0]!.text.trim().slice(0, 1800)}`);
+      result.push(`Opening text, ${location(pages[0]!.pageNumber)}:\n${pages[0]!.text.trim().slice(0, 1800)}`);
     }
     if (headings.length) result.push(`Section headings:\n${headings.join("\n")}`);
     // Codex truncates long additionalContext values in the middle. Keep the
