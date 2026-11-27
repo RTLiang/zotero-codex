@@ -1,5 +1,9 @@
 // Read-only Marionette script for control.mjs read. Open the slash menu first.
-const menu = [...document.querySelectorAll('.zcs-command-menu:not([hidden])')].find(e => {
+const pane = document.querySelector(Zotero_Tabs.selectedID === 'zotero-pane'
+  ? '#zotero-item-pane'
+  : '#zotero-context-pane-inner item-details.deck-selected');
+if (!pane) throw new Error('Open the fixture sidebar in the selected tab first');
+const menu = [...pane.querySelectorAll('.zcs-command-menu:not([hidden])')].find(e => {
   const bounds = e.getBoundingClientRect();
   return bounds.width > 0 && bounds.height > 0 && bounds.bottom > 0 &&
     bounds.top < window.innerHeight && !e.closest('[hidden],[collapsed="true"]');
