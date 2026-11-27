@@ -72,6 +72,7 @@ interface SidebarViewState {
 interface SidebarInstance {
   modelSettings(): ModelPreferencesApi;
   runningTurns: { size: number };
+  preparations: { size: number };
   views: Map<unknown, SidebarViewState>;
   init(id: string): void;
   setLanguage(value: string): void;

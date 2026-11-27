@@ -126,7 +126,7 @@ var ZoteroCodexPlugin: ZoteroCodexPluginObject = {
   },
 
   runtimeBusy() {
-    return Boolean(this.client!.connecting || this.client!.pending.size || this.sidebar!.runningTurns.size
+    return Boolean(this.client!.connecting || this.client!.pending.size || this.sidebar!.runningTurns.size || this.sidebar!.preparations?.size
       || [...this.sidebar!.views.values()].some(view =>
         view.running || view.creatingTask || view.initializing || (view.initialized && view.contextTransitioning)));
   },

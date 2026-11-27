@@ -119,3 +119,10 @@ test("failed connections still restore the sidebar and expose saved settings for
   assert.equal(calls.at(-1), "restore");
   assert.equal(plugin.applyingSettings, false);
 });
+
+test("preparing PDF context blocks connection changes before a model turn exists", async () => {
+  const { plugin, calls } = fixture();
+  plugin.sidebar.preparations = new Set([{}]);
+  await assert.rejects(plugin.applySettings({ codexHome: "/zotero/runtime" }), /Wait for all replies/);
+  assert.deepEqual(calls, []);
+});

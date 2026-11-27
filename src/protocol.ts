@@ -117,6 +117,11 @@ interface ZoteroContextPayload {
   zotero: { kind: "untrusted"; value: string };
 }
 
+interface PdfEvidencePage {
+  pageNumber: number;
+  text: string;
+}
+
 interface ProtocolModule {
   asRecord(value: unknown): JsonRecord;
   normalizeText(value: unknown): string;
@@ -150,6 +155,7 @@ interface ProtocolModule {
   updatePaperThreadBindings(value: unknown, key: unknown, threadID: unknown, maximum?: number): string;
   buildZoteroContext(context: unknown, selections?: ContextSelection[], options?: { includeItem?: boolean; pdfEvidence?: string }): ZoteroContextPayload;
   buildPdfEvidence(text: unknown, extractedPages: unknown, question: unknown): string;
+  buildScopedPdfEvidence(pages: PdfEvidencePage[], question: unknown, coverage: string): string;
 }
 
 (function (global) {
@@ -633,6 +639,20 @@ interface ProtocolModule {
       return "Zotero extracted PDF text without reliable page boundaries. Use the local PDF path in Zotero context to inspect/OCR relevant pages locally; do not guess page citations or upload it to an external OCR service.";
     }
 
+    return selectPdfEvidence(pages.map((text, index) => ({ text, pageNumber: index + 1 })), question);
+  }
+
+  function buildScopedPdfEvidence(pages: PdfEvidencePage[], question: unknown, coverage: string): string {
+    const header = `${coverage} This is not a full-document search.`;
+    if (!pages.some(page => page.text.trim())) {
+      return `${header} No searchable text was extracted from the requested pages. Use local PDF/OCR tools on those physical pages if needed; this does not establish that the entire document is scanned or empty.`;
+    }
+    const complete = [header, ...pages.map(page => `PDF text, physical PDF page ${page.pageNumber}:\n${page.text.trim()}`)].join("\n\n");
+    if (complete.length <= 3000) return complete;
+    return `${header}\nOnly relevant excerpts follow. Other inspected text is omitted to fit the context limit.\n\n${selectPdfEvidence(pages, question)}`.slice(0, 3000);
+  }
+
+  function selectPdfEvidence(pages: PdfEvidencePage[], question: unknown): string {
     const stopWords = new Set([
       "about", "and", "are", "can", "does", "explain", "find", "for", "from", "how",
       "into", "its", "locate", "paper", "please", "section", "show", "study", "summarize",
@@ -647,20 +667,20 @@ interface ProtocolModule {
     const queryTerms = [...new Set(terms)];
     const headings: string[] = [];
     const matches: { page: number; lineIndex: number; score: number; excerpt: string }[] = [];
-    pages.forEach((page, index) => {
+    pages.forEach(({ text: page, pageNumber }) => {
       const lines = page.split(/\r?\n/u);
       lines.forEach((line, lineIndex) => {
         const trimmed = line.trim();
         const heading = trimmed.match(/^([1-9]\d{0,2}(?:\.\d{1,2}){0,2})\s+([A-Z][^\n]{2,90})$/u);
         if (heading && headings.length < 80) {
-          headings.push(`Section ${heading[1]}, physical PDF page ${index + 1}: ${trimmed}`);
+          headings.push(`Section ${heading[1]}, physical PDF page ${pageNumber}: ${trimmed}`);
         }
         const hits = queryTerms.filter(term => trimmed.toLowerCase().includes(term));
         if (!hits.length) return;
         const excerpt = lines.slice(Math.max(0, lineIndex - 1), Math.min(lines.length, lineIndex + 12))
           .join("\n").trim().slice(0, 1500);
         matches.push({
-          page: index + 1,
+          page: pageNumber,
           lineIndex,
           score: hits.length * 10 + (heading ? 100 : 0),
           excerpt,
@@ -681,7 +701,7 @@ interface ProtocolModule {
       result.push(...selected.map(match => `Excerpt, physical PDF page ${match.page}:\n${match.excerpt}`));
     }
     else {
-      result.push(`Opening text, physical PDF page 1:\n${pages[0]!.trim().slice(0, 1800)}`);
+      result.push(`Opening text, physical PDF page ${pages[0]!.pageNumber}:\n${pages[0]!.text.trim().slice(0, 1800)}`);
     }
     if (headings.length) result.push(`Section headings:\n${headings.join("\n")}`);
     // Codex truncates long additionalContext values in the middle. Keep the
@@ -752,6 +772,7 @@ interface ProtocolModule {
     updatePaperThreadBindings,
     buildZoteroContext,
     buildPdfEvidence,
+    buildScopedPdfEvidence,
   };
 
   modules.Protocol = exported;

@@ -286,3 +286,5 @@ zotero-codex-diagram-zoom-out =
 zotero-codex-diagram-fit = 适应窗口
 zotero-codex-diagram-pan-hint =
     .title = 拖动平移 · 双指移动 · 捏合缩放
+
+zotero-codex-preparing-context = 正在准备上下文…
