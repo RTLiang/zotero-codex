@@ -286,3 +286,5 @@ zotero-codex-diagram-zoom-out =
 zotero-codex-diagram-fit = Fit
 zotero-codex-diagram-pan-hint =
     .title = Drag to pan · Two-finger pan · Pinch to zoom
+
+zotero-codex-preparing-context = Preparing context…

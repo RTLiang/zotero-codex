@@ -19,6 +19,9 @@
   const MAX_IMAGE_COUNT = 10;
   const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
   const MAX_SELECTION_ATTACHMENTS = 50;
+  const MAX_SCOPED_SECTION_PAGES = 64;
+  const MAX_PDF_TEXT_ENTRIES = 8;
+  const MAX_PDF_TEXT_BYTES = 64 * 1024 * 1024;
   const THREAD_LIST_BATCH_SIZE = 40;
   const SLASH_COMMANDS = [
     { name: "skills", descriptionID: "zotero-codex-command-skills", description: "Choose a skill" },
@@ -495,43 +498,205 @@
     };
   }
 
-  function currentPdfPage(context, doc) {
+  function capturePdfReaderSource(context, doc) {
     if (context?.tabType !== "reader" || !context.attachmentID) return null;
-    const win = doc?.defaultView;
-    if (!win) return null;
-    const readers = global.Zotero?.Reader;
-    const reader = win?.Zotero_Tabs
-      ? readers?.getByTabID?.(win.Zotero_Tabs.selectedID)
-      : readers?._readers?.find(candidate => candidate._window === win &&
-        candidate.itemID === context.attachmentID && !candidate._isTabClosed);
-    if (!reader || reader.itemID !== context.attachmentID) return null;
-    const internal = reader._internalReader;
-    const view = internal?._lastView || internal?._primaryView;
-    const viewer = view?._iframeWindow?.PDFViewerApplication?.pdfViewer;
-    const pageNumber = viewer?.currentPageNumber;
-    if (!Number.isInteger(pageNumber) || pageNumber < 1) return null;
-    return {
-      pageNumber,
-      pageLabel: String(view._pageLabels?.[pageNumber - 1] || ""),
-    };
+    try {
+      const win = doc?.defaultView;
+      if (!win) return null;
+      const readers = global.Zotero?.Reader;
+      const reader = win.Zotero_Tabs
+        ? readers?.getByTabID?.(win.Zotero_Tabs.selectedID)
+        : readers?._readers?.find(candidate => candidate._window === win &&
+          candidate.itemID === context.attachmentID && !candidate._isTabClosed);
+      if (!reader || reader.itemID !== context.attachmentID) return null;
+      const view = reader._internalReader?._lastView || reader._internalReader?._primaryView;
+      const iframeWindow = view?._iframeWindow;
+      const application = iframeWindow?.PDFViewerApplication;
+      const pageNumber = application?.pdfViewer?.currentPageNumber;
+      const currentPage = Number.isInteger(pageNumber) && pageNumber > 0
+        ? { pageNumber, pageLabel: String(view._pageLabels?.[pageNumber - 1] || "") }
+        : null;
+      return { reader, view, iframeWindow, pdfDocument: application?.pdfDocument, currentPage };
+    }
+    catch { return null; }
   }
 
-  async function pdfEvidenceForQuestion(context, question, currentPage = null) {
-    if (!context?.attachmentID || !context.pdfPath || !String(question || "").trim()) return "";
-    let pageEvidence = currentPage
+  function currentPdfPage(context, doc) {
+    return capturePdfReaderSource(context, doc)?.currentPage || null;
+  }
+
+  function pdfScopeForQuestion(question, selections, source) {
+    const text = String(question || "")
+      .replace(/(?:不要|不用|无需|不必|别|不需要)(?:再|去|先)?(?:阅读|读|提取|分析|扫描|检索)?(?:全文|整篇(?:论文|文档|文章)?|整本(?:书)?|全书|整份(?:文档)?)/gu, "")
+      .replace(/\b(?:do not|don't|no need to)\s+(?:read|extract|scan|summarize|review)\s+(?:the\s+)?(?:whole|entire|full)\s+(?:paper|document|book|text)\b/giu, "");
+    if (/\b(?:whole|entire|full)\s+(?:paper|document|book|text)\b|全文|整篇|整本|全书|整份/iu.test(text)
+      || /\b(?:summarize|review|overview|analy[sz]e)\s+(?:this|the)\s+(?:paper|document|book)\b/iu.test(text)
+      || /(?:总结|概括|概述|综述|通读).{0,12}(?:论文|文档|本书|文章)/u.test(text)
+      || /\b(?:compare|contrast|versus|vs\.?)\b|比较|对比/iu.test(text)
+      || /\bpages?\s*#?\s*\d|(?:第\s*)?\d+\s*页|\bappendi(?:x|ces)\b|附录/iu.test(text)
+      || /\b(?:sections|chapters)\s+\d|\b(?:section|chapter)\s+\d+(?:\.\d+)*\s*(?:[-\u2013\u2014,/&]|and|to)\s*\d/iu.test(text)
+      || /(?:第\s*)?\d+(?:\.\d+)*\s*(?:[-\u2013\u2014,，、/&]|和|及|与|至|到)\s*\d+(?:\.\d+)*\s*(?:节|章)/u.test(text)) return { kind: "full" };
+    const selection = /\b(?:selected|highlighted)\s+(?:text|passage|content)|\bthis\s+(?:selection|passage)|选中(?:的)?(?:内容|文字|文本|段落)|所选(?:的)?(?:内容|文字|文本|段落)|这(?:一)?段/iu.test(text);
+    const page = /\b(?:this|current)\s+page\b|这(?:一)?页|当前页|本页/iu.test(text);
+    const sections = [...text.matchAll(/\b(?:section|chapter)\s+(\d+(?:\.\d+)*)\b|(?:第\s*)?(\d+(?:\.\d+)*)\s*(?:节|章)/giu)]
+      .map(match => match[1] || match[2]);
+    if (Number(selection) + Number(page) + Number(sections.length > 0) !== 1) return { kind: "full" };
+    if (selection && selections.length) return { kind: "selection" };
+    if (page && source?.currentPage) return { kind: "page", pageNumber: source.currentPage.pageNumber };
+    if (sections.length === 1) return { kind: "section", sectionNumber: sections[0] };
+    return { kind: "full" };
+  }
+
+  function pdfSourceIsCurrent(context, source, isCurrent) {
+    try {
+      if (!isCurrent()) return false;
+      if (!source) return true;
+      if (source.reader.itemID !== context.attachmentID || source.reader._isTabClosed) return false;
+      return !source.pdfDocument || source.view?._iframeWindow?.PDFViewerApplication?.pdfDocument === source.pdfDocument;
+    }
+    catch { return false; }
+  }
+
+  async function readPdfPage(source, pageNumber, isCurrent) {
+    const pdf = source?.pdfDocument;
+    if (!pdf || !Number.isInteger(pageNumber) || pageNumber < 1 || pageNumber > pdf.numPages) throw new Error("Requested PDF page is unavailable");
+    if (typeof pdf.getPageData === "function") {
+      try {
+        const utils = global.Cu || global.Components?.utils;
+        const options = utils?.cloneInto && source.iframeWindow
+          ? utils.cloneInto({ pageIndex: pageNumber - 1 }, source.iframeWindow) : { pageIndex: pageNumber - 1 };
+        const result = await pdf.getPageData(options);
+        if (!Array.isArray(result?.chars)) throw new Error("Requested PDF page has no text data");
+        return result.chars.map(char => `${char.u || char.c || ""}${char.spaceAfter ? " " : ""}${char.lineBreakAfter || char.paragraphBreakAfter ? "\n" : ""}`).join("");
+      }
+      catch (error) {
+        if (!isCurrent()) return "";
+        if (typeof pdf.getPage !== "function") throw error;
+      }
+    }
+    const page = await pdf.getPage(pageNumber);
+    if (!isCurrent()) return "";
+    const result = await page.getTextContent();
+    return (result.items || []).map(item => `${item.str || ""}${item.hasEOL ? "\n" : " "}`).join("");
+  }
+
+  function outlineSectionNumber(entry) {
+    const titleNumber = String(entry.title || "").match(/^(?:(?:section|chapter)\s+|第\s*)?(\d+(?:\.\d+)*)(?![\d.])/iu)?.[1];
+    const anchorNumber = typeof entry.dest === "string"
+      ? entry.dest.match(/^(?:chapter|section|subsection|subsubsection)\.(\d+(?:\.\d+)*)$/u)?.[1] : null;
+    const conflict = Boolean(titleNumber && anchorNumber && titleNumber !== anchorNumber);
+    return { conflict, number: conflict ? null : titleNumber || anchorNumber || null, candidates: [titleNumber, anchorNumber].filter(Boolean) };
+  }
+
+  function pageVerifiesOutlineHeading(text, entry) {
+    const section = outlineSectionNumber(entry);
+    if (section.conflict) return false;
+    const title = String(entry.title || "").normalize("NFKC").replace(/^(?:(?:section|chapter)\s+|第\s*)?\d+(?:\.\d+)*(?:[.、:：)]|\s|章|节)+/iu, "").trim();
+    if (!title) return false;
+    const escape = value => value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+    const titlePattern = title.split(/\s+/u).map(escape).join("\\s+");
+    const heading = section.number
+      ? `(?:(?:section|chapter)\\s+|第\\s*)?${escape(section.number)}(?!\\d|\\.\\d)(?:[.、:：)]|\\s|章|节)+${titlePattern}`
+      : titlePattern;
+    return new RegExp(`(?:^|\\n)[^\\S\\n]*${heading}(?=$|[^\\p{L}\\p{N}])`, "iu")
+      .test(text.normalize("NFKC").replace(/\r\n?/gu, "\n"));
+  }
+
+  async function sectionPdfPages(source, sectionNumber, read, isCurrent) {
+    const pdf = source?.pdfDocument;
+    if (typeof pdf?.getOutline !== "function") return null;
+    const outline = await pdf.getOutline();
+    if (!isCurrent()) return null;
+    const nodes = [];
+    const visit = (entries, depth) => {
+      if (!Array.isArray(entries)) return;
+      for (const entry of entries) {
+        if (!entry || typeof entry !== "object" || nodes.length >= 20000) continue;
+        nodes.push({ entry, depth });
+        visit(entry.items, depth + 1);
+      }
+    };
+    visit(outline, 0);
+    if (nodes.length >= 20000) return null;
+    if (nodes.some(node => {
+      const section = outlineSectionNumber(node.entry);
+      return section.conflict && section.candidates.includes(sectionNumber);
+    })) return null;
+    const matches = nodes.filter(node => outlineSectionNumber(node.entry).number === sectionNumber);
+    if (matches.length !== 1) return null;
+    const target = matches[0];
+    const startIndex = nodes.indexOf(target);
+    const boundary = nodes.slice(startIndex + 1).find(node => node.depth <= target.depth);
+    const pageNumber = async entry => {
+      let destination = entry?.dest;
+      if (typeof destination === "string") destination = await pdf.getDestination?.(destination);
+      if (!Array.isArray(destination) || destination[0] == null || !isCurrent()) return null;
+      const index = Number.isInteger(destination[0]) ? destination[0] : await pdf.getPageIndex?.(destination[0]);
+      return Number.isInteger(index) && index >= 0 && index < pdf.numPages ? index + 1 : null;
+    };
+    const first = await pageNumber(target.entry);
+    if (!isCurrent()) return null;
+    const last = boundary ? await pageNumber(boundary.entry) : pdf.numPages;
+    if (!isCurrent() || first === null || last === null || last < first || last - first + 1 > MAX_SCOPED_SECTION_PAGES) return null;
+    if (!pageVerifiesOutlineHeading(await read(first), target.entry)) return null;
+    if (!isCurrent()) return null;
+    if (boundary && !pageVerifiesOutlineHeading(await read(last), boundary.entry)) return null;
+    return Array.from({ length: last - first + 1 }, (_, index) => first + index);
+  }
+
+  async function pdfEvidenceForQuestion(context, question, currentPage = null, {
+    fullText = null, source = null, selections = [], isCurrent = () => true,
+  } = {}) {
+    const current = () => pdfSourceIsCurrent(context, source, isCurrent);
+    if (!current()) return null;
+    const pageMarker = currentPage
       ? `Currently viewed page at send time: physical PDF page ${currentPage.pageNumber}${currentPage.pageLabel ? `; printed label ${currentPage.pageLabel}` : ""}. This is the reading position for references to \"this page\".\n`
       : "";
+    const scope = pdfScopeForQuestion(question, selections, source);
+    if (scope.kind === "selection") return `${pageMarker}Only the selected text supplied with this turn was inspected. This is not a full-document search.`;
+    if (!context?.attachmentID || !context.pdfPath || !String(question || "").trim()) return "";
+    if (scope.kind !== "full" && source?.pdfDocument) {
+      try {
+        const pageTexts = new Map();
+        const read = async pageNumber => {
+          if (!current()) return "";
+          if (!pageTexts.has(pageNumber)) pageTexts.set(pageNumber, await readPdfPage(source, pageNumber, current));
+          return pageTexts.get(pageNumber);
+        };
+        const numbers = scope.kind === "page" ? [scope.pageNumber]
+          : await sectionPdfPages(source, scope.sectionNumber, read, current);
+        if (!current()) return null;
+        if (numbers) {
+          for (const number of numbers) {
+            await read(number);
+            if (!current()) return null;
+          }
+          const pages = numbers.map(pageNumber => ({ pageNumber, text: pageTexts.get(pageNumber) }));
+          const coverage = scope.kind === "page"
+            ? `Only the requested page, physical PDF page ${scope.pageNumber}, was inspected.`
+            : `Inspected physical PDF pages ${numbers[0]} to ${numbers[numbers.length - 1]} for section ${scope.sectionNumber}. Boundary pages may include neighboring section text.`;
+          const scopedQuestion = scope.kind === "page"
+            ? String(question).replace(/\b(?:this|current)\s+page\b|这(?:一)?页|当前页|本页/giu, "") : question;
+          return Protocol.buildScopedPdfEvidence(pages, scopedQuestion, pageMarker + coverage);
+        }
+      }
+      catch { if (!current()) return null; }
+    }
+    if (!current()) return null;
     const worker = global.Zotero?.PDFWorker;
-    if (typeof worker?.getFullText !== "function") {
-      return (pageEvidence + Protocol.buildPdfEvidence("", 0, question)).slice(0, 3000);
+    if (typeof fullText !== "function" && typeof worker?.getFullText !== "function") {
+      return (pageMarker + Protocol.buildPdfEvidence("", 0, question)).slice(0, 3000);
     }
     let result;
     try {
-      result = await worker.getFullText(context.attachmentID, null, true);
+      result = fullText ? await fullText(context) : await worker.getFullText(context.attachmentID, null, true);
     }
     catch {
-      return (pageEvidence + Protocol.buildPdfEvidence("", 0, question)).slice(0, 3000);
+      if (!current()) return null;
+      return (pageMarker + Protocol.buildPdfEvidence("", 0, question)).slice(0, 3000);
     }
+    if (!current()) return null;
+    let pageEvidence = pageMarker;
     if (currentPage && typeof result?.text === "string") {
       const pages = result.text.split("\f");
       if (pages.length === result.extractedPages && currentPage.pageNumber <= pages.length) {
@@ -1223,7 +1388,7 @@
           void this.addImageFiles(files);
         },
         dragover: (event) => {
-          if (this.running || this.creatingTask) return;
+          if (this.running || this.creatingTask || this.manager.preparationFor?.(this)) return;
           const hasImage = Array.from(event.dataTransfer?.items || [])
             .some((item) => item.kind === "file" && item.type.startsWith("image/"));
           if (!hasImage) return;
@@ -1236,7 +1401,7 @@
         },
         drop: (event) => {
           composer.classList.remove("zcs-composer-dragging");
-          if (this.running || this.creatingTask) return;
+          if (this.running || this.creatingTask || this.manager.preparationFor?.(this)) return;
           const files = Array.from(event.dataTransfer?.files || [])
             .filter((file) => file.type.startsWith("image/"));
           if (!files.length) return;
@@ -1521,15 +1686,16 @@
 
     updateComposerState() {
       const send = this.elements.sendButton;
-      const unavailable = this.creatingTask || this.contextTransitioning;
-      this.elements.input.disabled = this.contextTransitioning;
+      const preparing = Boolean(this.manager.preparationFor?.(this));
+      const unavailable = preparing || this.creatingTask || this.contextTransitioning;
+      this.elements.input.disabled = preparing || this.contextTransitioning;
       this.elements.newThreadButton.disabled = unavailable;
       if (this.elements.headerNewButton) this.elements.headerNewButton.disabled = unavailable;
       this.elements.threadButton.disabled = unavailable;
-      this.elements.contextAddButton.disabled = this.running || this.contextTransitioning;
-      this.elements.imageOption.disabled = this.running || this.contextTransitioning;
-      this.elements.generateImageOption.disabled = this.running || this.contextTransitioning;
-      this.elements.imageInput.disabled = this.running || this.contextTransitioning;
+      this.elements.contextAddButton.disabled = preparing || this.running || this.contextTransitioning;
+      this.elements.imageOption.disabled = preparing || this.running || this.contextTransitioning;
+      this.elements.generateImageOption.disabled = preparing || this.running || this.contextTransitioning;
+      this.elements.imageInput.disabled = preparing || this.running || this.contextTransitioning;
       this.elements.modelTrigger.disabled = unavailable || !this.models.length;
       this.elements.modelChoice.disabled = unavailable || !this.models.length;
       this.elements.effortChoice.disabled = unavailable || !this.selectedEffort;
@@ -1538,6 +1704,12 @@
       if (this.contextTransitioning) {
         send.disabled = true;
         setButtonLabel(send, "↑", "zotero-codex-send", "Send");
+        send.classList.remove("zcs-send-stop");
+        return;
+      }
+      if (preparing) {
+        send.disabled = true;
+        setButtonLabel(send, "…", "zotero-codex-preparing-context", "Preparing context…");
         send.classList.remove("zcs-send-stop");
         return;
       }
@@ -2506,7 +2678,7 @@
     }
 
     async addImageFiles(files) {
-      if (this.running || this.creatingTask || !files?.length) return;
+      if (this.running || this.creatingTask || this.manager.preparationFor?.(this) || !files?.length) return;
       const contextEpoch = this.contextEpoch;
       const room = Math.max(0, MAX_IMAGE_COUNT - this.images.length);
       if (!room) {
@@ -2955,6 +3127,8 @@
     async selectThread(threadID, { bind = true, quiet = false, preserveScroll = false } = {}) {
       if (!quiet) this.showPage?.("chat", { focus: false });
       if (!threadID || this.destroyed || this.manager.reconfiguring || this.creatingTask) return false;
+      const preparation = this.manager.preparationFor?.(this);
+      if (preparation && (!quiet || (preparation.view === this && preparation.epoch === this.contextEpoch))) return quiet;
       this.hideCommandMenu?.();
       const contextEpoch = this.contextEpoch;
       const context = this.context;
@@ -3012,6 +3186,7 @@
         const scrollTop = preserveScroll ? this.elements.transcript.scrollTop : null;
         this.renderTranscript(Protocol.flattenTurns(thread.turns), { preserveScroll });
         if (running) this.showPendingResponse();
+        else if (this.manager.preparationFor?.(this)) this.showPendingResponse("preparing");
         if (scrollTop !== null) this.elements.transcript.scrollTop = scrollTop;
         this.updateThreadHeader();
         this.setStatus("ready", this.connectionLabel());
@@ -3592,7 +3767,7 @@
     }
 
     beginEdit(entry, mode = "fork") {
-      if (this.running || this.creatingTask || !entry?.turnID || !this.threadID) return;
+      if (this.running || this.creatingTask || this.manager.preparationFor?.(this) || !entry?.turnID || !this.threadID) return;
       this.closePopovers();
       this.editingMessage = {
         threadID: this.threadID,
@@ -3651,8 +3826,8 @@
       this.hidePendingResponse();
       const pending = create(this.doc, "div", "zcs-pending-response");
       const label = createL10n(this.doc, "span", "zcs-pending-response-label",
-        phase === "interactive" ? "zotero-codex-ui-generating" : "zotero-codex-working",
-        phase === "interactive" ? "Generating interactive view…" : "Working…");
+        phase === "preparing" ? "zotero-codex-preparing-context" : phase === "interactive" ? "zotero-codex-ui-generating" : "zotero-codex-working",
+        phase === "preparing" ? "Preparing context…" : phase === "interactive" ? "Generating interactive view…" : "Working…");
       label.setAttribute("role", "status");
       pending.append(label);
       this.elements.waitingArea.append(pending);
@@ -3695,7 +3870,7 @@
     }
 
     resetConversation({ clearBinding = false, focus = true, force = false } = {}) {
-      if (!force && this.creatingTask) return;
+      if (!force && (this.creatingTask || this.manager.preparationFor?.(this))) return;
       this.showPage?.("chat", { focus: false });
       this.closeImagePreview?.();
       this.loadSerial++;
@@ -3775,7 +3950,7 @@
     }
 
     async send() {
-      if (this.destroyed || this.manager.reconfiguring) return;
+      if (this.destroyed || this.manager.reconfiguring || this.manager.preparationFor?.(this)) return;
       let text = this.elements.input.value.trim();
       if (text.startsWith("/") && !this.creatingTask && !this.contextTransitioning) {
         const epoch = this.contextEpoch;
@@ -3793,16 +3968,21 @@
         this.creatingTask ||
         this.contextTransitioning
       ) return;
+      const preparation = this.manager.beginPreparation(this);
+      if (!preparation) return;
       const shouldAutoTitle = !this.threadID && !this.editingMessage;
       const contextEpoch = this.contextEpoch;
       let clearedInput = false;
       let sendingThreadID = "";
       let runningTurn = null;
       try {
+        this.updateComposerState();
+        this.showPendingResponse("preparing");
         let paperContext = this.context;
         if (!paperContext) paperContext = await this.refreshContext();
         if (!paperContext || !this.isCurrentContext(contextEpoch, paperContext)) return;
-        const currentPage = currentPdfPage(paperContext, this.doc);
+        const source = capturePdfReaderSource(paperContext, this.doc);
+        const currentPage = source?.currentPage || null;
         const pinnedSelections = this.draftPinnedSelections();
         const liveSelection = this.manager.getLiveSelection(paperContext.attachmentID);
         const selections = Protocol.mergeContextSelections(liveSelection, pinnedSelections);
@@ -3824,12 +4004,15 @@
 
         let pdfEvidence = "";
         try {
-          pdfEvidence = await pdfEvidenceForQuestion(paperContext, text, currentPage);
+          pdfEvidence = await pdfEvidenceForQuestion(paperContext, text, currentPage, {
+            fullText: context => this.manager.getPdfText(context), source, selections,
+            isCurrent: () => this.isCurrentContext(contextEpoch, paperContext),
+          });
         }
         catch (error) {
           this.manager.log("Could not extract current PDF text", error);
         }
-        if (!this.isCurrentContext(contextEpoch, paperContext)) return;
+        if (pdfEvidence === null || !this.isCurrentContext(contextEpoch, paperContext) || this.threadID !== threadID) return;
         let additionalContext = Protocol.buildZoteroContext(paperContext, selections, { pdfEvidence });
         if (this.interactiveViews?.length) {
           const interactive = await Promise.all(this.interactiveViews.slice(-4).map(view => view.context()));
@@ -3881,6 +4064,7 @@
           context: paperContext, label: Protocol.threadLabel(this.thread),
           doc: this.doc, titleRequest,
         });
+        this.manager.finishPreparation(preparation);
 
         const turn = await this.client.startTurn({
           threadID,
@@ -3913,6 +4097,7 @@
         this.hidePendingResponse();
         const draft = this.elements.input.value || (clearedInput ? text : "");
         const draftImages = this.images.length ? this.images : (clearedInput ? images : []);
+        this.manager.finishPreparation(preparation);
         if (this.threadID && !this.editingMessage) {
           await this.selectThread(this.threadID).catch(() => null);
         }
@@ -3924,6 +4109,13 @@
           this.images = draftImages;
           this.resizeComposer();
           this.renderContextAttachment();
+          this.updateComposerState();
+        }
+      }
+      finally {
+        this.manager.finishPreparation(preparation);
+        if (!this.destroyed && contextEpoch === this.contextEpoch) {
+          if (!this.running && !this.manager.preparationFor(this)) this.hidePendingResponse();
           this.updateComposerState();
         }
       }
@@ -3977,7 +4169,7 @@
       this.elements.imageOption.disabled = running || this.contextTransitioning;
       this.elements.generateImageOption.disabled = running || this.contextTransitioning;
       this.elements.imageInput.disabled = running || this.contextTransitioning;
-      this.elements.reconnectButton.disabled = this.manager.runningTurns.size > 0;
+      this.elements.reconnectButton.disabled = this.manager.runningTurns.size > 0 || this.manager.preparations.size > 0;
       this.updateComposerState();
       if (running) this.setStatus("busy", statusText);
       else this.setStatus("ready", this.connectionLabel());
@@ -3998,7 +4190,7 @@
     }
 
     async reconnect() {
-      if (this.destroyed || this.manager.reconfiguring || this.manager.runningTurns.size) return;
+      if (this.destroyed || this.manager.reconfiguring || this.manager.runningTurns.size || this.manager.preparations.size) return;
       const path = this.elements.pathInput.value.trim();
       this.manager.setPreference("codexPath", path);
       this.setStatus("busy", "");
@@ -4368,6 +4560,9 @@
       this.runtimeViews = new Map();
       this.runtimeDrafts = new WeakMap();
       this.runningTurns = new Map();
+      this.preparations = new Set();
+      this.pdfTextCache = new Map();
+      this.pdfTextRequests = new Map();
       this.completedTurnIDs = new Set();
       this.shuttingDown = false;
       this.cleanupClient = this.client?.subscribe?.((event) => this.handleTurnEvent(event));
@@ -4378,6 +4573,89 @@
       this.liveSelectionSequence = 0;
       this.selectionPopupCleanups = new Set();
       this.readerSelectionHandler = (event) => this.handleReaderSelection(event);
+    }
+
+    preparationFor(view) {
+      const paperKey = Protocol.paperContextKey(view.context);
+      return [...this.preparations].find(preparation =>
+        (preparation.view === view && preparation.epoch === view.contextEpoch) ||
+        (view.threadID && preparation.threadID === view.threadID) ||
+        (paperKey && preparation.paperKey === paperKey));
+    }
+
+    beginPreparation(view) {
+      if (this.shuttingDown || this.preparationFor(view) || this.runningTurns.has(view.threadID)) return null;
+      const preparation = {
+        view, epoch: view.contextEpoch, threadID: view.threadID,
+        paperKey: Protocol.paperContextKey(view.context),
+      };
+      this.preparations.add(preparation);
+      for (const other of this.views.values()) {
+        other.updateComposerState?.();
+        if (other.elements?.reconnectButton) other.elements.reconnectButton.disabled = true;
+        if (this.preparationFor(other)) other.showPendingResponse?.("preparing");
+      }
+      return preparation;
+    }
+
+    finishPreparation(preparation) {
+      if (!this.preparations.delete(preparation)) return;
+      for (const view of this.views.values()) {
+        view.updateComposerState?.();
+        if (view.elements?.reconnectButton) {
+          view.elements.reconnectButton.disabled = this.runningTurns.size > 0 || this.preparations.size > 0;
+        }
+        if (!this.preparationFor(view) && !view.running) view.hidePendingResponse?.();
+      }
+    }
+
+    async getPdfText(context) {
+      const extract = () => global.Zotero.PDFWorker.getFullText(context.attachmentID, null, true);
+      const version = async () => {
+        try {
+          const stat = await global.IOUtils.stat(context.pdfPath);
+          if (!Number.isFinite(stat.size) || !Number.isFinite(stat.lastModified)) return null;
+          return JSON.stringify([context.pdfPath, stat.size, stat.lastModified]);
+        }
+        catch { return null; }
+      };
+      const identity = await version();
+      if (identity === null || this.shuttingDown) return extract();
+      const key = context.attachmentID;
+      const cached = this.pdfTextCache.get(key);
+      if (cached?.identity === identity) {
+        this.pdfTextCache.delete(key);
+        this.pdfTextCache.set(key, cached);
+        return cached.result;
+      }
+      this.pdfTextCache.delete(key);
+      const pending = this.pdfTextRequests.get(key);
+      if (pending?.identity === identity) return pending.promise;
+      const request = { identity, promise: null };
+      request.promise = (async () => {
+        try {
+          const result = await Promise.resolve().then(extract);
+          if (typeof result?.text !== "string" || !Number.isInteger(result?.extractedPages)) return result;
+          const bytes = result.text.length * 2;
+          if (await version() !== identity) throw new Error("PDF changed while extracting text");
+          if (this.shuttingDown || this.pdfTextRequests.get(key) !== request) return result;
+          if (bytes <= MAX_PDF_TEXT_BYTES) {
+            this.pdfTextCache.set(key, { identity, result, bytes });
+            let total = [...this.pdfTextCache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+            while (this.pdfTextCache.size > MAX_PDF_TEXT_ENTRIES || total > MAX_PDF_TEXT_BYTES) {
+              const oldest = this.pdfTextCache.keys().next().value;
+              total -= this.pdfTextCache.get(oldest).bytes;
+              this.pdfTextCache.delete(oldest);
+            }
+          }
+          return result;
+        }
+        finally {
+          if (this.pdfTextRequests.get(key) === request) this.pdfTextRequests.delete(key);
+        }
+      })();
+      this.pdfTextRequests.set(key, request);
+      return request.promise;
     }
 
     modelSettings() {
@@ -4479,7 +4757,7 @@
           view.activeTurnID = "";
           view.setRunning(false);
         }
-        view.elements.reconnectButton.disabled = this.runningTurns.size > 0;
+        view.elements.reconnectButton.disabled = this.runningTurns.size > 0 || this.preparations.size > 0;
         view.renderThreadPicker();
       }
     }
@@ -5020,6 +5298,9 @@
 
     async shutdown() {
       this.shuttingDown = true;
+      this.pdfTextCache.clear();
+      this.pdfTextRequests.clear();
+      this.preparations.clear();
       this.cleanupClient?.();
       this.runningTurns.clear();
       this.completedTurnIDs.clear();
@@ -5047,6 +5328,7 @@
     resolveItemContext,
     pdfEvidenceForQuestion,
     currentPdfPage,
+    capturePdfReaderSource,
     resolvePaperLink,
     appendMarkdown,
     copyMessageText,

@@ -355,3 +355,37 @@ test("uses a document's working directory, or its bindings when no PDF exists", 
     ["bound-elsewhere"],
   );
 });
+
+test("scoped PDF snippets preserve supplied physical page numbers", () => {
+  const value = Protocol.buildScopedPdfEvidence([
+    { pageNumber: 91, text: "7.1 Sample Method\nThe sample method follows generic steps." },
+    { pageNumber: 92, text: "The generic method remains stable on the following page." },
+  ], "method", "Only physical PDF pages 91 to 92 were inspected.");
+  assert.match(value, /physical PDF page 91/);
+  assert.match(value, /not a full-document search/);
+  assert.doesNotMatch(value, /physical PDF page 1\b/);
+  assert.ok(value.length <= 3000);
+});
+
+test("small scoped PDF ranges include every page and their complete text", () => {
+  const value = Protocol.buildScopedPdfEvidence([
+    { pageNumber: 42, text: "2.1 Sample Steps\nThe first sample step begins here." },
+    { pageNumber: 43, text: "The sample step continues and its tail remains available." },
+    { pageNumber: 44, text: "The final sample step ends here.\n2.2 Next Steps" },
+  ], "Explain section 2.1", "Currently viewed page at send time: physical PDF page 43. Inspected physical PDF pages 42 to 44.");
+  assert.match(value, /physical PDF page 42:\n2\.1 Sample Steps/);
+  assert.match(value, /physical PDF page 43:\nThe sample step continues and its tail remains available/);
+  assert.match(value, /physical PDF page 44:\nThe final sample step ends here/);
+  assert.doesNotMatch(value, /relevant excerpts/i);
+  assert.ok(value.length <= 3000);
+});
+
+test("long scoped PDF ranges explicitly identify their bounded excerpts", () => {
+  const value = Protocol.buildScopedPdfEvidence([
+    { pageNumber: 42, text: "Generic sample prose.\n".repeat(180) },
+    { pageNumber: 43, text: "The sample boundary remains available.\n".repeat(100) },
+  ], "Explain section 2.1", "Currently viewed page at send time: physical PDF page 43. Inspected physical PDF pages 42 to 43.");
+  assert.match(value, /relevant excerpts/i);
+  assert.match(value, /omitted/i);
+  assert.ok(value.length <= 3000);
+});

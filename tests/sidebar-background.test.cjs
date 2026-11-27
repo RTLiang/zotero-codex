@@ -196,6 +196,7 @@ test("a late turn-start response cannot change the newly selected chat", async (
   client.startTurn = () => new Promise((resolve) => { resolveStart = resolve; });
   view.elements.input.value = "Explain A";
   const sending = SidebarView.prototype.send.call(view);
+  while (!resolveStart) await new Promise(resolve => setImmediate(resolve));
   await view.selectThread("B");
   resolveStart({ id: "turn-A" });
   await sending;
@@ -286,4 +287,36 @@ test("starting an interactive tool shows a visible generation status", () => {
   view.showPendingResponse = value => { phase = value; };
   client.emit("item/started", { threadId: "A", item: { type: "dynamicToolCall", tool: "render_interactive_ui" } });
   assert.equal(phase, "interactive");
+});
+
+test("another sidebar restores the bound chat while its paper is preparing", async () => {
+  const { manager } = session();
+  const owner = viewFor(manager);
+  owner.context.libraryID = 1;
+  manager.setPaperThread(owner.context, "A");
+  const preparation = manager.beginPreparation(owner);
+  const other = viewFor(manager, "");
+  other.context = owner.context;
+  let phase;
+  other.showPendingResponse = value => { phase = value; };
+  other.resetConversation = () => assert.fail("preparation must not remove a valid chat binding");
+  await SidebarView.prototype.activatePaperConversation.call(other, other.contextEpoch);
+  assert.equal(manager.getPaperThread(owner.context), "A");
+  assert.equal(other.threadID, "A");
+  assert.equal(phase, "preparing");
+  assert.equal(other.elements.input.disabled, true);
+  manager.finishPreparation(preparation);
+});
+
+test("quiet refresh and message editing preserve the preparing sender's draft", async () => {
+  const { manager } = session();
+  const owner = viewFor(manager);
+  owner.elements.input.value = "Keep this sample question";
+  owner.cancelEdit = () => { owner.elements.input.value = ""; };
+  const preparation = manager.beginPreparation(owner);
+  assert.equal(await owner.selectThread("A", { quiet: true }), true);
+  SidebarView.prototype.beginEdit.call(owner, { turnID: "older-turn", text: "Older sample question" });
+  assert.equal(owner.elements.input.value, "Keep this sample question");
+  assert.equal(owner.editingMessage, undefined);
+  manager.finishPreparation(preparation);
 });
