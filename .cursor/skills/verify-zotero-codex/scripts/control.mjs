@@ -42,7 +42,10 @@ function fingerprint() {
   assert.equal(tracked.status, 0, "git ls-files failed");
   // Built JavaScript is not tracked, so the fingerprint stays stable across check and build runs.
   for (const relative of tracked.stdout.split("\0").filter(Boolean).sort()) {
-    hash.update(relative).update(fs.readFileSync(path.join(root, relative)));
+    const file = path.join(root, relative);
+    const linkedDirectory = fs.lstatSync(file).isSymbolicLink() && fs.statSync(file).isDirectory();
+    const contents = linkedDirectory ? fs.readlinkSync(file) : fs.readFileSync(file);
+    hash.update(relative).update(contents);
   }
   return hash.digest("hex");
 }
@@ -389,7 +392,7 @@ async function seed(client) {
 
 async function prove(client) {
   assert.ok(["library", "reader"].includes(entry), "Use --entry library|reader");
-  const prefix = entry === "reader" ? "#zotero-context-pane-inner " : "#zotero-item-pane ";
+  const prefix = entry === "reader" ? "#zotero-context-pane-inner item-details.deck-selected " : "#zotero-item-pane ";
   const ui = selector => prefix + selector;
   await doctor(client);
   await seed(client);
@@ -435,11 +438,20 @@ async function prove(client) {
   await drive(client, "click", pane);
   let ready = false;
   for (let i = 0; i < 60; i++) {
-    ready = await client.evaluate(`${elementScript}
+    const state = await client.evaluate(`${elementScript}
       const model = document.querySelector(arguments[1]);
-      return !e.disabled && model && !model.disabled && !Zotero.CodexSidebar.settings.busy();
-    `,[ui(".zcs-input"),ui(".zcs-model-trigger")]).catch(()=>false);
+      const header = e.closest('.zcs-shell').querySelector('.zcs-topbar');
+      const bounds = header.getBoundingClientRect();
+      const visible = bounds.width > 0 && bounds.height > 0 && bounds.bottom > 0 && bounds.top < window.innerHeight;
+      return { visible, ready: !e.disabled && model && !model.disabled && !Zotero.CodexSidebar.settings.busy() };
+    `,[ui(".zcs-input"),ui(".zcs-model-trigger")]).catch(()=>({visible:false,ready:false}));
+    ready = state.visible && state.ready;
     if (ready) break;
+    if (i === 3 && !state.visible) {
+      await doctor(client);
+      record("reopen-fixture-sidebar", { entry, reason: "Initial pane is not visible" });
+      await drive(client, "click", pane);
+    }
     await delay(500);
   }
   assert.ok(ready, "Sidebar initialization did not finish; inspect the native controls and CLI connection");

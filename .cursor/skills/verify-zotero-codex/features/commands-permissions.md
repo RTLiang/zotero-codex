@@ -19,7 +19,7 @@ Users open permission or model controls from the composer footer or local slash 
 
 ## Driving it with control.mjs
 
-All selector examples below are shorthand: prefix them with `#zotero-item-pane ` for library controls or `#zotero-context-pane-inner ` for reader controls. Both panes can retain matching elements, so an unscoped selector can select an inactive control.
+All selector examples below are shorthand: prefix them with `#zotero-item-pane ` for library controls or `#zotero-context-pane-inner item-details.deck-selected ` for reader controls. Both panes can retain matching elements, so an unscoped selector can select an inactive control.
 
 Preconditions:
 
@@ -29,7 +29,7 @@ Preconditions:
 - Model/skill catalog checks require the actual CLI and applicable account/skills, not preview fixtures.
 
 - Complete the initial permission feature proof with `"$verify_control" prove --run "$verify_run"`. Expect button and `/approvals` screenshots, persisted `workspace-write`, an empty composer and no messages/session.
-- Repeat in a fresh run with `prove --run "$verify_run" --entry reader` to cover the PDF-reader sidebar. Manual reader selectors must start with `#zotero-context-pane-inner `; library selectors start with `#zotero-item-pane `. Zotero keeps the inactive pane's controls in the DOM.
+- Repeat in a fresh run with `prove --run "$verify_run" --entry reader` to cover the PDF-reader sidebar. Manual reader selectors must start with `#zotero-context-pane-inner item-details.deck-selected `; library selectors start with `#zotero-item-pane `. Zotero keeps the inactive pane's controls in the DOM.
 - Open manually with `"$verify_control" click '.zcs-permissions-trigger' --run "$verify_run"`. The `.zcs-permissions-card` becomes visible and the trigger has `aria-expanded="true"`.
 - Choose access with `"$verify_control" click '[data-permission="sandbox"] > .zcs-model-choice' --run "$verify_run"`, then `click '[data-permission="sandbox"] [data-value="workspace-write"]'` with the same `--run`. Policy uses `data-permission="approvalPolicy"` with `untrusted`, `on-request` or `never`; reviewer uses `data-permission="approvalsReviewer"` with `user` or `auto_review`. Capture the visible list before choosing and verify the stored preference, selected checkmark, collapsed list and still-open panel after choosing. While network access is editable, click its checkbox off and verify the saved false value; reopen to confirm persistence, then restore true. The generated proof covers both transitions. Reopen the dialog to prove persistence.
 - Cover the composer entry with `fill '.zcs-input' /approvals`, then `key '.zcs-input' Enter` or Tab, each with `--run "$verify_run"`. Expect the same dialog and no sent user message.
@@ -37,6 +37,8 @@ Preconditions:
 - With the slash menu open, run `"$verify_control" read .cursor/skills/verify-zotero-codex/scripts/command-menu-layout.js --run "$verify_run"`. It rejects collapsed descriptions, text outside its row, overlapping rows, horizontal overflow and a menu clipped above the chat header. Include long skill names discovered by the real CLI in the scratch workspace, and capture the menu screenshot. Shrink the chat with its resize handle and repeat the check. Zotero's default button height and margins do not apply in the browser preview.
 - Open model controls with `click '.zcs-model-trigger'`, or `fill '.zcs-input' /model` then `key '.zcs-input' Enter`. The `.zcs-model-popover` appears. Click `[data-zcs-l10n-id="zotero-codex-model-choice"]` and choose an actually listed `[role="option"]`; repeat with `[data-zcs-l10n-id="zotero-codex-effort-choice"]`. For a model with Fast, click `[data-zcs-l10n-id="zotero-codex-speed-choice"]`, then `[data-value="priority"]`; confirm the footer shows Fast and reopen the choice to verify the checkmark. Independently compare the saved `model`, `reasoningEffort` and `serviceTier` defaults before and after footer changes: all must remain unchanged. Refresh the catalog and verify the current selections remain; start a new chat and verify its footer uses the saved defaults. Choose `[data-value="default"]` and verify the next turn uses standard speed. Capture the selected options and footer text. Use the current snapshot to scope each option uniquely.
 - Capture `snapshot commands-after --run "$verify_run"`. Record which entry points were exercised, including library versus PDF when the changed behavior affects both.
+
+- When several PDF tabs are open, run the layout script in each selected reader with its slash menu open. It must inspect that reader’s menu rather than a retained menu from an older tab.
 
 ## Gotchas
 
