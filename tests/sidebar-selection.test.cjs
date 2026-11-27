@@ -637,6 +637,100 @@ function pdfCacheFixture(t) {
 
 const nextTick = () => new Promise(resolve => setImmediate(resolve));
 
+function indexedPdfFixture(t) {
+  const f = pdfCacheFixture(t);
+  f.cacheStat = { size: 200, lastModified: 20 };
+  f.pages = { indexedPages: 2, total: 2 };
+  f.text = f.result.text;
+  f.reads = 0;
+  global.Zotero.Items = { getAsync: async id => ({ id, getFilePathAsync: async () => f.context.pdfPath }) };
+  global.Zotero.Fulltext = {
+    getPages: async () => ({ ...f.pages }),
+    getItemCacheFile: () => ({ path: "/fixtures/.zotero-ft-cache" }),
+  };
+  global.IOUtils.stat = async path => ({ ...path.endsWith(".zotero-ft-cache") ? f.cacheStat : f.stat });
+  global.IOUtils.readUTF8 = async () => { f.reads++; return f.text; };
+  return f;
+}
+
+test("complete Zotero disk text is reused across fresh sidebar managers", async t => {
+  const f = indexedPdfFixture(t);
+  assert.deepEqual(await f.manager.getPdfText(f.context), { ...f.result, totalPages: 2 });
+  await f.manager.getPdfText(f.context);
+  assert.equal(f.reads, 2);
+  assert.deepEqual(await createManager().getPdfText(f.context), { ...f.result, totalPages: 2 });
+  assert.equal(f.reads, 3);
+  assert.equal(f.calls, 0);
+});
+
+test("updated Zotero text takes priority over retained plugin text", async t => {
+  const f = indexedPdfFixture(t);
+  await f.manager.getPdfText(f.context);
+  f.text = "1 Updated opening\nThe revised sample explains a different step.\f2 Updated closing\nA revised conclusion.";
+  f.cacheStat.lastModified++;
+  const updated = await f.manager.getPdfText(f.context);
+  assert.equal(updated.text, f.text);
+  assert.equal(f.calls, 0);
+  global.IOUtils.readUTF8 = async () => { throw new Error("Fixture index unavailable"); };
+  assert.equal(await f.manager.getPdfText(f.context), updated);
+  assert.equal(f.calls, 0);
+});
+
+test("concurrent sends share the Zotero disk-cache read", async t => {
+  const f = indexedPdfFixture(t);
+  const pending = deferredResult();
+  global.IOUtils.readUTF8 = () => { f.reads++; return pending.promise; };
+  const first = f.manager.getPdfText(f.context);
+  const second = f.manager.getPdfText(f.context);
+  await nextTick();
+  assert.equal(f.reads, 1);
+  pending.resolve(f.text);
+  assert.deepEqual(await first, await second);
+  assert.equal(f.calls, 0);
+});
+
+test("legacy Zotero text without page breaks supplies excerpts without invented page numbers", async t => {
+  const f = indexedPdfFixture(t);
+  f.text = f.text.replaceAll("\f", "\n");
+  const view = titleSendView();
+  view.manager = f.manager;
+  view.context = f.context;
+  view.elements.input.value = "Explain the result";
+  let sent;
+  view.client.startTurn = async args => { sent = args; return { id: "fixture-turn" }; };
+  await SidebarView.prototype.send.call(view);
+  assert.match(sent.context.zotero.value, /The result remains stable/);
+  assert.match(sent.context.zotero.value, /page unavailable/);
+  assert.doesNotMatch(sent.context.zotero.value, /physical PDF page \d/);
+  assert.equal(f.calls, 0);
+});
+
+test("partial, stale, missing and empty Zotero disk caches fall back to extraction", async t => {
+  const f = indexedPdfFixture(t);
+  const scenarios = [
+    () => { f.pages.indexedPages = 1; },
+    () => { f.pages.total = null; },
+    () => { f.cacheStat.lastModified = 5; },
+    () => { f.text = ""; },
+    () => { global.IOUtils.readUTF8 = async () => { throw new Error("Missing fixture cache"); }; },
+  ];
+  for (const change of scenarios) {
+    f.pages = { indexedPages: 2, total: 2 };
+    f.cacheStat.lastModified = 20;
+    f.text = f.result.text;
+    change();
+    assert.equal(await createManager().getPdfText(f.context), f.result);
+  }
+  assert.equal(f.calls, scenarios.length);
+});
+
+test("Zotero caches replaced during a read are discarded", async t => {
+  const f = indexedPdfFixture(t);
+  global.IOUtils.readUTF8 = async () => { f.cacheStat.lastModified++; return f.text; };
+  assert.equal(await f.manager.getPdfText(f.context), f.result);
+  assert.equal(f.calls, 1);
+});
+
 function deferredResult() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });

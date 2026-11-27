@@ -4609,6 +4609,25 @@
       }
     }
 
+    async getIndexedPdfText(context) {
+      try {
+        const fulltext = global.Zotero.Fulltext;
+        const item = await global.Zotero.Items.getAsync(context.attachmentID);
+        if (await item.getFilePathAsync() !== context.pdfPath) return null;
+        const pages = await fulltext.getPages(item.id);
+        if (!Number.isInteger(pages?.total) || pages.total < 1 || pages.indexedPages !== pages.total) return null;
+        const path = fulltext.getItemCacheFile(item).path;
+        const pdfStat = await global.IOUtils.stat(context.pdfPath);
+        const before = await global.IOUtils.stat(path);
+        if (!Number.isFinite(before.lastModified) || before.lastModified < pdfStat.lastModified) return null;
+        const text = await global.IOUtils.readUTF8(path);
+        const after = await global.IOUtils.stat(path);
+        if (before.size !== after.size || before.lastModified !== after.lastModified || !text.trim()) return null;
+        return { text, extractedPages: pages.indexedPages, totalPages: pages.total };
+      }
+      catch { return null; }
+    }
+
     async getPdfText(context) {
       const extract = () => global.Zotero.PDFWorker.getFullText(context.attachmentID, null, true);
       const version = async () => {
@@ -4622,23 +4641,21 @@
       const identity = await version();
       if (identity === null || this.shuttingDown) return extract();
       const key = context.attachmentID;
-      const cached = this.pdfTextCache.get(key);
-      if (cached?.identity === identity) {
-        this.pdfTextCache.delete(key);
-        this.pdfTextCache.set(key, cached);
-        return cached.result;
-      }
-      this.pdfTextCache.delete(key);
+      if (this.pdfTextCache.get(key)?.identity !== identity) this.pdfTextCache.delete(key);
       const pending = this.pdfTextRequests.get(key);
       if (pending?.identity === identity) return pending.promise;
       const request = { identity, promise: null };
       request.promise = (async () => {
         try {
-          const result = await Promise.resolve().then(extract);
+          let result = await this.getIndexedPdfText(context);
+          const cached = this.pdfTextCache.get(key);
+          if (!result && cached?.identity === identity) result = cached.result;
+          if (!result) result = await Promise.resolve().then(extract);
           if (typeof result?.text !== "string" || !Number.isInteger(result?.extractedPages)) return result;
           const bytes = result.text.length * 2;
           if (await version() !== identity) throw new Error("PDF changed while extracting text");
           if (this.shuttingDown || this.pdfTextRequests.get(key) !== request) return result;
+          this.pdfTextCache.delete(key);
           if (bytes <= MAX_PDF_TEXT_BYTES) {
             this.pdfTextCache.set(key, { identity, result, bytes });
             let total = [...this.pdfTextCache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
